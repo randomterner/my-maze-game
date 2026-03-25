@@ -10,25 +10,22 @@
         .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; position: relative; display: flex; align-items: center; justify-content: center; font-size: 10px; }
         .revealed { background: #333; }
         .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; box-shadow: 0 0 10px yellow; z-index: 5; }
-        .p-other { background: blue; border-radius: 50%; width: 16px; height: 16px; opacity: 0.5; }
         .wall-top { border-top: 4px solid red; }
         .wall-left { border-left: 4px solid red; }
         #status { background: #222; padding: 10px; display: flex; justify-content: space-around; }
-        #win { display:none; position:fixed; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; color:gold; }
     </style>
 </head>
 <body>
-    <div id="win"><h1 id="winner"></h1><p>ניצח במשחק!</p></div>
     <div id="welcome">
         <h1>🏰 מבוך</h1>
         <input type="text" id="nin" placeholder="שם שחקן...">
         <button onclick="join()" style="margin-top:10px; padding:10px;">כניסה</button>
-        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" style="color:gold; margin-top:15px; font-weight:bold;">📜 חוקי המשחק</a>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" style="color:gold; margin-top:15px;">📜 חוקים</a>
     </div>
     <div id="status">
         <span>פציעות: <b id="hp">0</b></span>
+        <span>כדורים: <b id="bul">3</b></span>
         <span>פצצות: <b id="bom">3</b></span>
-        <span>ציוד: <b id="items">ריק</b></span>
     </div>
     <div id="board"></div>
     <script>
@@ -37,16 +34,17 @@
         window.onkeydown = (e) => {
             const keys = {"ArrowUp":[0,-1], "ArrowDown":[0,1], "ArrowLeft":[-1,0], "ArrowRight":[1,0]};
             if(!keys[e.key]) return;
-            let type = e.ctrlKey ? "bomb" : "move";
+            let type = "move";
+            if (e.shiftKey) type = "shoot";
+            else if (e.ctrlKey) type = "bomb";
             socket.emit('action', {type, dx: keys[e.key][0], dy: keys[e.key][1]});
         };
         socket.on('sync', d => {
-            if(d.winner) { document.getElementById('win').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
             const b = document.getElementById('board'); b.innerHTML = '';
             const my = d.my_data;
             document.getElementById('hp').innerText = my.hp;
+            document.getElementById('bul').innerText = my.bul;
             document.getElementById('bom').innerText = my.bom;
-            document.getElementById('items').innerText = my.items.join(', ') || 'ריק';
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
@@ -59,10 +57,7 @@
                         c.innerText = td.tile !== "empty" ? td.tile.substring(0,4) : "";
                     } else c.className = 'cell';
                     if(d.phase === 2) c.onclick = () => socket.emit('set_spawn', {x:x, y:y});
-                    d.players.forEach(p => { if(p.x===x && p.y===y && !p.dead) {
-                        const div = document.createElement('div'); div.className = p.n===my.n ? 'p-self' : 'p-other';
-                        if(d.is_spectator || p.n===my.n) c.appendChild(div);
-                    }});
+                    if(my.x===x && my.y===y && my.has_spawned) c.innerHTML = '<div class="p-self"></div>';
                     b.appendChild(c);
                 }
             }
