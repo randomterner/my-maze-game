@@ -1,69 +1,68 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מבוך - שחקן</title>
+    <meta charset="UTF-8"><title>מבוך</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; }
         #welcome { position: fixed; width: 100%; height: 100%; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; margin: 20px auto; width: max-content; }
-        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; position: relative; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; }
+        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; position: relative; display: flex; align-items: center; justify-content: center; font-size: 10px; }
         .revealed { background: #333; }
-        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; z-index: 5; box-shadow: 0 0 10px yellow; }
-        .p-other { background: blue; border-radius: 50%; width: 16px; height: 16px; opacity: 0.6; }
-        #status { background: #222; padding: 10px; text-align: center; }
-        .rules-link { color: gold; margin-top: 15px; text-decoration: none; font-weight: bold; }
-        .rules-link:hover { text-decoration: underline; }
+        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; box-shadow: 0 0 10px yellow; z-index: 5; }
+        .p-other { background: blue; border-radius: 50%; width: 16px; height: 16px; opacity: 0.5; }
+        .wall-top { border-top: 4px solid red; }
+        .wall-left { border-left: 4px solid red; }
+        #status { background: #222; padding: 10px; display: flex; justify-content: space-around; }
+        #win { display:none; position:fixed; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; color:gold; }
     </style>
 </head>
 <body>
+    <div id="win"><h1 id="winner"></h1><p>ניצח במשחק!</p></div>
     <div id="welcome">
         <h1>🏰 מבוך</h1>
-        <input type="text" id="n-in" placeholder="שם שחקן..." style="padding:10px;">
-        <button onclick="join()" style="padding:10px; margin-top:10px; cursor:pointer; background:lime; border:none; font-weight:bold;">כניסה למשחק</button>
-        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" class="rules-link">📜 קרא את חוקי המשחק</a>
+        <input type="text" id="nin" placeholder="שם שחקן...">
+        <button onclick="join()" style="margin-top:10px; padding:10px;">כניסה</button>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" style="color:gold; margin-top:15px; font-weight:bold;">📜 חוקי המשחק</a>
     </div>
-
-    <div id="status"></div>
+    <div id="status">
+        <span>פציעות: <b id="hp">0</b></span>
+        <span>פצצות: <b id="bom">3</b></span>
+        <span>ציוד: <b id="items">ריק</b></span>
+    </div>
     <div id="board"></div>
-
     <script>
         const socket = io();
-        function join() { 
-            const n = document.getElementById('n-in').value; 
-            if(n) { socket.emit('join', {name:n}); document.getElementById('welcome').style.display='none'; } 
-        }
-
-        window.onkeydown = e => {
+        function join() { const n = document.getElementById('nin').value; if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } }
+        window.onkeydown = (e) => {
             const keys = {"ArrowUp":[0,-1], "ArrowDown":[0,1], "ArrowLeft":[-1,0], "ArrowRight":[1,0]};
-            if(keys[e.key]) socket.emit('action', {type:'move', dx:keys[e.key][0], dy:keys[e.key][1]});
+            if(!keys[e.key]) return;
+            let type = e.ctrlKey ? "bomb" : "move";
+            socket.emit('action', {type, dx: keys[e.key][0], dy: keys[e.key][1]});
         };
-
         socket.on('sync', d => {
+            if(d.winner) { document.getElementById('win').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
             const b = document.getElementById('board'); b.innerHTML = '';
             const my = d.my_data;
-            document.getElementById('status').innerText = d.is_spectator ? "מצב צופה (רואה הכל)" : `שלב: ${d.phase}`;
-
+            document.getElementById('hp').innerText = my.hp;
+            document.getElementById('bom').innerText = my.bom;
+            document.getElementById('items').innerText = my.items.join(', ') || 'ריק';
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
                     const known = my.known_tiles.some(t => t[0] === x && t[1] === y);
-                    
                     if(d.is_spectator || (known && !my.is_lost)) {
+                        const td = d.maze[y][x];
                         c.className = 'cell revealed';
-                        c.innerText = d.maze[y][x].tile !== "empty" ? d.maze[y][x].tile.substring(0,3) : "";
-                    } else { c.className = 'cell'; }
-
+                        if(td.walls.top) c.classList.add('wall-top');
+                        if(td.walls.left) c.classList.add('wall-left');
+                        c.innerText = td.tile !== "empty" ? td.tile.substring(0,4) : "";
+                    } else c.className = 'cell';
                     if(d.phase === 2) c.onclick = () => socket.emit('set_spawn', {x:x, y:y});
-
-                    d.players.forEach(p => {
-                        if(p.x === x && p.y === y && !p.dead) {
-                            const pdiv = document.createElement('div');
-                            pdiv.className = (p.n === my.n) ? 'p-self' : 'p-other';
-                            // Dead players/Manager see all players. Live players only see themselves.
-                            if(d.is_spectator || p.n === my.n) c.appendChild(pdiv);
-                        }
-                    });
+                    d.players.forEach(p => { if(p.x===x && p.y===y && !p.dead) {
+                        const div = document.createElement('div'); div.className = p.n===my.n ? 'p-self' : 'p-other';
+                        if(d.is_spectator || p.n===my.n) c.appendChild(div);
+                    }});
                     b.appendChild(c);
                 }
             }
