@@ -6,81 +6,91 @@
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; }
         #sidebar { width: 220px; background: #222; padding: 10px; border-left: 1px solid #444; overflow-y: auto; }
-        #grid { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; padding: 20px; margin: auto; }
-        .cell { width: 55px; height: 55px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; color: black; }
+        #grid-area { flex-grow: 1; display: flex; justify-content: center; align-items: center; }
+        #grid { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; background: #444; border: 2px solid #555; }
+        .cell { width: 55px; height: 55px; background: #fff; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; border: 1px solid #ccc; }
         .wall-top { border-top: 5px solid red !important; }
         .wall-left { border-left: 5px solid red !important; }
-        .p-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 1px solid white; top: 2px; right: 2px; }
-        .opt { padding: 5px; margin: 2px; background: #444; cursor: pointer; text-align: center; border-radius: 3px; font-size: 11px; }
-        .selected { background: #007bff; border: 1px solid white; }
-        button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; }
+        .p-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 2px solid white; top: 2px; right: 2px; }
+        .opt { padding: 6px; margin: 3px; background: #333; cursor: pointer; text-align: center; border: 1px solid #555; font-size: 11px; }
+        .selected { background: #007bff; border-color: white; }
+        button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h4>שלב: <span id="cp">1</span></h4>
-        <button onclick="socket.emit('set_phase',{phase:1})">בנייה</button>
-        <button onclick="socket.emit('set_phase',{phase:2})">הולדה</button>
-        <button onclick="socket.emit('set_phase',{phase:3})" style="background:lime">התחל</button>
+        <h4>שלב נוכחי: <span id="cp">1</span></h4>
+        <button onclick="changePhase(1)">1. בנייה</button>
+        <button onclick="changePhase(2)">2. הולדה</button>
+        <button onclick="changePhase(3)" style="background:lime">3. התחל!</button>
         <hr><div id="opts"></div>
     </div>
-    <div id="grid"></div>
+    <div id="grid-area"><div id="grid"></div></div>
 
     <script>
         const socket = io();
-        let sel = "empty";
+        let currentSel = "empty";
+        let localMaze = [];
+
         const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
-        
-        // Auto-join as Manager
-        socket.emit('join', {name: "MANAGER"});
 
         types.forEach(t => {
             const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
-            d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); };
+            d.onclick = () => { 
+                currentSel = t; 
+                document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
+                d.classList.add('selected');
+            };
             document.getElementById('opts').appendChild(d);
         });
 
+        function changePhase(p) {
+            console.log("Changing phase to:", p);
+            socket.emit('set_phase', { phase: p });
+        }
+
+        socket.on('connect', () => {
+            socket.emit('join', { name: "MANAGER" });
+        });
+
         socket.on('sync', d => {
-            try {
-                const mazeData = d.maze;
-                document.getElementById('cp').innerText = d.phase;
-                const g = document.getElementById('grid');
-                g.innerHTML = '';
-                
-                for(let y=0; y<10; y++) {
-                    for(let x=0; x<10; x++) {
-                        const cellData = mazeData[y][x];
-                        const c = document.createElement('div');
-                        c.className = 'cell';
-                        if(cellData.walls.top) c.classList.add('wall-top');
-                        if(cellData.walls.left) c.classList.add('wall-left');
-                        
-                        if(cellData.tile !== "empty") {
-                            c.style.backgroundImage = `url('/static/${cellData.tile}.png')`;
-                        }
+            localMaze = d.maze;
+            document.getElementById('cp').innerText = d.phase;
+            const g = document.getElementById('grid');
+            g.innerHTML = '';
 
-                        d.players.forEach(p => {
-                            if(p.x === x && p.y === y && !p.dead) {
-                                const dot = document.createElement('div');
-                                dot.className = 'p-dot';
-                                c.appendChild(dot);
-                            }
-                        });
-
-                        c.onmousedown = (e) => {
-                            if(d.phase >= 3) return;
-                            const r = c.getBoundingClientRect();
-                            if(e.button === 0) mazeData[y][x].tile = sel;
-                            else if(e.button === 2) {
-                                if(e.clientY - r.top < 15) mazeData[y][x].walls.top = !mazeData[y][x].walls.top;
-                                else if(e.clientX - r.left < 15) mazeData[y][x].walls.left = !mazeData[y][x].walls.left;
-                            }
-                            socket.emit('save_maze', {maze: mazeData});
-                        };
-                        g.appendChild(c);
+            for(let y=0; y<10; y++) {
+                for(let x=0; x<10; x++) {
+                    const td = localMaze[y][x];
+                    const c = document.createElement('div');
+                    c.className = 'cell';
+                    if(td.walls.top) c.classList.add('wall-top');
+                    if(td.walls.left) c.classList.add('wall-left');
+                    
+                    if(td.tile !== "empty") {
+                        c.style.backgroundImage = `url('/static/${td.tile}.png')`;
                     }
+
+                    d.players.forEach(p => {
+                        if(p.x === x && p.y === y && !p.dead) {
+                            const dot = document.createElement('div'); dot.className = 'p-dot'; c.appendChild(dot);
+                        }
+                    });
+
+                    c.onmousedown = (e) => {
+                        if(d.phase >= 3) return;
+                        const r = c.getBoundingClientRect();
+                        if(e.button === 0) {
+                            localMaze[y][x].tile = currentSel;
+                        } else if(e.button === 2) {
+                            if(e.clientY - r.top < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
+                            else if(e.clientX - r.left < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
+                        }
+                        socket.emit('save_maze', { maze: localMaze });
+                    };
+                    g.appendChild(c);
                 }
-            } catch(e) { console.error("Grid error:", e); }
+            }
         });
         window.oncontextmenu = (e) => e.preventDefault();
     </script>
