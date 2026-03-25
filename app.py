@@ -3,7 +3,7 @@ from flask_socketio import SocketIO, emit
 import os, json
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Load maze or create a fresh 10x10 grid
 def load_maze():
