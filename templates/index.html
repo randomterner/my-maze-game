@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Player</title>
-    <script src="https://cdn.socketio.io/4.0.0/socketio.min.js"></script>
+    <meta charset="UTF-8">
+    <title>מבוך שחקן</title>
+    <script src="https://cdn.socketio.io/4.7.2/socketio.min.js"></script>
     <style>
-        body { background: #222; color: #fff; text-align: center; font-family: sans-serif; }
-        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; margin: 20px auto; width: max-content; }
-        .cell { width: 50px; height: 50px; background: #eee; position: relative; }
-        .wall-top { border-top: 4px solid #000; }
-        .wall-left { border-left: 4px solid #000; }
-        .player { background: yellow; border-radius: 50%; width: 30px; height: 30px; margin: 10px; }
+        body { background: #222; color: #fff; text-align: center; font-family: sans-serif; margin: 0; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; margin: 20px auto; width: max-content; border: 2px solid #555; }
+        .cell { width: 50px; height: 50px; background: #555; position: relative; border: 1px solid #666; }
+        .wall-top { border-top: 4px solid #000; } .wall-left { border-left: 4px solid #000; }
+        .player { background: yellow; border-radius: 50%; width: 30px; height: 30px; margin: 10px; box-shadow: 0 0 10px yellow; }
     </style>
 </head>
 <body>
@@ -18,13 +18,13 @@
 
     <script>
         const socket = io();
-        let mode = "move";
-        socket.emit('join', {name: prompt("שם:")});
+        let mode = "move"; 
+        socket.emit('join', {name: prompt("שם שחקן:")});
 
         window.oncontextmenu = (e) => e.preventDefault();
         window.onmousedown = (e) => {
             if(e.button === 0) mode = (mode === "shoot") ? "move" : "shoot";
-            if(e.button === 2) mode = (mode === "bomb") ? "move" : "bomb";
+            else if(e.button === 2) mode = (mode === "bomb") ? "move" : "bomb";
             document.getElementById('status').innerText = "מצב: " + mode;
         };
 
@@ -37,13 +37,13 @@
         };
 
         socket.on('sync', d => {
-            const b = document.getElementById('board');
+            const b = document.getElementById('board'); 
             b.innerHTML = '';
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
-                    const m = d.maze[y][x];
-                    c.className = 'cell ' + (m.walls.top ? 'wall-top ' : '') + (m.walls.left ? 'wall-left' : '');
+                    const mc = d.maze[y][x];
+                    c.className = 'cell ' + (mc.walls.top ? 'wall-top ' : '') + (mc.walls.left ? 'wall-left' : '');
                     if(d.players.find(p => p.x === x && p.y === y)) c.innerHTML = '<div class="player"></div>';
                     b.appendChild(c);
                 }
