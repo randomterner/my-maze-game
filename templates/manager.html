@@ -4,47 +4,60 @@
     <meta charset="UTF-8"><title>מנחה - שליטה</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; }
-        #sidebar { width: 220px; background: #222; padding: 10px; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
-        #grid { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; padding: 15px; }
-        .cell { width: 55px; height: 55px; background: #fff; border: 1px solid #ccc; position: relative; background-size: cover; cursor: pointer; }
-        .wall-top { border-top: 5px solid red; }
-        .wall-left { border-left: 5px solid red; }
-        .p-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 2px solid white; top: 2px; right: 2px; z-index: 10; }
-        .opt { padding: 5px; margin: 2px; background: #444; cursor: pointer; text-align: center; border-radius: 3px; font-size: 11px; }
+        body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; }
+        #sidebar { width: 220px; background: #222; padding: 15px; border-left: 1px solid #444; overflow-y: auto; }
+        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #111; }
+        #grid { display: grid; grid-template-columns: repeat(10, 60px); grid-template-rows: repeat(10, 60px); gap: 2px; border: 2px solid #333; }
+        .cell { width: 60px; height: 60px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; color: black; font-size: 10px; }
+        .wall-top { border-top: 5px solid red !important; }
+        .wall-left { border-left: 5px solid red !important; }
+        .p-dot { position: absolute; width: 14px; height: 14px; background: blue; border-radius: 50%; border: 2px solid white; top: 4px; right: 4px; z-index: 10; }
+        .opt { padding: 8px; margin: 4px 0; background: #444; cursor: pointer; text-align: center; border-radius: 4px; transition: 0.2s; }
         .selected { background: #007bff; border: 1px solid white; }
-        button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; font-weight: bold; }
+        button { width: 100%; padding: 12px; margin-bottom: 8px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h4>שלב: <span id="cp">1</span></h4>
+        <h3>שלב: <span id="cp">1</span></h3>
         <button onclick="socket.emit('set_phase',{phase:1})">1. בנייה</button>
         <button onclick="socket.emit('set_phase',{phase:2})">2. הולדה</button>
         <button onclick="socket.emit('set_phase',{phase:3})" style="background:lime">3. התחל</button>
         <hr><div id="opts"></div>
     </div>
-    <div id="grid"></div>
+    <div id="grid-container">
+        <div id="grid"></div>
+    </div>
+
     <script>
         const socket = io();
         let sel = "empty", mazeData = [];
         const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
         
+        const optsDiv = document.getElementById('opts');
         types.forEach(t => {
             const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
             d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); };
-            document.getElementById('opts').appendChild(d);
+            optsDiv.appendChild(d);
         });
 
         socket.on('sync', d => {
-            mazeData = d.maze; document.getElementById('cp').innerText = d.phase;
-            const g = document.getElementById('grid'); g.innerHTML = '';
+            mazeData = d.maze; 
+            document.getElementById('cp').innerText = d.phase;
+            const g = document.getElementById('grid');
+            if (!mazeData || mazeData.length === 0) return;
+            
+            g.innerHTML = '';
             for(let y=0; y<10; y++) {
                 for(let x=0; x<10; x++) {
                     const c = document.createElement('div');
                     const td = mazeData[y][x];
                     c.className = 'cell ' + (td.walls.top ? 'wall-top ' : '') + (td.walls.left ? 'wall-left' : '');
-                    if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    
+                    // Path following: /static/[tile_name].png
+                    if(td.tile !== "empty") {
+                        c.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    }
                     
                     d.players.forEach(p => { 
                         if(p.x === x && p.y === y && !p.dead) { 
