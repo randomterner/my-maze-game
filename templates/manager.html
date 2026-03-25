@@ -1,91 +1,83 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>מנחה - עורך מבוך</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <meta charset="UTF-8"><title>מנחה - בניית מבוך</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { display: flex; font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; height: 100vh; }
-        #sidebar { width: 250px; padding: 15px; background: #222; border-left: 2px solid #444; overflow-y: auto; }
-        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #111; }
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; border: 2px solid #555; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: crosshair; }
-        .wall-top { border-top: 6px solid red !important; }
-        .wall-left { border-left: 6px solid red !important; }
-        .opt { padding: 8px; margin: 3px 0; background: #333; cursor: pointer; border: 1px solid #555; text-align: center; border-radius: 4px; }
-        .selected { background: #007bff !important; border-color: white; }
-        button { padding: 12px; margin-top: 20px; width: 100%; cursor: pointer; background: #28a745; color: white; border: none; font-weight: bold; }
+        body { display: flex; font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; }
+        #sidebar { width: 240px; padding: 15px; background: #222; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; padding: 20px; background: #111; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .wall-top { border-top: 5px solid red !important; }
+        .wall-left { border-left: 5px solid red !important; }
+        .opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border: 1px solid #555; text-align: center; }
+        .selected { background: #007bff; border-color: white; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h3>בחירת אריח</h3>
-        <div id="opts-container"></div>
-        <button id="start-btn" onclick="sendStart()">שמור והתחל משחק 🚀</button>
+        <h3>אריחים</h3>
+        <div id="opts"></div>
+        <div id="status" style="font-size: 12px; margin-top:10px; color: #ffa500;"></div>
+        <button id="start-btn" onclick="socket.emit('start_trigger')" style="width:100%; margin-top:20px; background:#28a745; color:white; border:none; padding:10px;" disabled>התחל משחק 🚀</button>
     </div>
-    <div id="grid-container">
-        <div id="grid"></div>
-    </div>
+    <div id="grid"></div>
 
     <script>
-        // Use empty string for auto-discovery of the URL on Render
         const socket = io();
-        let selectedTile = "empty";
-        let maze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
-
-        const tileTypes = ["empty", "treasure", "fake_treasure", "exit", "black_hole", "river", "devil", "clinic", "er", "armory", "monster", "boat", "raft", "flashlight", "batteries"];
+        let sel = "empty";
+        const maze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
         
-        // Build Sidebar
-        const optDiv = document.getElementById('opts-container');
-        tileTypes.forEach(t => {
-            const d = document.createElement('div');
-            d.className = 'opt' + (t === selectedTile ? ' selected' : '');
-            d.innerText = t;
-            d.onclick = () => {
-                document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
-                d.classList.add('selected');
-                selectedTile = t;
-            };
+        const types = ["empty", "treasure", "fake_treasure", "exit", "river", "river_start", "monster", "devil", "clinic", "er", "armory", "boat", "raft", "flashlight", "batteries", "black_hole"];
+        const limits = { treasure: 1, fake_treasure: 1, exit: 1, river_start: 1, monster: 1, devil: 1, clinic: 1, er: 1, armory: 1, boat: 1, raft: 1, flashlight: 1, batteries: 1, river: 20 };
+
+        const optDiv = document.getElementById('opts');
+        types.forEach(t => {
+            const d = document.createElement('div'); d.className = 'opt' + (t === sel ? ' selected' : ''); d.innerText = t;
+            d.onclick = () => { document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); sel = t; };
             optDiv.appendChild(d);
         });
 
-        // Build Grid
-        const gridElement = document.getElementById('grid');
+        const g = document.getElementById('grid');
         for(let y=0; y<10; y++){
             for(let x=0; x<10; x++){
-                const cell = document.createElement('div');
-                cell.className = 'cell';
-                cell.id = `cell-${x}-${y}`;
-                cell.oncontextmenu = (e) => e.preventDefault();
-                cell.onmousedown = (e) => {
-                    const rect = cell.getBoundingClientRect();
-                    if(e.button === 0) maze[y][x].tile = selectedTile;
+                const c = document.createElement('div'); c.className = 'cell'; c.id = `c-${x}-${y}`;
+                c.oncontextmenu = (e) => e.preventDefault();
+                c.onmousedown = (e) => {
+                    const rect = c.getBoundingClientRect();
+                    if(e.button === 0) {
+                        const count = maze.flat().filter(i => i.tile === sel).length;
+                        if(sel !== 'empty' && count >= (limits[sel] || 1)) return alert("מקסימום אריחים מסוג זה!");
+                        maze[y][x].tile = sel;
+                    } 
                     else if(e.button === 2) {
                         if(e.clientY - rect.top < 15) maze[y][x].walls.top = !maze[y][x].walls.top;
                         else if(e.clientX - rect.left < 15) maze[y][x].walls.left = !maze[y][x].walls.left;
                     }
                     else if(e.button === 1) { maze[y][x].tile = "empty"; maze[y][x].walls.top = false; maze[y][x].walls.left = false; }
-                    
-                    refreshUI();
-                    socket.emit('save_maze', { maze: maze });
+                    render();
+                    socket.emit('save_maze', {maze});
                 };
-                gridElement.appendChild(cell);
+                g.appendChild(c);
             }
         }
 
-        function refreshUI() {
+        function render() {
+            let counts = {};
+            maze.flat().forEach(d => counts[d.tile] = (counts[d.tile] || 0) + 1);
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
-                    const cell = document.getElementById(`cell-${x}-${y}`);
-                    const data = maze[y][x];
-                    cell.className = 'cell ' + (data.walls.top ? 'wall-top ' : '') + (data.walls.left ? 'wall-left' : '');
-                    cell.innerText = data.tile === "empty" ? "" : data.tile.substring(0,3);
+                    const c = document.getElementById(`c-${x}-${y}`);
+                    const d = maze[y][x];
+                    c.className = 'cell ' + (d.walls.top ? 'wall-top ' : '') + (d.walls.left ? 'wall-left' : '');
+                    c.innerText = d.tile === "empty" ? "" : d.tile.substring(0,3);
                 }
             }
+            const missing = Object.keys(limits).filter(k => (counts[k]||0) < 1);
+            document.getElementById('status').innerText = missing.length ? "חסר: " + missing.join(", ") : "מוכן!";
+            document.getElementById('start-btn').disabled = missing.length > 0;
         }
-
-        function sendStart() { socket.emit('start_trigger'); alert("המשחק התחיל!"); }
-        refreshUI();
     </script>
 </body>
 </html>
