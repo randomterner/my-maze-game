@@ -5,30 +5,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; }
-        #sidebar { width: 240px; background: #222; padding: 15px; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; padding: 20px; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; color: black; font-size: 9px; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
+        #sidebar { width: 220px; background: #222; padding: 10px; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
+        #grid { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; padding: 15px; }
+        .cell { width: 55px; height: 55px; background: #fff; border: 1px solid #ccc; position: relative; background-size: cover; cursor: pointer; }
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
-        .player-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 1px solid white; }
-        .opt { padding: 5px; margin: 2px; background: #444; border: 1px solid #666; text-align: center; cursor: pointer; }
-        .selected { background: #007bff; }
+        .p-dot { position: absolute; width: 10px; height: 10px; background: blue; border-radius: 50%; top: 2px; right: 2px; }
+        .opt { padding: 5px; margin: 2px; background: #444; cursor: pointer; text-align: center; border-radius: 3px; font-size: 12px; }
+        .selected { background: #007bff; border: 1px solid white; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h3>שלב: <span id="cp">1</span></h3>
-        <button onclick="socket.emit('set_phase',{phase:1})">1. בנייה</button>
-        <button onclick="socket.emit('set_phase',{phase:2})">2. הולדה</button>
-        <button onclick="socket.emit('set_phase',{phase:3})">3. התחל!</button>
+        <h4>שלב: <span id="cp">1</span></h4>
+        <button onclick="socket.emit('set_phase',{phase:1})">בנייה</button>
+        <button onclick="socket.emit('set_phase',{phase:2})">הולדה</button>
+        <button onclick="socket.emit('set_phase',{phase:3})" style="background:lime">התחל</button>
         <hr><div id="opts"></div>
     </div>
     <div id="grid"></div>
     <script>
         const socket = io();
         let sel = "empty", mazeData = [];
-        const types = ["empty", "treasure", "fake_treasure", "exit", "river", "river_start", "black_hole", "clinic", "er", "monster", "devil", "armory", "flashlight", "batteries", "boat", "raft"];
-
+        const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
+        
         types.forEach(t => {
             const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
             d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); };
@@ -38,25 +38,22 @@
         socket.on('sync', d => {
             mazeData = d.maze; document.getElementById('cp').innerText = d.phase;
             const g = document.getElementById('grid'); g.innerHTML = '';
-            for(let y=0; y<10; y++){
-                for(let x=0; x<10; x++){
-                    const c = document.createElement('div');
-                    const td = mazeData[y][x];
-                    c.className = 'cell ' + (td.walls.top ? 'wall-top ' : '') + (td.walls.left ? 'wall-left' : '');
-                    c.innerText = td.tile.substring(0,4);
-                    d.players.forEach(p => { if(p.x === x && p.y === y && !p.dead) { const dot = document.createElement('div'); dot.className = 'player-dot'; c.appendChild(dot); } });
-                    c.onmousedown = (e) => {
-                        if(d.phase >= 3) return;
-                        const r = c.getBoundingClientRect();
-                        if(e.button === 0) mazeData[y][x].tile = sel;
-                        else if(e.button === 2) {
-                            if(e.clientY - r.top < 15) mazeData[y][x].walls.top = !mazeData[y][x].walls.top;
-                            else if(e.clientX - r.left < 15) mazeData[y][x].walls.left = !mazeData[y][x].walls.left;
-                        }
-                        socket.emit('save_maze', {maze: mazeData});
-                    };
-                    g.appendChild(c);
-                }
+            for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
+                const c = document.createElement('div'); const td = mazeData[y][x];
+                c.className = 'cell ' + (td.walls.top ? 'wall-top ' : '') + (td.walls.left ? 'wall-left' : '');
+                if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                d.players.forEach(p => { if(p.x === x && p.y === y && !p.dead) { const dot = document.createElement('div'); dot.className = 'p-dot'; c.appendChild(dot); } });
+                c.onmousedown = (e) => {
+                    if(d.phase >= 3) return;
+                    const r = c.getBoundingClientRect();
+                    if(e.button === 0) mazeData[y][x].tile = sel;
+                    else if(e.button === 2) {
+                        if(e.clientY - r.top < 15) mazeData[y][x].walls.top = !mazeData[y][x].walls.top;
+                        else if(e.clientX - r.left < 15) mazeData[y][x].walls.left = !mazeData[y][x].walls.left;
+                    }
+                    socket.emit('save_maze', {maze: mazeData});
+                };
+                g.appendChild(c);
             }
         });
     </script>
