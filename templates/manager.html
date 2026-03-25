@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>מנחה - עורך מבוך</title>
+    <script src="https://cdn.socketio.io/4.0.0/socketio.min.js"></script>
+    <style>
+        body { display: flex; font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; height: 100vh; }
+        #sidebar { width: 250px; padding: 15px; background: #222; border-left: 2px solid #444; display: flex; flex-direction: column; }
+        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #111; }
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); grid-template-rows: repeat(10, 50px); gap: 2px; background: #444; border: 2px solid #555; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: crosshair; user-select: none; }
+        .wall-top { border-top: 6px solid red !important; }
+        .wall-left { border-left: 6px solid red !important; }
+        .opt { padding: 8px; margin: 3px 0; background: #333; cursor: pointer; border: 1px solid #555; text-align: center; border-radius: 4px; }
+        .opt:hover { background: #444; }
+        .selected { background: #007bff !important; border-color: white; }
+        button { padding: 12px; margin-top: auto; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px; }
+        button:disabled { background: #555; opacity: 0.5; }
+        #status-list { font-size: 12px; margin-top: 10px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h3>בחירת אריח</h3>
+        <div id="opts-container"></div>
+        <div id="status-list"></div>
+        <button id="start-btn" onclick="sendStart()" disabled>שמור והתחל משחק</button>
+    </div>
+
+    <div id="grid-container">
+        <div id="grid"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let selectedTile = "empty";
+        
+        // Initialize a local blank maze immediately
+        let maze = Array(10).fill().map(() => Array(10).fill().map(() => ({
+            tile: "empty", 
+            walls: {top: false, left: false}
+        })));
+
+        const tileTypes = ["empty", "treasure", "fake_treasure", "exit", "black_hole", "river", "devil", "clinic", "er", "armory", "monster", "boat", "raft", "flashlight", "batteries"];
+        const limits = { treasure: 1, fake_treasure: 1, exit: 1, black_hole: 1, devil: 1, clinic: 1, er: 1, armory: 1, monster: 1, boat: 1, raft: 1, flashlight: 1, batteries: 1, river: 20 };
+
+        // 1. Build Sidebar
+        const optDiv = document.getElementById('opts-container');
+        tileTypes.forEach(t => {
+            const d = document.createElement('div');
+            d.className = 'opt' + (t === selectedTile ? ' selected' : '');
+            d.innerText = t;
+            d.onclick = () => {
+                document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
+                d.classList.add('selected');
+                selectedTile = t;
+            };
+            optDiv.appendChild(d);
+        });
+
+        // 2. Build Grid immediately
+        const gridElement = document.getElementById('grid');
+        for(let y=0; y<10; y++){
+            for(let x=0; x<10; x++){
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${x}-${y}`;
+                
+                cell.oncontextmenu = (e) => e.preventDefault(); // Disable right-click menu
+
+                cell.onmousedown = (e) => {
+                    const rect = cell.getBoundingClientRect();
+                    const topDist = e.clientY - rect.top;
+                    const leftDist = e.clientX - rect.left;
+
+                    if(e.button === 0) { // Left Click: Place Tile
+                        const currentCount = maze.flat().filter(obj => obj.tile === selectedTile).length;
+                        if(selectedTile !== 'empty' && currentCount >= (limits[selectedTile] || 1)) {
+                            alert("הגעת למקסימום אריחים מסוג זה!");
+                            return;
+                        }
+                        maze[y][x].tile = selectedTile;
+                    } 
+                    else if(e.button === 2) { // Right Click: Toggle Walls
+                        if(topDist < 15) maze[y][x].walls.top = !maze[y][x].walls.top;
+                        else if(leftDist < 15) maze[y][x].walls.left = !maze[y][x].walls.left;
+                    }
+                    else if(e.button === 1) { // Middle Click: Reset
+                        maze[y][x].tile = "empty";
+                        maze[y][x].walls.top = false;
+                        maze[y][x].walls.left = false;
+                    }
+                    
+                    refreshUI();
+                    socket.emit('save_maze', { maze: maze });
+                };
+                gridElement.appendChild(cell);
+            }
+        }
+
+        function refreshUI() {
+            let counts = {};
+            for(let y=0; y<10; y++){
+                for(let x=0; x<10; x++){
+                    const cell = document.getElementById(`cell-${x}-${y}`);
+                    const data = maze[y][x];
+                    
+                    // Update visuals
+                    cell.className = 'cell ' + (data.walls.top ? 'wall-top ' : '') + (data.walls.left ? 'wall-left' : '');
+                    cell.innerText = data.tile === "empty" ? "" : data.tile.substring(0,3);
+                    
+                    // Update counts
+                    counts[data.tile] = (counts[data.tile] || 0) + 1;
+                }
+            }
+            
+            // Check requirements
+            const missing = Object.keys(limits).filter(key => (counts[key] || 0) < 1);
+            const statusBox = document.getElementById('status-list');
+            
+            if(missing.length > 0) {
+                statusBox.innerHTML = "חסרים: " + missing.join(", ");
+                statusBox.style.color = "red";
+                document.getElementById('start-btn').disabled = true;
+            } else {
+                statusBox.innerHTML = "כל הפריטים הונחו! ניתן להתחיל.";
+                statusBox.style.color = "lime";
+                document.getElementById('start-btn').disabled = false;
+            }
+        }
+
+        function sendStart() {
+            socket.emit('start_trigger');
+            alert("המשחק התחיל!");
+        }
+
+        // Initialize display
+        refreshUI();
+
+        // If server already has a maze, load it
+        socket.on('sync', (data) => {
+            if(data.maze) {
+                maze = data.maze;
+                refreshUI();
+            }
+        });
+    </script>
+</body>
+</html>
