@@ -4,44 +4,45 @@
     <meta charset="UTF-8"><title>מבוך - שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; }
         #welcome { position: fixed; width: 100%; height: 100%; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; margin: 20px auto; width: max-content; }
-        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; display: flex; align-items: center; justify-content: center; font-size: 10px; position: relative; }
-        .revealed { background: #333; border-color: #444; }
-        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; z-index: 5; }
+        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; position: relative; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; }
+        .revealed { background: #333; }
+        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; z-index: 5; box-shadow: 0 0 10px yellow; }
         .p-other { background: blue; border-radius: 50%; width: 16px; height: 16px; opacity: 0.6; }
-        #win-screen { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index: 2000; color: gold; flex-direction: column; align-items: center; justify-content: center; font-size: 40px; }
+        #status { background: #222; padding: 10px; text-align: center; }
+        .rules-link { color: gold; margin-top: 15px; text-decoration: none; font-weight: bold; }
+        .rules-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div id="win-screen"><h1 id="winner"></h1><p>ניצח במשחק!</p></div>
-
     <div id="welcome">
         <h1>🏰 מבוך</h1>
-        <input type="text" id="name-in" placeholder="הכנס שם...">
-        <button onclick="join()" style="padding:10px 20px; margin:10px;">הצטרף</button>
-        <p><a href="#" onclick="alert('https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing.')" style="color:cyan">קרא חוקים</a></p>
+        <input type="text" id="n-in" placeholder="שם שחקן..." style="padding:10px;">
+        <button onclick="join()" style="padding:10px; margin-top:10px; cursor:pointer; background:lime; border:none; font-weight:bold;">כניסה למשחק</button>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" class="rules-link">📜 קרא את חוקי המשחק</a>
     </div>
 
-    <div id="status" style="background:#222; padding:10px;"></div>
+    <div id="status"></div>
     <div id="board"></div>
 
     <script>
         const socket = io();
-        function join() { const n = document.getElementById('name-in').value; if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } }
-        
+        function join() { 
+            const n = document.getElementById('n-in').value; 
+            if(n) { socket.emit('join', {name:n}); document.getElementById('welcome').style.display='none'; } 
+        }
+
         window.onkeydown = e => {
-            const keys = {"ArrowUp":[0,-1],"ArrowDown":[0,1],"ArrowLeft":[-1,0],"ArrowRight":[1,0]};
+            const keys = {"ArrowUp":[0,-1], "ArrowDown":[0,1], "ArrowLeft":[-1,0], "ArrowRight":[1,0]};
             if(keys[e.key]) socket.emit('action', {type:'move', dx:keys[e.key][0], dy:keys[e.key][1]});
         };
 
         socket.on('sync', d => {
-            if(d.winner) { document.getElementById('win-screen').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
             const b = document.getElementById('board'); b.innerHTML = '';
             const my = d.my_data;
-
-            document.getElementById('status').innerText = d.is_spectator && !my.is_man ? "אתה צופה (מתת)" : "אתה בחיים";
+            document.getElementById('status').innerText = d.is_spectator ? "מצב צופה (רואה הכל)" : `שלב: ${d.phase}`;
 
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
@@ -50,17 +51,17 @@
                     
                     if(d.is_spectator || (known && !my.is_lost)) {
                         c.className = 'cell revealed';
-                        c.innerText = d.maze[y][x].tile.substring(0,3);
+                        c.innerText = d.maze[y][x].tile !== "empty" ? d.maze[y][x].tile.substring(0,3) : "";
                     } else { c.className = 'cell'; }
 
                     if(d.phase === 2) c.onclick = () => socket.emit('set_spawn', {x:x, y:y});
 
                     d.players.forEach(p => {
                         if(p.x === x && p.y === y && !p.dead) {
-                            const div = document.createElement('div');
-                            div.className = (p.n === my.n) ? 'p-self' : 'p-other';
-                            // Players only see others if they are spectators or on the same square
-                            if(d.is_spectator || p.n === my.n) c.appendChild(div);
+                            const pdiv = document.createElement('div');
+                            pdiv.className = (p.n === my.n) ? 'p-self' : 'p-other';
+                            // Dead players/Manager see all players. Live players only see themselves.
+                            if(d.is_spectator || p.n === my.n) c.appendChild(pdiv);
                         }
                     });
                     b.appendChild(c);
