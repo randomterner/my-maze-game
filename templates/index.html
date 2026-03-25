@@ -1,41 +1,67 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>מבוך שחקן</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <meta charset="UTF-8"><title>מבוך שחקן</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #222; color: #fff; text-align: center; font-family: sans-serif; margin: 0; }
-        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; margin: 20px auto; width: max-content; border: 2px solid #555; }
+        body { background: #222; color: #fff; font-family: sans-serif; text-align: center; margin:0; }
+        #stats { display: flex; justify-content: space-around; background: #333; padding: 10px; border-bottom: 2px solid #444; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; margin: 20px auto; width: max-content; }
         .cell { width: 50px; height: 50px; background: #555; position: relative; border: 1px solid #666; }
         .wall-top { border-top: 4px solid #000; } .wall-left { border-left: 4px solid #000; }
-        .player { background: yellow; border-radius: 50%; width: 30px; height: 30px; margin: 10px; box-shadow: 0 0 10px yellow; }
+        .player { background: yellow; border-radius: 50%; width: 30px; height: 30px; margin: 10px; }
     </style>
 </head>
 <body>
-    <h2 id="status">ממתין למנחה...</h2>
+    <div id="stats">
+        <span>חיים: <b id="hp">0</b>/5</span>
+        <span>🔫: <b id="bul">3</b> | 💣: <b id="bom">3</b></span>
+        <span id="mode-ui">תנועה 🚶</span>
+    </div>
     <div id="board"></div>
+    <div id="log-box" style="font-size: 12px; color: #aaa; margin-top: 10px;"></div>
 
     <script>
         const socket = io();
-        let mode = "move"; 
+        let mode = "move";
         socket.emit('join', {name: prompt("שם שחקן:")});
 
         window.oncontextmenu = (e) => e.preventDefault();
         window.onmousedown = (e) => {
             if(e.button === 0) mode = (mode === "shoot") ? "move" : "shoot";
             else if(e.button === 2) mode = (mode === "bomb") ? "move" : "bomb";
-            document.getElementById('status').innerText = "מצב: " + mode;
+            document.getElementById('mode-ui').innerText = mode === "move" ? "תנועה 🚶" : mode === "shoot" ? "ירי 🔫" : "פצצה 💣";
         };
 
         window.onkeydown = (e) => {
             const keys = { "ArrowUp": [0,-1], "ArrowDown": [0,1], "ArrowLeft": [-1,0], "ArrowRight": [1,0] };
             if(keys[e.key]) {
                 socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] });
-                mode = "move";
+                if(mode !== "move") mode = "move"; 
+                document.getElementById('mode-ui').innerText = "תנועה 🚶";
             }
         };
 
+        socket.on('sync', d => {
+            document.getElementById('log-box').innerHTML = d.logs.join('<br>');
+            const b = document.getElementById('board'); b.innerHTML = '';
+            d.players.forEach(p => {
+                if(p.n === d.turn) { document.getElementById('hp').innerText = p.hp; document.getElementById('bul').innerText = p.bullets; document.getElementById('bom').innerText = p.bombs; }
+            });
+            for(let y=0; y<10; y++){
+                for(let x=0; x<10; x++){
+                    const c = document.createElement('div');
+                    const mc = d.maze[y][x];
+                    c.className = 'cell ' + (mc.walls.top ? 'wall-top ' : '') + (mc.walls.left ? 'wall-left' : '');
+                    if(d.players.find(p => p.x === x && p.y === y)) c.innerHTML = '<div class="player"></div>';
+                    b.appendChild(c);
+                }
+            }
+            if(d.winner) alert("ניצחון ל: " + d.winner);
+        });
+    </script>
+</body>
+</html>
         socket.on('sync', d => {
             const b = document.getElementById('board'); 
             b.innerHTML = '';
