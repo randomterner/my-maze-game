@@ -1,94 +1,198 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מבוך</title>
+    <meta charset="UTF-8">
+    <title>מבוך - שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; }
-        #welcome { position: fixed; width: 100%; height: 100%; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        #board { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; margin: 10px auto; width: max-content; }
-        .cell { width: 55px; height: 55px; background: #111; border: 1px solid #222; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; }
-        .revealed { background: #222; }
-        .p-self { background: yellow; border-radius: 50%; width: 20px; height: 20px; position: absolute; z-index: 5; box-shadow: 0 0 10px yellow; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; height: 100vh; }
+        
+        /* Welcome Screen */
+        #welcome { 
+            position: fixed; width: 100%; height: 100%; background: #111; 
+            z-index: 1000; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; 
+        }
+        
+        /* Stats Bar */
+        #status { 
+            background: #222; padding: 15px; display: flex; 
+            justify-content: space-around; border-bottom: 2px solid #444; 
+            font-size: 18px; font-weight: bold;
+        }
+
+        /* Board Layout */
+        #board-container { 
+            height: calc(100vh - 80px); display: flex; 
+            align-items: center; justify-content: center; 
+        }
+        #board { 
+            display: grid; grid-template-columns: repeat(10, 60px); 
+            grid-template-rows: repeat(10, 60px); gap: 2px; 
+            border: 2px solid #333; background: #000;
+        }
+
+        /* Cells and Tiles */
+        .cell { 
+            width: 60px; height: 60px; background: #111; 
+            border: 1px solid #222; position: relative; 
+            background-size: contain; background-repeat: no-repeat; 
+            background-position: center; 
+        }
+        .revealed { background: #2a2a2a; }
+        
+        /* Players */
+        .p-self { 
+            background: yellow; border-radius: 50%; width: 24px; 
+            height: 24px; position: absolute; z-index: 5; 
+            box-shadow: 0 0 15px yellow; 
+        }
+
+        /* Internal Red Walls */
         .wall-top { border-top: 4px solid red !important; }
         .wall-left { border-left: 4px solid red !important; }
-        #status { background: #222; padding: 10px; display: flex; justify-content: space-around; font-size: 14px; border-bottom: 2px solid #444; }
-        #win { display:none; position:fixed; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; color:gold; }
+
+        /* Win Screen */
+        #win { 
+            display:none; position:fixed; width:100%; height:100%; 
+            background:rgba(0,0,0,0.95); z-index:2000; 
+            flex-direction:column; align-items:center; 
+            justify-content:center; color:gold; 
+        }
+        
+        button { padding: 12px 24px; font-size: 18px; cursor: pointer; background: lime; border: none; font-weight: bold; border-radius: 4px; }
+        input { padding: 12px; font-size: 18px; margin-bottom: 10px; border-radius: 4px; border: none; }
     </style>
 </head>
 <body>
-    <div id="win"><h1 id="winner"></h1><p>ניצח במשחק!</p></div>
+
+    <div id="win">
+        <h1 id="winner-name"></h1>
+        <h2>ניצח במשחק! 🏆</h2>
+        <button onclick="location.reload()">משחק חדש</button>
+    </div>
+
     <div id="welcome">
         <h1>🏰 מבוך</h1>
-        <input type="text" id="nin" placeholder="שם שחקן..." style="padding:10px;">
-        <button onclick="join()" style="margin-top:10px; padding:10px; cursor:pointer;">כניסה</button>
-        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" style="color:gold; margin-top:10px;">חוקים</a>
+        <input type="text" id="player-name" placeholder="הכנס שם שחקן...">
+        <button onclick="joinGame()">כניסה למשחק</button>
+        <br>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" style="color:gold; text-decoration:none;">📜 קרא את החוקים</a>
     </div>
 
     <div id="status">
-        <span>פציעות: <b id="injuries">0</b>/5</span> 
-        <span>כדורים: <b id="bul">3</b></span> 
-        <span>פצצות: <b id="bom">3</b></span>
+        <span>פציעות: <b id="injuries-val">0</b>/5</span> 
+        <span>כדורים: <b id="bul-val">3</b></span> 
+        <span>פצצות: <b id="bom-val">3</b></span>
     </div>
-    <div id="board"></div>
+
+    <div id="board-container">
+        <div id="board"></div>
+    </div>
 
     <script>
         const socket = io();
-        let mouseAction = "move";
+        let mouseMode = "move"; // move, shoot, or bomb
 
-        function join() { const n = document.getElementById('nin').value; if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } }
-        
+        function joinGame() {
+            const name = document.getElementById('player-name').value;
+            if (name) {
+                socket.emit('join', { name: name });
+                document.getElementById('welcome').style.display = 'none';
+            }
+        }
+
+        // Prevent Right-Click Menu
         window.oncontextmenu = (e) => e.preventDefault();
-        window.onmousedown = (e) => {
-            if (e.button === 0) mouseAction = "shoot";
-            else if (e.button === 2) mouseAction = "bomb";
-        };
-        window.onmouseup = () => { mouseAction = "move"; };
 
+        // Mouse Listeners for Combat
+        window.onmousedown = (e) => {
+            if (e.button === 0) mouseMode = "shoot"; // Left Click held
+            else if (e.button === 2) mouseMode = "bomb"; // Right Click held
+        };
+        window.onmouseup = () => {
+            mouseMode = "move"; // Reset when released
+        };
+
+        // Keyboard Movement
         window.onkeydown = (e) => {
-            const keys = {"ArrowUp":[0,-1], "ArrowDown":[0,1], "ArrowLeft":[-1,0], "ArrowRight":[1,0]};
-            if(!keys[e.key]) return;
-            socket.emit('action', {type: mouseAction, dx: keys[e.key][0], dy: keys[e.key][1]});
+            const keys = {
+                "ArrowUp": [0, -1],
+                "ArrowDown": [0, 1],
+                "ArrowLeft": [-1, 0],
+                "ArrowRight": [1, 0]
+            };
+            if (keys[e.key]) {
+                socket.emit('action', {
+                    type: mouseMode,
+                    dx: keys[e.key][0],
+                    dy: keys[e.key][1]
+                });
+            }
         };
 
         socket.on('sync', d => {
             try {
-                if(d.winner) { document.getElementById('win').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
-                const b = document.getElementById('board');
-                b.innerHTML = '';
+                // Handle Winner
+                if (d.winner) {
+                    document.getElementById('win').style.display = 'flex';
+                    document.getElementById('winner-name').innerText = d.winner;
+                }
+
+                const board = document.getElementById('board');
+                board.innerHTML = '';
+                
                 const my = d.my_data;
-                
-                document.getElementById('injuries').innerText = my.injuries;
-                document.getElementById('bul').innerText = my.bul;
-                document.getElementById('bom').innerText = my.bom;
-                
-                for(let y=0; y<10; y++) {
-                    for(let x=0; x<10; x++) {
+                if (!my) return; // Wait for join data
+
+                // Update UI Stats
+                document.getElementById('injuries-val').innerText = my.injuries;
+                document.getElementById('bul-val').innerText = my.bul;
+                document.getElementById('bom-val').innerText = my.bom;
+
+                // Render Grid
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 10; x++) {
                         const cellData = d.maze[y][x];
-                        const c = document.createElement('div');
-                        const known = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
+                        const cell = document.createElement('div');
                         
-                        if(d.is_spectator || (known && !my.is_lost)) {
-                            c.className = 'cell revealed';
-                            if(cellData.walls.top) c.classList.add('wall-top');
-                            if(cellData.walls.left) c.classList.add('wall-left');
-                            if(cellData.tile !== "empty") {
-                                c.style.backgroundImage = `url('/static/${cellData.tile}.png')`;
+                        // Visibility Logic
+                        const isRevealed = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
+                        
+                        if (d.is_spectator || (isRevealed && !my.is_lost)) {
+                            cell.className = 'cell revealed';
+                            
+                            // Draw Internal Walls
+                            if (cellData.walls.top) cell.classList.add('wall-top');
+                            if (cellData.walls.left) cell.classList.add('wall-left');
+                            
+                            // Draw Tile Texture
+                            if (cellData.tile !== "empty") {
+                                cell.style.backgroundImage = `url('/static/${cellData.tile}.png')`;
                             }
                         } else {
-                            c.className = 'cell';
+                            cell.className = 'cell';
                         }
 
-                        if(d.phase === 2) c.onclick = () => socket.emit('set_spawn', {x, y});
-                        if(my.x===x && my.y===y && my.has_spawned) {
-                            const p = document.createElement('div');
-                            p.className = 'p-self';
-                            c.appendChild(p);
+                        // Spawn logic for Phase 2
+                        if (d.phase === 2) {
+                            cell.style.cursor = "pointer";
+                            cell.onclick = () => socket.emit('set_spawn', { x, y });
                         }
-                        b.appendChild(c);
+
+                        // Draw Self Position
+                        if (my.x === x && my.y === y && my.has_spawned) {
+                            const playerMarker = document.createElement('div');
+                            playerMarker.className = 'p-self';
+                            cell.appendChild(playerMarker);
+                        }
+                        
+                        board.appendChild(cell);
                     }
                 }
-            } catch(e) { console.error("Player Grid Error:", e); }
+            } catch (err) {
+                console.error("Board Rendering Error:", err);
+            }
         });
     </script>
 </body>
