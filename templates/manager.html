@@ -1,57 +1,67 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מנחה - מבוך</title>
+    <meta charset="UTF-8"><title>מנחה</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; }
-        #sidebar { width: 240px; background: #222; padding: 15px; border-left: 1px solid #444; height: 100vh; }
+        #sidebar { width: 240px; background: #222; padding: 15px; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
         #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; padding: 20px; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; position: relative; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
-        .player-marker { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 1px solid white; z-index: 10; }
-        .btn { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; }
+        .player-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 1px solid white; }
+        .btn { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; border: none; font-weight: bold; }
+        .opt { padding: 5px; margin: 2px; background: #444; border: 1px solid #666; text-align: center; cursor: pointer; }
+        .selected { background: #007bff; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h3>מנחה: שלב <span id="phase-num">1</span></h3>
+        <h3>מנחה: שלב <span id="cp">1</span></h3>
         <button class="btn" onclick="socket.emit('set_phase',{phase:1})">1. בנייה</button>
         <button class="btn" onclick="socket.emit('set_phase',{phase:2})">2. הולדה</button>
         <button class="btn" onclick="socket.emit('set_phase',{phase:3})" style="background:lime">3. התחל!</button>
-        <div id="lock-notice" style="color:red; display:none; font-weight:bold;">הלוח נעול - המשחק רץ</div>
+        <button class="btn" onclick="socket.emit('reset_game')" style="background:red; color:white;">איפוס משחק 🔄</button>
         <hr><div id="opts"></div>
     </div>
     <div id="grid"></div>
 
     <script>
         const socket = io();
-        let sel = "empty", maze = [];
-        
+        let sel = "empty", mazeData = [];
+        const types = ["empty", "treasure", "exit", "river", "river_start", "black_hole", "clinic", "monster", "flashlight", "batteries"];
+
+        types.forEach(t => {
+            const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
+            d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); };
+            document.getElementById('opts').appendChild(d);
+        });
+
         socket.on('sync', d => {
-            maze = d.maze;
-            document.getElementById('phase-num').innerText = d.phase;
-            document.getElementById('lock-notice').style.display = d.phase >= 3 ? 'block' : 'none';
-            
+            mazeData = d.maze;
+            document.getElementById('cp').innerText = d.phase;
             const g = document.getElementById('grid'); g.innerHTML = '';
+            
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
-                    const td = maze[y][x];
+                    const td = mazeData[y][x];
                     c.className = 'cell ' + (td.walls.top ? 'wall-top ' : '') + (td.walls.left ? 'wall-left' : '');
-                    c.innerText = td.tile.substring(0,3);
+                    c.innerText = td.tile === "empty" ? "" : td.tile.substring(0,3);
                     
-                    // Show players to Manager
                     d.players.forEach(p => {
                         if(p.x === x && p.y === y && !p.dead) {
-                            const m = document.createElement('div');
-                            m.className = 'player-marker'; m.title = p.n;
-                            c.appendChild(m);
+                            const dot = document.createElement('div'); dot.className = 'player-dot'; c.appendChild(dot);
                         }
                     });
 
-                    c.onclick = () => { if(d.phase < 3) { maze[y][x].tile = sel; socket.emit('save_maze', {maze}); } };
+                    c.onclick = () => { 
+                        if(d.phase < 3) { 
+                            mazeData[y][x].tile = sel; 
+                            socket.emit('save_maze', {maze: mazeData}); 
+                        } 
+                    };
                     g.appendChild(c);
                 }
             }
