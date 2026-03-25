@@ -5,112 +5,67 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; }
-        
-        /* Welcome Screen Styling */
-        #welcome-screen {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a1a 0%, #000 100%);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 1000; transition: 0.5s;
-        }
-        #welcome-box { background: #222; padding: 40px; border-radius: 15px; border: 2px solid #444; text-align: center; }
-        input { padding: 10px; font-size: 18px; border-radius: 5px; border: none; margin-bottom: 15px; width: 200px; }
-        .btn-play { background: lime; color: #000; padding: 10px 30px; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; }
-        
-        /* Rules Modal */
-        #rules-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; max-height: 70%; background: #333; padding: 20px; border: 2px solid gold; overflow-y: auto; z-index: 1001; }
-
-        /* Game UI */
-        #game-ui { filter: blur(10px); transition: 0.5s; }
-        #main { display: flex; justify-content: center; gap: 20px; padding: 20px; }
-        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; }
-        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; font-size: 10px; display: flex; align-items: center; justify-content: center; }
-        .revealed { background: #333; }
-        .player { background: yellow; border-radius: 50%; width: 24px; height: 24px; box-shadow: 0 0 10px yellow; }
-        .wall-top { border-top: 4px solid #000 !important; }
-        .wall-left { border-left: 4px solid #000 !important; }
-        #log-box { width: 250px; height: 520px; background: #1a1a1a; padding: 10px; border: 1px solid #444; overflow-y: auto; text-align: right; font-size: 13px; }
+        #welcome { position: fixed; width: 100%; height: 100%; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; margin: 20px auto; width: max-content; }
+        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; display: flex; align-items: center; justify-content: center; font-size: 10px; position: relative; }
+        .revealed { background: #333; border-color: #444; }
+        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; z-index: 5; }
+        .p-other { background: blue; border-radius: 50%; width: 16px; height: 16px; opacity: 0.6; }
+        #win-screen { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index: 2000; color: gold; flex-direction: column; align-items: center; justify-content: center; font-size: 40px; }
     </style>
 </head>
 <body>
+    <div id="win-screen"><h1 id="winner"></h1><p>ניצח במשחק!</p></div>
 
-    <div id="welcome-screen">
-        <div id="welcome-box">
-            <h1>ברוך הבא למבוך 🏰</h1>
-            <input type="text" id="player-name" placeholder="הכנס שם שחקן...">
-            <br>
-            <button class="btn-play" onclick="startGame()">היכנס למשחק</button>
-            <p><a href="#" onclick="toggleRules()" style="color: gold;">קרא את החוקים 📜</a></p>
-        </div>
+    <div id="welcome">
+        <h1>🏰 מבוך</h1>
+        <input type="text" id="name-in" placeholder="הכנס שם...">
+        <button onclick="join()" style="padding:10px 20px; margin:10px;">הצטרף</button>
+        <p><a href="#" onclick="alert('חוקים: השג את האוצר וצא מהמבוך. אם תפצע 5 פעמים - תמות ותהפוך לצופה.')" style="color:cyan">קרא חוקים</a></p>
     </div>
 
-    <div id="rules-modal">
-        <h3>חוקי המשחק:</h3>
-        <p>1. המטרה: להשיג את האוצר ולצאת דרך היציאה.</p>
-        <p>2. תנועה: השתמש בחיצי המקלדת.</p>
-        <p>3. פנס: לחיצה אמצעית בעכבר כדי להפעיל (דורש פנס וסוללות).</p>
-        <p>4. קירות: פצצות יכולות לפוצץ קירות פנימיים.</p>
-        <button onclick="toggleRules()">סגור</button>
-    </div>
-
-    <div id="game-ui">
-        <div id="main">
-            <div id="board"></div>
-            <div id="log-box">
-                <div style="color: gold; border-bottom: 1px solid gold; margin-bottom: 10px;">📜 יומן:</div>
-                <div id="log-list"></div>
-            </div>
-        </div>
-    </div>
+    <div id="status" style="background:#222; padding:10px;"></div>
+    <div id="board"></div>
 
     <script>
         const socket = io();
-        let mode = "move";
-
-        function startGame() {
-            const name = document.getElementById('player-name').value;
-            if(!name) return alert("אנא הכנס שם!");
-            socket.emit('join', {name: name});
-            document.getElementById('welcome-screen').style.display = 'none';
-            document.getElementById('game-ui').style.filter = 'none';
-        }
-
-        function toggleRules() {
-            const modal = document.getElementById('rules-modal');
-            modal.style.display = (modal.style.display === 'block') ? 'none' : 'block';
-        }
-
-        window.oncontextmenu = e => e.preventDefault();
-        window.onmousedown = e => { 
-            if(e.button === 1) { 
-                mode = (mode === "flashlight") ? "move" : "flashlight"; 
-            } 
-        };
+        function join() { const n = document.getElementById('name-in').value; if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } }
+        
         window.onkeydown = e => {
-            const keys = { "ArrowUp": [0,-1], "ArrowDown": [0,1], "ArrowLeft": [-1,0], "ArrowRight": [1,0] };
-            if(keys[e.key]) { socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] }); }
+            const keys = {"ArrowUp":[0,-1],"ArrowDown":[0,1],"ArrowLeft":[-1,0],"ArrowRight":[1,0]};
+            if(keys[e.key]) socket.emit('action', {type:'move', dx:keys[e.key][0], dy:keys[e.key][1]});
         };
 
         socket.on('sync', d => {
-            const my = d.my_data;
+            if(d.winner) { document.getElementById('win-screen').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
             const b = document.getElementById('board'); b.innerHTML = '';
+            const my = d.my_data;
+
+            document.getElementById('status').innerText = d.is_spectator && !my.is_man ? "אתה צופה (מתת)" : "אתה בחיים";
+
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
-                    const isKnown = my.known_tiles.some(t => t[0] === x && t[1] === y);
-                    if (isKnown && !my.is_lost) {
-                        const td = d.maze_full[y][x];
+                    const known = my.known_tiles.some(t => t[0] === x && t[1] === y);
+                    
+                    if(d.is_spectator || (known && !my.is_lost)) {
                         c.className = 'cell revealed';
-                        if(td.walls.top) c.classList.add('wall-top');
-                        if(td.walls.left) c.classList.add('wall-left');
-                        if(td.tile !== "empty") c.innerText = td.tile.substring(0,3);
+                        c.innerText = d.maze[y][x].tile.substring(0,3);
                     } else { c.className = 'cell'; }
-                    if (my.x === x && my.y === y && my.has_spawned) c.innerHTML = '<div class="player"></div>';
+
+                    if(d.phase === 2) c.onclick = () => socket.emit('set_spawn', {x:x, y:y});
+
+                    d.players.forEach(p => {
+                        if(p.x === x && p.y === y && !p.dead) {
+                            const div = document.createElement('div');
+                            div.className = (p.n === my.n) ? 'p-self' : 'p-other';
+                            // Players only see others if they are spectators or on the same square
+                            if(d.is_spectator || p.n === my.n) c.appendChild(div);
+                        }
+                    });
                     b.appendChild(c);
                 }
             }
-            const list = document.getElementById('log-list'); list.innerHTML = '';
-            d.logs.forEach(m => { const div = document.createElement('div'); div.className = 'log-entry'; div.innerText = m; list.appendChild(div); });
         });
     </script>
 </body>
