@@ -1,25 +1,25 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מנחה - בניית מבוך</title>
+    <meta charset="UTF-8"><title>מנחה - בנייה</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; }
-        #sidebar { width: 240px; padding: 15px; background: #222; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
+        #sidebar { width: 220px; padding: 15px; background: #222; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
         #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; padding: 20px; background: #111; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; color: black; font-size: 9px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .wall-top { border-top: 5px solid red !important; }
         .wall-left { border-left: 5px solid red !important; }
         .opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border: 1px solid #555; text-align: center; }
         .selected { background: #007bff; border-color: white; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button:disabled { opacity: 0.5; }
     </style>
 </head>
 <body>
     <div id="sidebar">
         <h3>אריחים</h3>
         <div id="opts"></div>
-        <div id="status" style="font-size: 12px; margin-top:10px; color: #ffa500;"></div>
+        <div id="status" style="font-size: 11px; margin-top:10px; color: #ffa500;"></div>
         <button id="start-btn" onclick="socket.emit('start_trigger')" style="width:100%; margin-top:20px; background:#28a745; color:white; border:none; padding:10px;" disabled>התחל משחק 🚀</button>
     </div>
     <div id="grid"></div>
@@ -28,15 +28,13 @@
         const socket = io();
         let sel = "empty";
         const maze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
-        
         const types = ["empty", "treasure", "fake_treasure", "exit", "river", "river_start", "monster", "devil", "clinic", "er", "armory", "boat", "raft", "flashlight", "batteries", "black_hole"];
         const limits = { treasure: 1, fake_treasure: 1, exit: 1, river_start: 1, monster: 1, devil: 1, clinic: 1, er: 1, armory: 1, boat: 1, raft: 1, flashlight: 1, batteries: 1, river: 20 };
 
-        const optDiv = document.getElementById('opts');
         types.forEach(t => {
             const d = document.createElement('div'); d.className = 'opt' + (t === sel ? ' selected' : ''); d.innerText = t;
             d.onclick = () => { document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); sel = t; };
-            optDiv.appendChild(d);
+            document.getElementById('opts').appendChild(d);
         });
 
         const g = document.getElementById('grid');
@@ -46,18 +44,19 @@
                 c.oncontextmenu = (e) => e.preventDefault();
                 c.onmousedown = (e) => {
                     const rect = c.getBoundingClientRect();
-                    if(e.button === 0) {
+                    if(e.button === 0) { // Left Click: Tile
                         const count = maze.flat().filter(i => i.tile === sel).length;
-                        if(sel !== 'empty' && count >= (limits[sel] || 1)) return alert("מקסימום אריחים מסוג זה!");
+                        if(sel !== 'empty' && count >= (limits[sel] || 1)) return alert("מקסימום!");
                         maze[y][x].tile = sel;
                     } 
-                    else if(e.button === 2) {
+                    else if(e.button === 2) { // Right Click: Wall
                         if(e.clientY - rect.top < 15) maze[y][x].walls.top = !maze[y][x].walls.top;
                         else if(e.clientX - rect.left < 15) maze[y][x].walls.left = !maze[y][x].walls.left;
                     }
-                    else if(e.button === 1) { maze[y][x].tile = "empty"; maze[y][x].walls.top = false; maze[y][x].walls.left = false; }
-                    render();
-                    socket.emit('save_maze', {maze});
+                    else if(e.button === 1) { // Middle Click: Reset
+                        maze[y][x].tile = "empty"; maze[y][x].walls.top = false; maze[y][x].walls.left = false;
+                    }
+                    render(); socket.emit('save_maze', {maze});
                 };
                 g.appendChild(c);
             }
