@@ -1,66 +1,98 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מבוך שחקן</title>
+    <meta charset="UTF-8"><title>מבוך - שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; }
-        #status-bar { background: #222; padding: 10px; display: flex; justify-content: space-around; border-bottom: 2px solid #444; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; }
+        
+        /* Welcome Screen Styling */
+        #welcome-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #000 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000; transition: 0.5s;
+        }
+        #welcome-box { background: #222; padding: 40px; border-radius: 15px; border: 2px solid #444; text-align: center; }
+        input { padding: 10px; font-size: 18px; border-radius: 5px; border: none; margin-bottom: 15px; width: 200px; }
+        .btn-play { background: lime; color: #000; padding: 10px 30px; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; }
+        
+        /* Rules Modal */
+        #rules-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; max-height: 70%; background: #333; padding: 20px; border: 2px solid gold; overflow-y: auto; z-index: 1001; }
+
+        /* Game UI */
+        #game-ui { filter: blur(10px); transition: 0.5s; }
         #main { display: flex; justify-content: center; gap: 20px; padding: 20px; }
-        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; width: max-content; }
-        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; }
+        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; font-size: 10px; display: flex; align-items: center; justify-content: center; }
         .revealed { background: #333; }
-        .player { background: yellow; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 0 10px yellow; }
+        .player { background: yellow; border-radius: 50%; width: 24px; height: 24px; box-shadow: 0 0 10px yellow; }
         .wall-top { border-top: 4px solid #000 !important; }
         .wall-left { border-left: 4px solid #000 !important; }
-        #log-container { width: 300px; height: 520px; background: #1a1a1a; padding: 10px; border: 1px solid #444; overflow-y: auto; text-align: right; }
-        .log-entry { font-size: 13px; color: #aaa; margin-bottom: 5px; border-bottom: 1px solid #333; }
-        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; font-size: 24px; pointer-events: none; }
+        #log-box { width: 250px; height: 520px; background: #1a1a1a; padding: 10px; border: 1px solid #444; overflow-y: auto; text-align: right; font-size: 13px; }
     </style>
 </head>
 <body>
-    <div id="overlay"></div>
-    <div id="status-bar">
-        <span>ציוד: <b id="inv">-</b></span>
-        <span id="mode-ui">מצב: תנועה</span>
-    </div>
-    <div id="main">
-        <div id="board"></div>
-        <div id="log-container">
-            <div style="color: gold; border-bottom: 1px solid gold; margin-bottom: 10px;">📜 יומן אירועים:</div>
-            <div id="log-list"></div>
+
+    <div id="welcome-screen">
+        <div id="welcome-box">
+            <h1>ברוך הבא למבוך 🏰</h1>
+            <input type="text" id="player-name" placeholder="הכנס שם שחקן...">
+            <br>
+            <button class="btn-play" onclick="startGame()">היכנס למשחק</button>
+            <p><a href="#" onclick="toggleRules()" style="color: gold;">קרא את החוקים 📜</a></p>
         </div>
     </div>
+
+    <div id="rules-modal">
+        <h3>חוקי המשחק:</h3>
+        <p>1. המטרה: להשיג את האוצר ולצאת דרך היציאה.</p>
+        <p>2. תנועה: השתמש בחיצי המקלדת.</p>
+        <p>3. פנס: לחיצה אמצעית בעכבר כדי להפעיל (דורש פנס וסוללות).</p>
+        <p>4. קירות: פצצות יכולות לפוצץ קירות פנימיים.</p>
+        <button onclick="toggleRules()">סגור</button>
+    </div>
+
+    <div id="game-ui">
+        <div id="main">
+            <div id="board"></div>
+            <div id="log-box">
+                <div style="color: gold; border-bottom: 1px solid gold; margin-bottom: 10px;">📜 יומן:</div>
+                <div id="log-list"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const socket = io();
         let mode = "move";
-        socket.emit('join', {name: prompt("שם שחקן:")});
+
+        function startGame() {
+            const name = document.getElementById('player-name').value;
+            if(!name) return alert("אנא הכנס שם!");
+            socket.emit('join', {name: name});
+            document.getElementById('welcome-screen').style.display = 'none';
+            document.getElementById('game-ui').style.filter = 'none';
+        }
+
+        function toggleRules() {
+            const modal = document.getElementById('rules-modal');
+            modal.style.display = (modal.style.display === 'block') ? 'none' : 'block';
+        }
 
         window.oncontextmenu = e => e.preventDefault();
-        window.onmousedown = e => {
-            if(e.button === 1) {
-                mode = (mode === "flashlight") ? "move" : "flashlight";
-                document.getElementById('mode-ui').innerText = mode === "flashlight" ? "מצב: פנס" : "מצב: תנועה";
-            }
+        window.onmousedown = e => { 
+            if(e.button === 1) { 
+                mode = (mode === "flashlight") ? "move" : "flashlight"; 
+            } 
         };
-
         window.onkeydown = e => {
             const keys = { "ArrowUp": [0,-1], "ArrowDown": [0,1], "ArrowLeft": [-1,0], "ArrowRight": [1,0] };
-            if(keys[e.key]) {
-                socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] });
-                if(mode === "flashlight") { mode = "move"; document.getElementById('mode-ui').innerText = "מצב: תנועה"; }
-            }
+            if(keys[e.key]) { socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] }); }
         };
 
         socket.on('sync', d => {
-            const over = document.getElementById('overlay');
             const my = d.my_data;
-            document.getElementById('inv').innerText = my.items.join(', ') || 'ריק';
-
-            if (d.phase == 1) { over.style.display="flex"; over.innerText="המנחה בונה..."; }
-            else if (d.phase == 2) { over.style.display="none"; document.getElementById('mode-ui').innerText="בחר נקודת לידה"; }
-            else { over.style.display="none"; }
-
             const b = document.getElementById('board'); b.innerHTML = '';
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
@@ -73,20 +105,12 @@
                         if(td.walls.left) c.classList.add('wall-left');
                         if(td.tile !== "empty") c.innerText = td.tile.substring(0,3);
                     } else { c.className = 'cell'; }
-
-                    if (d.phase == 2) c.onclick = () => socket.emit('set_spawn', {x: x, y: y});
                     if (my.x === x && my.y === y && my.has_spawned) c.innerHTML = '<div class="player"></div>';
                     b.appendChild(c);
                 }
             }
-            const logList = document.getElementById('log-list');
-            logList.innerHTML = '';
-            d.logs.forEach(msg => {
-                const div = document.createElement('div');
-                div.className = 'log-entry';
-                div.innerText = msg;
-                logList.appendChild(div);
-            });
+            const list = document.getElementById('log-list'); list.innerHTML = '';
+            d.logs.forEach(m => { const div = document.createElement('div'); div.className = 'log-entry'; div.innerText = m; list.appendChild(div); });
         });
     </script>
 </body>
