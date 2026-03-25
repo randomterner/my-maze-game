@@ -1,41 +1,75 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מבוך</title>
+    <meta charset="UTF-8"><title>מבוך שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; }
+        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
         #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; margin: 20px auto; width: max-content; }
-        .cell { width: 50px; height: 50px; background: #000; border: 1px solid #111; font-size: 10px; }
-        .revealed { background: #333; border-color: #555; }
+        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; }
+        .revealed { background: #333; border-color: #444; }
         .player { background: yellow; border-radius: 50%; width: 20px; height: 20px; margin: 15px; }
-        #ping { color: cyan; font-weight: bold; height: 20px; }
+        .wall-top { border-top: 4px solid #f00 !important; }
+        .wall-left { border-left: 4px solid #f00 !important; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="ping"></div>
+    <div id="overlay"></div>
+    <div id="status" style="padding:10px; background:#222;">מצב: תנועה 🚶</div>
     <div id="board"></div>
+
     <script>
         const socket = io();
-        socket.emit('join', {name: prompt("שם:")});
+        let mode = "move";
+        socket.emit('join', {name: prompt("שם שחקן:")});
+
+        window.oncontextmenu = (e) => e.preventDefault();
+        window.onmousedown = (e) => {
+            if(e.button === 1) { // Middle Click toggles Flashlight
+                mode = (mode === "flashlight") ? "move" : "flashlight";
+                document.getElementById('status').innerText = mode === "flashlight" ? "מצב: פנס 🔦 (לחץ על חץ)" : "מצב: תנועה 🚶";
+            }
+        };
+
         window.onkeydown = (e) => {
             const keys = { "ArrowUp": [0,-1], "ArrowDown": [0,1], "ArrowLeft": [-1,0], "ArrowRight": [1,0] };
-            if(keys[e.key]) socket.emit('action', { type: 'move', dx: keys[e.key][0], dy: keys[e.key][1] });
+            if(keys[e.key]) {
+                socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] });
+                if(mode === "flashlight") {
+                    mode = "move";
+                    document.getElementById('status').innerText = "מצב: תנועה 🚶";
+                }
+            }
         };
-        socket.on('relative_ping', d => { document.getElementById('ping').innerText = `${d.target_n} נמצא ב: ${d.dx}, ${d.dy}`; });
+
         socket.on('sync', d => {
-            const my = d.my_data;
-            const b = document.getElementById('board'); b.innerHTML = '';
+            const over = document.getElementById('overlay');
+            const b = document.getElementById('board');
+            b.innerHTML = '';
+
+            if (d.phase == 1) { over.style.display = "flex"; over.innerText = "המנחה בונה את המבוך..."; }
+            else if (d.phase == 2) { over.style.display = "none"; document.getElementById('status').innerText = "בחר נקודת לידה על הלוח"; }
+            else { over.style.display = "none"; }
+
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
-                    const isKnown = my.known_tiles.some(t => t[0] === x && t[1] === y);
-                    if(isKnown && !my.is_lost) {
+                    const isKnown = d.my_data.known_tiles.some(t => t[0] === x && t[1] === y);
+                    
+                    if (isKnown && !d.my_data.is_lost) {
+                        const tileData = d.maze_full[y][x];
                         c.className = 'cell revealed';
-                        const t = d.maze_full[y][x].tile;
-                        if(t !== "empty") c.innerText = t.substring(0,3);
-                    } else { c.className = 'cell'; }
-                    if(my.x === x && my.y === y) c.innerHTML = '<div class="player"></div>';
+                        if(tileData.walls.top) c.classList.add('wall-top');
+                        if(tileData.walls.left) c.classList.add('wall-left');
+                        if(tileData.tile !== "empty") c.innerText = tileData.tile.substring(0,3);
+                    } else {
+                        c.className = 'cell';
+                    }
+                    
+                    if (d.phase == 2) c.onclick = () => socket.emit('set_spawn', {x: x, y: y});
+                    if (d.my_data.x === x && d.my_data.y === y && d.my_data.has_spawned) c.innerHTML = '<div class="player"></div>';
+                    
                     b.appendChild(c);
                 }
             }
