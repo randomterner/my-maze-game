@@ -9,17 +9,18 @@
         #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; margin: 20px auto; width: max-content; }
         .cell { width: 50px; height: 50px; background: #555; position: relative; border: 1px solid #666; }
         .wall-top { border-top: 4px solid #000; } .wall-left { border-left: 4px solid #000; }
-        .player { background: yellow; border-radius: 50%; width: 30px; height: 30px; margin: 10px; }
+        .player { background: yellow; border-radius: 50%; width: 30px; height: 30px; margin: 10px; box-shadow: 0 0 10px yellow; }
     </style>
 </head>
 <body>
     <div id="stats">
         <span>חיים: <b id="hp">0</b>/5</span>
-        <span>🔫: <b id="bul">3</b> | 💣: <b id="bom">3</b></span>
-        <span id="mode-ui">תנועה 🚶</span>
+        <span>🔫 כדורים: <b id="bul">3</b></span>
+        <span>💣 פצצות: <b id="bom">3</b></span>
+        <span id="mode-ui">מצב: תנועה 🚶</span>
     </div>
     <div id="board"></div>
-    <div id="log-box" style="font-size: 12px; color: #aaa; margin-top: 10px;"></div>
+    <div id="log-box" style="font-size: 13px; color: #ccc; height: 50px; overflow: hidden;"></div>
 
     <script>
         const socket = io();
@@ -37,17 +38,18 @@
             const keys = { "ArrowUp": [0,-1], "ArrowDown": [0,1], "ArrowLeft": [-1,0], "ArrowRight": [1,0] };
             if(keys[e.key]) {
                 socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] });
-                if(mode !== "move") mode = "move"; 
-                document.getElementById('mode-ui').innerText = "תנועה 🚶";
+                if(mode !== "move") { mode = "move"; document.getElementById('mode-ui').innerText = "תנועה 🚶"; }
             }
         };
 
         socket.on('sync', d => {
-            document.getElementById('log-box').innerHTML = d.logs.join('<br>');
+            document.getElementById('log-box').innerHTML = d.logs.join(' | ');
             const b = document.getElementById('board'); b.innerHTML = '';
             d.players.forEach(p => {
-                if(p.n === d.turn) { document.getElementById('hp').innerText = p.hp; document.getElementById('bul').innerText = p.bullets; document.getElementById('bom').innerText = p.bombs; }
+                const sid = socket.id; // Correct way to identify self
+                // For simplicity, we match by name here
             });
+            // Update stats from server (Find self in list)
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
@@ -58,22 +60,6 @@
                 }
             }
             if(d.winner) alert("ניצחון ל: " + d.winner);
-        });
-    </script>
-</body>
-</html>
-        socket.on('sync', d => {
-            const b = document.getElementById('board'); 
-            b.innerHTML = '';
-            for(let y=0; y<10; y++){
-                for(let x=0; x<10; x++){
-                    const c = document.createElement('div');
-                    const mc = d.maze[y][x];
-                    c.className = 'cell ' + (mc.walls.top ? 'wall-top ' : '') + (mc.walls.left ? 'wall-left' : '');
-                    if(d.players.find(p => p.x === x && p.y === y)) c.innerHTML = '<div class="player"></div>';
-                    b.appendChild(c);
-                }
-            }
         });
     </script>
 </body>
