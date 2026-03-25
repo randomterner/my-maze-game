@@ -4,75 +4,89 @@
     <meta charset="UTF-8"><title>מבוך שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
-        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; margin: 20px auto; width: max-content; }
-        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; }
-        .revealed { background: #333; border-color: #444; }
-        .player { background: yellow; border-radius: 50%; width: 20px; height: 20px; margin: 15px; }
-        .wall-top { border-top: 4px solid #f00 !important; }
-        .wall-left { border-left: 4px solid #f00 !important; }
-        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; pointer-events: none; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; }
+        #status-bar { background: #222; padding: 10px; display: flex; justify-content: space-around; border-bottom: 2px solid #444; }
+        #main { display: flex; justify-content: center; gap: 20px; padding: 20px; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; width: max-content; }
+        .cell { width: 50px; height: 50px; background: #111; border: 1px solid #222; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+        .revealed { background: #333; }
+        .player { background: yellow; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 0 10px yellow; }
+        .wall-top { border-top: 4px solid #000 !important; }
+        .wall-left { border-left: 4px solid #000 !important; }
+        #log-container { width: 300px; height: 520px; background: #1a1a1a; padding: 10px; border: 1px solid #444; overflow-y: auto; text-align: right; }
+        .log-entry { font-size: 13px; color: #aaa; margin-bottom: 5px; border-bottom: 1px solid #333; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; font-size: 24px; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="overlay"></div>
-    <div id="status" style="padding:10px; background:#222;">מצב: תנועה 🚶</div>
-    <div id="board"></div>
-
+    <div id="status-bar">
+        <span>ציוד: <b id="inv">-</b></span>
+        <span id="mode-ui">מצב: תנועה</span>
+    </div>
+    <div id="main">
+        <div id="board"></div>
+        <div id="log-container">
+            <div style="color: gold; border-bottom: 1px solid gold; margin-bottom: 10px;">📜 יומן אירועים:</div>
+            <div id="log-list"></div>
+        </div>
+    </div>
     <script>
         const socket = io();
         let mode = "move";
         socket.emit('join', {name: prompt("שם שחקן:")});
 
-        window.oncontextmenu = (e) => e.preventDefault();
-        window.onmousedown = (e) => {
-            if(e.button === 1) { // Middle Click toggles Flashlight
+        window.oncontextmenu = e => e.preventDefault();
+        window.onmousedown = e => {
+            if(e.button === 1) {
                 mode = (mode === "flashlight") ? "move" : "flashlight";
-                document.getElementById('status').innerText = mode === "flashlight" ? "מצב: פנס 🔦 (לחץ על חץ)" : "מצב: תנועה 🚶";
+                document.getElementById('mode-ui').innerText = mode === "flashlight" ? "מצב: פנס" : "מצב: תנועה";
             }
         };
 
-        window.onkeydown = (e) => {
+        window.onkeydown = e => {
             const keys = { "ArrowUp": [0,-1], "ArrowDown": [0,1], "ArrowLeft": [-1,0], "ArrowRight": [1,0] };
             if(keys[e.key]) {
                 socket.emit('action', { type: mode, dx: keys[e.key][0], dy: keys[e.key][1] });
-                if(mode === "flashlight") {
-                    mode = "move";
-                    document.getElementById('status').innerText = "מצב: תנועה 🚶";
-                }
+                if(mode === "flashlight") { mode = "move"; document.getElementById('mode-ui').innerText = "מצב: תנועה"; }
             }
         };
 
         socket.on('sync', d => {
             const over = document.getElementById('overlay');
-            const b = document.getElementById('board');
-            b.innerHTML = '';
+            const my = d.my_data;
+            document.getElementById('inv').innerText = my.items.join(', ') || 'ריק';
 
-            if (d.phase == 1) { over.style.display = "flex"; over.innerText = "המנחה בונה את המבוך..."; }
-            else if (d.phase == 2) { over.style.display = "none"; document.getElementById('status').innerText = "בחר נקודת לידה על הלוח"; }
-            else { over.style.display = "none"; }
+            if (d.phase == 1) { over.style.display="flex"; over.innerText="המנחה בונה..."; }
+            else if (d.phase == 2) { over.style.display="none"; document.getElementById('mode-ui').innerText="בחר נקודת לידה"; }
+            else { over.style.display="none"; }
 
+            const b = document.getElementById('board'); b.innerHTML = '';
             for(let y=0; y<10; y++){
                 for(let x=0; x<10; x++){
                     const c = document.createElement('div');
-                    const isKnown = d.my_data.known_tiles.some(t => t[0] === x && t[1] === y);
-                    
-                    if (isKnown && !d.my_data.is_lost) {
-                        const tileData = d.maze_full[y][x];
+                    const isKnown = my.known_tiles.some(t => t[0] === x && t[1] === y);
+                    if (isKnown && !my.is_lost) {
+                        const td = d.maze_full[y][x];
                         c.className = 'cell revealed';
-                        if(tileData.walls.top) c.classList.add('wall-top');
-                        if(tileData.walls.left) c.classList.add('wall-left');
-                        if(tileData.tile !== "empty") c.innerText = tileData.tile.substring(0,3);
-                    } else {
-                        c.className = 'cell';
-                    }
-                    
+                        if(td.walls.top) c.classList.add('wall-top');
+                        if(td.walls.left) c.classList.add('wall-left');
+                        if(td.tile !== "empty") c.innerText = td.tile.substring(0,3);
+                    } else { c.className = 'cell'; }
+
                     if (d.phase == 2) c.onclick = () => socket.emit('set_spawn', {x: x, y: y});
-                    if (d.my_data.x === x && d.my_data.y === y && d.my_data.has_spawned) c.innerHTML = '<div class="player"></div>';
-                    
+                    if (my.x === x && my.y === y && my.has_spawned) c.innerHTML = '<div class="player"></div>';
                     b.appendChild(c);
                 }
             }
+            const logList = document.getElementById('log-list');
+            logList.innerHTML = '';
+            d.logs.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'log-entry';
+                div.innerText = msg;
+                logList.appendChild(div);
+            });
         });
     </script>
 </body>
