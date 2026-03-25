@@ -1,39 +1,35 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מנחה - בנייה</title>
+    <meta charset="UTF-8"><title>מנחה</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { display: flex; font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; }
-        #sidebar { width: 220px; padding: 15px; background: #222; border-left: 1px solid #444; height: 100vh; overflow-y: auto; }
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; padding: 20px; background: #111; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; color: black; font-size: 9px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-        .wall-top { border-top: 5px solid red !important; }
-        .wall-left { border-left: 5px solid red !important; }
-        .opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border: 1px solid #555; text-align: center; }
-        .selected { background: #007bff; border-color: white; }
-        button:disabled { opacity: 0.5; }
+        body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; }
+        #sidebar { width: 220px; background: #222; padding: 15px; border-left: 1px solid #444; height: 100vh; }
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; padding: 20px; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; color: black; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .opt { padding: 8px; margin: 2px; background: #333; cursor: pointer; border: 1px solid #555; text-align: center; }
+        .selected { background: #007bff; }
+        #tp-zone { border: 2px solid orange; padding: 10px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h3>אריחים</h3>
+        <h3>עורך מבוך</h3>
         <div id="opts"></div>
-        <div id="status" style="font-size: 11px; margin-top:10px; color: #ffa500;"></div>
-        <button id="start-btn" onclick="socket.emit('start_trigger')" style="width:100%; margin-top:20px; background:#28a745; color:white; border:none; padding:10px;" disabled>התחל משחק 🚀</button>
+        <div id="tp-zone">שיגור: <b id="tp-target"></b><br><small>בחר משבצת לבנה</small></div>
     </div>
     <div id="grid"></div>
-
     <script>
         const socket = io();
-        let sel = "empty";
-        const maze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
-        const types = ["empty", "treasure", "fake_treasure", "exit", "river", "river_start", "monster", "devil", "clinic", "er", "armory", "boat", "raft", "flashlight", "batteries", "black_hole"];
-        const limits = { treasure: 1, fake_treasure: 1, exit: 1, river_start: 1, monster: 1, devil: 1, clinic: 1, er: 1, armory: 1, boat: 1, raft: 1, flashlight: 1, batteries: 1, river: 20 };
+        let sel = "empty", targetSid = null;
+        let maze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
+        const types = ["empty", "treasure", "exit", "river", "river_start", "black_hole", "clinic", "monster", "boat", "raft"];
+        const limits = { treasure: 1, exit: 1, river_start: 1, black_hole: 1, monster: 1, clinic: 1, boat: 1, raft: 1, river: 20 };
 
         types.forEach(t => {
-            const d = document.createElement('div'); d.className = 'opt' + (t === sel ? ' selected' : ''); d.innerText = t;
-            d.onclick = () => { document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); sel = t; };
+            const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
+            d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.className += ' selected'; };
             document.getElementById('opts').appendChild(d);
         });
 
@@ -41,41 +37,26 @@
         for(let y=0; y<10; y++){
             for(let x=0; x<10; x++){
                 const c = document.createElement('div'); c.className = 'cell'; c.id = `c-${x}-${y}`;
-                c.oncontextmenu = (e) => e.preventDefault();
                 c.onmousedown = (e) => {
-                    const rect = c.getBoundingClientRect();
-                    if(e.button === 0) { // Left Click: Tile
+                    if(targetSid) {
+                        if(maze[y][x].tile === "empty") {
+                            socket.emit('teleport_player', {target_sid: targetSid, x: x, y: y});
+                            targetSid = null; document.getElementById('tp-zone').style.display='none';
+                        } return;
+                    }
+                    if(e.button === 0) {
                         const count = maze.flat().filter(i => i.tile === sel).length;
-                        if(sel !== 'empty' && count >= (limits[sel] || 1)) return alert("מקסימום!");
+                        if(sel !== 'empty' && count >= (limits[sel] || 1)) return;
                         maze[y][x].tile = sel;
-                    } 
-                    else if(e.button === 2) { // Right Click: Wall
-                        if(e.clientY - rect.top < 15) maze[y][x].walls.top = !maze[y][x].walls.top;
-                        else if(e.clientX - rect.left < 15) maze[y][x].walls.left = !maze[y][x].walls.left;
-                    }
-                    else if(e.button === 1) { // Middle Click: Reset
-                        maze[y][x].tile = "empty"; maze[y][x].walls.top = false; maze[y][x].walls.left = false;
-                    }
+                    } else if(e.button === 1) { maze[y][x].tile = "empty"; }
                     render(); socket.emit('save_maze', {maze});
                 };
                 g.appendChild(c);
             }
         }
-
+        socket.on('bh_event', d => { targetSid = d.sid; document.getElementById('tp-target').innerText = d.n; document.getElementById('tp-zone').style.display = 'block'; });
         function render() {
-            let counts = {};
-            maze.flat().forEach(d => counts[d.tile] = (counts[d.tile] || 0) + 1);
-            for(let y=0; y<10; y++){
-                for(let x=0; x<10; x++){
-                    const c = document.getElementById(`c-${x}-${y}`);
-                    const d = maze[y][x];
-                    c.className = 'cell ' + (d.walls.top ? 'wall-top ' : '') + (d.walls.left ? 'wall-left' : '');
-                    c.innerText = d.tile === "empty" ? "" : d.tile.substring(0,3);
-                }
-            }
-            const missing = Object.keys(limits).filter(k => (counts[k]||0) < 1);
-            document.getElementById('status').innerText = missing.length ? "חסר: " + missing.join(", ") : "מוכן!";
-            document.getElementById('start-btn').disabled = missing.length > 0;
+            for(let y=0; y<10; y++) for(let x=0; x<10; x++) document.getElementById(`c-${x}-${y}`).innerText = maze[y][x].tile.substring(0,3);
         }
     </script>
 </body>
