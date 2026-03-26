@@ -4,9 +4,9 @@ from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'maze_secret_123'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# Optimized for Render: Longer timeouts to prevent freezing
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60, ping_interval=25)
 
-# Global variables to stay in RAM for Render
 maze = [[{"tile": "empty", "walls": {"top": False, "left": False}} for _ in range(10)] for _ in range(10)]
 players = {}
 game_phase = 1 
@@ -14,14 +14,12 @@ game_logs = []
 winner = None
 
 def sync_all():
-    # Determine winner
     p_list = [p for p in players.values() if not p['is_man']]
     alive = [p for p in p_list if p['injuries'] < 5]
     curr_winner = winner
     if len(alive) == 1 and len(p_list) > 1:
         curr_winner = alive[0]['n']
 
-    # Broadcast to EVERYONE
     socketio.emit('sync', {
         "maze": maze,
         "players": [{"n":pl['n'], "x":pl['x'], "y":pl['y'], "injuries":pl['injuries'], "dead":pl['injuries']>=5} for pl in players.values()],
@@ -49,10 +47,8 @@ def on_join(data):
 @socketio.on('set_phase')
 def set_phase(data):
     global game_phase
-    try:
-        game_phase = int(data['phase'])
-        sync_all()
-    except: pass
+    game_phase = int(data['phase'])
+    sync_all()
 
 @socketio.on('save_maze')
 def save_maze(data):
@@ -65,7 +61,7 @@ def save_maze(data):
 def handle_action(data):
     p = players.get(request.sid)
     if not p or game_phase != 3 or p['is_man']: return
-    # (Movement/Bullet logic remains same as previous working version)
+    # Basic movement logic
     p['x'] = max(0, min(9, p['x'] + data.get('dx', 0)))
     p['y'] = max(0, min(9, p['y'] + data.get('dy', 0)))
     if [p['x'], p['y']] not in p['known_tiles']: p['known_tiles'].append([p['x'], p['y']])
