@@ -1,134 +1,77 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מבוך - שחקן</title>
+    <meta charset="UTF-8"><title>Maze Game</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        
-        #welcome { position: fixed; width: 100%; height: 100%; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        
-        /* Layout */
-        #main-container { display: flex; flex-grow: 1; height: calc(100vh - 60px); }
-        #board-container { flex: 3; display: flex; align-items: center; justify-content: center; background: #111; }
-        #sidebar { flex: 1; background: #1a1a1a; border-right: 2px solid #333; display: flex; flex-direction: column; padding: 10px; }
-
-        /* Board */
-        #board { display: grid; grid-template-columns: repeat(10, 50px); grid-template-rows: repeat(10, 50px); gap: 2px; border: 2px solid #444; }
-        .cell { width: 50px; height: 50px; background: #000; border: 1px solid #222; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; }
-        .revealed { background: #2a2a2a; }
-        .p-self { background: yellow; border-radius: 50%; width: 20px; height: 20px; position: absolute; z-index: 5; box-shadow: 0 0 10px yellow; top: 15px; left: 15px; }
+        #status { background: #222; padding: 15px; display: flex; justify-content: space-around; border-bottom: 2px solid #444; font-size: 18px; }
+        #game-layout { display: flex; flex-grow: 1; }
+        #sidebar { width: 240px; background: #111; padding: 10px; border-right: 1px solid #333; display: flex; flex-direction: column; }
+        #board-area { flex-grow: 1; display: flex; align-items: center; justify-content: center; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; }
+        .cell { width: 50px; height: 50px; background: #000; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; border: 1px solid #222; }
+        .revealed { background: #222; }
+        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; position: absolute; z-index: 5; box-shadow: 0 0 10px yellow; top: 14px; left: 14px; }
         .wall-top { border-top: 4px solid red !important; }
         .wall-left { border-left: 4px solid red !important; }
-
-        /* Log & UI */
-        #status { background: #222; height: 60px; display: flex; justify-content: space-around; align-items: center; border-bottom: 2px solid #444; font-size: 18px; }
-        #log-container { flex-grow: 1; overflow-y: auto; background: #000; padding: 10px; border: 1px solid #333; font-size: 13px; color: #ccc; margin-bottom: 10px; }
-        .log-entry { border-bottom: 1px solid #222; padding: 4px 0; }
-        .copy-btn { background: #444; color: gold; border: none; padding: 10px; cursor: pointer; font-weight: bold; border-radius: 4px; }
-        .copy-btn:hover { background: #555; }
-        
-        #win { display:none; position:fixed; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; color:gold; }
-        button#join-btn { padding: 12px 24px; background: lime; border: none; font-weight: bold; cursor: pointer; }
+        #log-box { flex-grow: 1; overflow-y: auto; background: #000; padding: 5px; font-size: 12px; color: #aaa; margin-bottom: 10px; }
+        #welcome { position: fixed; inset: 0; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #win { display:none; position:fixed; inset: 0; background:rgba(0,0,0,0.95); z-index:2000; flex-direction:column; align-items:center; justify-content:center; color:gold; }
     </style>
 </head>
 <body>
-
-    <div id="win"><h1 id="winner"></h1><h2>ניצח! 🏆</h2><button onclick="location.reload()">משחק חדש</button></div>
-    
+    <div id="win"><h1 id="winner-name"></h1><h2>Wins! 🏆</h2><button onclick="location.reload()">New Game</button></div>
     <div id="welcome">
-        <h1>🏰 מבוך</h1>
-        <input type="text" id="nin" placeholder="שם שחקן..." style="padding:10px; margin-bottom:10px;">
-        <button id="join-btn" onclick="join()">כניסה למשחק</button>
+        <h1>🏰 Maze</h1>
+        <input type="text" id="nin" placeholder="Enter Name..." style="padding:10px; font-size: 18px;">
+        <button onclick="join()" style="margin-top:10px; padding:10px; background:lime; border:none; cursor:pointer; font-weight:bold;">Join Game</button>
     </div>
-
     <div id="status">
-        <span>פציעות: <b id="inj">0</b>/5</span>
-        <span>כדורים: <b id="bul">3</b></span>
-        <span>פצצות: <b id="bom">3</b></span>
+        <span>Injuries: <b id="inj">0</b>/5</span> | <span>Bullets: <b id="bul">3</b></span> | <span>Bombs: <b id="bom">3</b></span>
     </div>
-
-    <div id="main-container">
+    <div id="game-layout">
         <div id="sidebar">
-            <h3 style="margin-top:0;">יומן אירועים</h3>
-            <div id="log-container"></div>
-            <button class="copy-btn" onclick="copyLog()">📋 העתק סיכום משחק</button>
+            <button onclick="copyLogs()" style="margin-bottom:10px; cursor:pointer; padding: 5px;">📋 Copy Summary</button>
+            <div id="log-box"></div>
         </div>
-
-        <div id="board-container">
-            <div id="board"></div>
-        </div>
+        <div id="board-area"><div id="board"></div></div>
     </div>
-
     <script>
         const socket = io();
         let mMode = "move";
-
-        function join() { 
-            const n = document.getElementById('nin').value; 
-            if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } 
+        function join() { const n = document.getElementById('nin').value; if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } }
+        function copyLogs() {
+            const txt = [...document.querySelectorAll('.le')].map(e => e.innerText).join('\n');
+            navigator.clipboard.writeText("Game Summary:\n" + txt); alert("Summary Copied!");
         }
-
-        function copyLog() {
-            const logs = document.querySelectorAll('.log-entry');
-            let text = "--- סיכום מבוך --- \n";
-            logs.forEach(l => text += l.innerText + "\n");
-            navigator.clipboard.writeText(text);
-            alert("הסיכום הועתק ללוח!");
-        }
-
         window.oncontextmenu = (e) => e.preventDefault();
         window.onmousedown = (e) => { if (e.button === 0) mMode = "shoot"; else if (e.button === 2) mMode = "bomb"; };
         window.onmouseup = () => mMode = "move";
-        
         window.onkeydown = (e) => {
             const keys = {"ArrowUp":[0,-1], "ArrowDown":[0,1], "ArrowLeft":[-1,0], "ArrowRight":[1,0]};
             if(keys[e.key]) socket.emit('action', {type: mMode, dx: keys[e.key][0], dy: keys[e.key][1]});
         };
-
         socket.on('sync', d => {
-            if(d.winner) { document.getElementById('win').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
-            
+            if(d.winner) { document.getElementById('win').style.display='flex'; document.getElementById('winner-name').innerText = d.winner; }
             const my = d.my_data; if(!my) return;
             document.getElementById('inj').innerText = my.injuries;
             document.getElementById('bul').innerText = my.bul;
             document.getElementById('bom').innerText = my.bom;
-
-            // Update Log
-            const logBox = document.getElementById('log-container');
-            logBox.innerHTML = '';
-            d.logs.forEach(msg => {
-                const div = document.createElement('div');
-                div.className = 'log-entry';
-                div.innerText = msg;
-                logBox.appendChild(div);
-            });
-
-            // Update Board
-            const b = document.getElementById('board');
-            b.innerHTML = '';
-            for(let y=0; y<10; y++) {
-                for(let x=0; x<10; x++) {
-                    const td = d.maze[y][x];
-                    const cell = document.createElement('div');
-                    const known = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
-                    
-                    if(d.is_spectator || (known && !my.is_lost)) {
-                        cell.className = 'cell revealed';
-                        if(td.walls.top) cell.classList.add('wall-top');
-                        if(td.walls.left) cell.classList.add('wall-left');
-                        if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                    } else { cell.className = 'cell'; }
-
-                    if(d.phase === 2 && !my.has_spawned) {
-                        cell.style.cursor = "crosshair";
-                        cell.onclick = () => socket.emit('set_spawn', {x, y});
-                    }
-                    if(my.x === x && my.y === y && my.has_spawned) {
-                        const p = document.createElement('div'); p.className = 'p-self'; cell.appendChild(p);
-                    }
-                    b.appendChild(cell);
-                }
+            document.getElementById('log-box').innerHTML = d.logs.map(m => `<div class="le">${m}</div>`).join('');
+            const b = document.getElementById('board'); b.innerHTML = '';
+            for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
+                const td = d.maze[y][x]; const cell = document.createElement('div');
+                const known = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
+                if(d.is_spectator || (known && !my.is_lost)) {
+                    cell.className = 'cell revealed';
+                    if(td.walls.top) cell.classList.add('wall-top');
+                    if(td.walls.left) cell.classList.add('wall-left');
+                    if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                } else cell.className = 'cell';
+                if(d.phase === 2 && !my.has_spawned) { cell.onclick = () => socket.emit('set_spawn', {x,y}); }
+                if(my.x===x && my.y===y && my.has_spawned) { const p = document.createElement('div'); p.className='p-self'; cell.appendChild(p); }
+                b.appendChild(cell);
             }
         });
     </script>
