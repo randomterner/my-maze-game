@@ -1,78 +1,141 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Manager - Host</title>
+    <meta charset="UTF-8"><title>Maze Manager - Host</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; overflow: hidden; }
-        #log-panel { width: 240px; background: #111; padding: 10px; border-left: 1px solid #444; overflow-y: auto; font-size: 12px; }
-        #grid-area { flex-grow: 1; display: flex; align-items: center; justify-content: center; }
-        #sidebar { width: 220px; background: #222; padding: 10px; border-right: 1px solid #444; }
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; border: 2px solid #555; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; }
-        .wall-top { border-top: 4px solid red !important; }
-        .wall-left { border-left: 4px solid red !important; }
-        .p-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 2px solid white; top: 2px; right: 2px; z-index: 10; }
-        .opt { padding: 5px; margin: 2px; background: #333; cursor: pointer; text-align: center; border: 1px solid #555; font-size: 11px; }
-        .selected { background: #007bff; border: 1px solid white; }
-        .locked { opacity: 0.5; pointer-events: none; filter: grayscale(1); }
-        button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; font-weight: bold; }
+        #sidebar { width: 220px; background: #222; padding: 15px; border-right: 2px solid #444; overflow-y: auto; }
+        #grid-area { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #log-panel { width: 260px; background: #111; padding: 15px; border-left: 2px solid #444; display: flex; flex-direction: column; }
+        
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; padding: 5px; border: 3px solid #555; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; cursor: pointer; }
+        
+        /* Walls */
+        .wall-top { border-top: 5px solid #ff4d4d !important; }
+        .wall-left { border-left: 5px solid #ff4d4d !important; }
+        
+        /* UI Elements */
+        .tile-opt { padding: 8px; margin: 4px 0; background: #333; cursor: pointer; border-radius: 4px; border: 1px solid #555; text-align: center; }
+        .tile-opt:hover { background: #444; }
+        .selected { border: 2px solid #2ecc71; background: #1e5631; }
+        .btn { width: 100%; padding: 10px; margin: 10px 0; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; color: white; }
+        .btn-phase { background: #e67e22; }
+        .btn-start { background: #2ecc71; }
+        #log-box { flex-grow: 1; overflow-y: auto; font-size: 13px; color: #ccc; }
+        .p-dot { width: 14px; height: 14px; background: #00ffff; border-radius: 50%; position: absolute; top: 18px; left: 18px; border: 2px solid black; }
     </style>
 </head>
-<body>
-    <div id="log-panel"><h3>Game Log</h3><div id="logs"></div></div>
-    <div id="grid-area"><div id="grid"></div></div>
+<body oncontextmenu="return false;">
+
     <div id="sidebar">
-        <h4>Phase: <span id="cp">1</span></h4>
-        <button id="b1" onclick="socket.emit('set_phase',{phase:1})">1. Build</button>
-        <button id="b2" onclick="socket.emit('set_phase',{phase:2})">2. Spawn</button>
-        <button id="b3" onclick="socket.emit('set_phase',{phase:3})" style="background:lime; color:black;">3. Start</button>
-        <hr><div id="opts"></div>
+        <h3>Tile Tools</h3>
+        <div id="tools">
+            <div class="tile-opt selected" onclick="selectTile('empty', this)">Empty / Floor</div>
+            <div class="tile-opt" onclick="selectTile('river_start', this)">🌊 River Start</div>
+            <div class="tile-opt" onclick="selectTile('river', this)">💧 River Tile</div>
+            <div class="tile-opt" onclick="selectTile('black_hole', this)">🕳️ Black Hole</div>
+            <div class="tile-opt" onclick="selectTile('armory', this)">⚔️ Armory</div>
+            <div class="tile-opt" onclick="selectTile('clinc', this)">🏥 Clinic</div>
+            <div class="tile-opt" onclick="selectTile('er', this)">🚑 ER</div>
+            <div class="tile-opt" onclick="selectTile('devil', this)">😈 Devil</div>
+            <div class="tile-opt" onclick="selectTile('tresure', this)">🏆 Real Treasure</div>
+            <div class="tile-opt" onclick="selectTile('fake_tresure', this)">💎 Fake Treasure</div>
+            <div class="tile-opt" onclick="selectTile('exit', this)">🚪 Exit</div>
+            <div class="tile-opt" onclick="selectTile('boat', this)">🛶 Boat</div>
+            <div class="tile-opt" onclick="selectTile('flashlight', this)">🔦 Flashlight</div>
+            <div class="tile-opt" onclick="selectTile('batteries', this)">🔋 Batteries</div>
+        </div>
+        <hr>
+        <button class="btn btn-phase" onclick="setPhase(2)">Move to SPAWN Phase</button>
+        <button class="btn btn-start" onclick="setPhase(3)">START GAME</button>
     </div>
+
+    <div id="grid-area">
+        <h2 id="phase-display">Phase 1: Building Maze</h2>
+        <div id="grid"></div>
+        <p style="font-size: 12px; color: #888; margin-top: 10px;">Left Click: Place Tile | Right Click: Toggle Wall (Top/Left)</p>
+    </div>
+
+    <div id="log-panel">
+        <h3>Game Event Log</h3>
+        <div id="log-box"></div>
+    </div>
+
     <script>
         const socket = io();
-        let sel = "empty";
-        socket.on('connect', () => socket.emit('join', { name: "MANAGER" }));
-        
-        const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
-        types.forEach(t => {
-            const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
-            d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); };
-            document.getElementById('opts').appendChild(d);
+        let selectedTile = "empty";
+        let localMaze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
+
+        socket.on('connect', () => {
+            socket.emit('join', { name: "Manager", is_man: true });
         });
 
-        socket.on('sync', d => {
-            document.getElementById('cp').innerText = d.phase;
-            for(let i=1; i<=3; i++) {
-                const btn = document.getElementById('b'+i);
-                if(i <= d.phase) btn.classList.add('locked');
+        function selectTile(type, el) {
+            selectedTile = type;
+            document.querySelectorAll('.tile-opt').forEach(opt => opt.classList.remove('selected'));
+            el.classList.add('selected');
+        }
+
+        function setPhase(p) {
+            socket.emit('set_phase', p);
+        }
+
+        function handleCellClick(e, x, y) {
+            // Right Click for Walls
+            if (e.button === 2) {
+                const cellRect = e.target.getBoundingClientRect();
+                const relativeY = e.clientY - cellRect.top;
+                const relativeX = e.clientX - cellRect.left;
+
+                if (relativeY < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
+                else if (relativeX < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
+            } 
+            // Left Click for Tiles
+            else {
+                const uniques = ["tresure", "exit", "river_start"];
+                // Don't allow multiple of unique items
+                if (uniques.includes(selectedTile)) {
+                    for(let r=0; r<10; r++) for(let c=0; c<10; c++) if(localMaze[r][c].tile === selectedTile) localMaze[r][c].tile = "empty";
+                }
+                localMaze[y][x].tile = selectedTile;
             }
-            document.getElementById('logs').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
-            const g = document.getElementById('grid'); g.innerHTML = '';
-            for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
-                const td = d.maze[y][x]; const c = document.createElement('div');
-                c.className = 'cell';
-                if(td.walls.top) c.classList.add('wall-top');
-                if(td.walls.left) c.classList.add('wall-left');
-                if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                d.players.forEach(p => { if(p.x === x && p.y === y && !p.dead) { const dot = document.createElement('div'); dot.className = 'p-dot'; c.appendChild(dot); } });
-                c.onmousedown = (e) => {
-                    if(d.phase > 1) return;
-                    const r = c.getBoundingClientRect();
-                    if(e.button === 0) {
-                        const uniques = ["tresure", "exit", "boat", "raft", "flashlight", "river_start"];
-                        if(uniques.includes(sel) && d.maze.some(row => row.some(cell => cell.tile === sel))) return;
-                        d.maze[y][x].tile = sel;
-                    } else if(e.button === 2) {
-                        if(e.clientY - r.top < 12) d.maze[y][x].walls.top = !d.maze[y][x].walls.top;
-                        else if(e.clientX - r.left < 12) d.maze[y][x].walls.left = !d.maze[y][x].walls.left;
-                    }
-                    socket.emit('save_maze', { maze: d.maze });
-                };
-                g.appendChild(c);
+            socket.emit('update_maze', localMaze);
+        }
+
+        socket.on('sync', d => {
+            localMaze = d.maze;
+            document.getElementById('phase-display').innerText = `Phase ${d.phase}: ` + (d.phase==1 ? "Building" : d.phase==2 ? "Spawning" : "Active");
+            document.getElementById('log-box').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
+            
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            for(let y=0; y<10; y++) {
+                for(let x=0; x<10; x++) {
+                    const data = d.maze[y][x];
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    if(data.walls.top) cell.classList.add('wall-top');
+                    if(data.walls.left) cell.classList.add('wall-left');
+                    if(data.tile !== "empty") cell.style.backgroundImage = `url('/static/${data.tile}.png')`;
+                    
+                    cell.onmousedown = (e) => handleCellClick(e, x, y);
+                    
+                    // Show player locations to Manager
+                    d.players.forEach(p => {
+                        if(p.x === x && p.y === y) {
+                            const dot = document.createElement('div');
+                            dot.className = 'p-dot';
+                            dot.title = p.n;
+                            cell.appendChild(dot);
+                        }
+                    });
+
+                    grid.appendChild(cell);
+                }
             }
         });
-        window.oncontextmenu = (e) => e.preventDefault();
     </script>
 </body>
 </html>
