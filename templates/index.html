@@ -1,63 +1,114 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מבוך</title>
+    <meta charset="UTF-8"><title>מבוך - שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; height: 100vh; }
         #welcome { position: fixed; width: 100%; height: 100%; background: #111; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        #board { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; margin: 10px auto; width: max-content; }
+        #board-container { height: calc(100vh - 80px); display: flex; align-items: center; justify-content: center; }
+        #board { display: grid; grid-template-columns: repeat(10, 55px); grid-template-rows: repeat(10, 55px); gap: 2px; border: 2px solid #333; background: #222; }
         .cell { width: 55px; height: 55px; background: #111; border: 1px solid #222; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; }
-        .revealed { background: #222; }
-        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; position: absolute; z-index: 5; box-shadow: 0 0 10px yellow; }
+        .revealed { background: #333; }
+        .p-self { background: yellow; border-radius: 50%; width: 22px; height: 22px; position: absolute; z-index: 5; box-shadow: 0 0 10px yellow; top: 50%; left: 50%; transform: translate(-50%, -50%); }
         .wall-top { border-top: 4px solid red !important; }
         .wall-left { border-left: 4px solid red !important; }
         #status { background: #222; padding: 10px; display: flex; justify-content: space-around; border-bottom: 2px solid #444; }
         #win { display:none; position:fixed; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; color:gold; }
+        .spawn-msg { color: lime; font-weight: bold; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
     <div id="win"><h1 id="winner"></h1><h2>ניצח! 🏆</h2><button onclick="location.reload()">חדש</button></div>
+    
     <div id="welcome">
         <h1>🏰 מבוך</h1>
         <input type="text" id="nin" placeholder="שם שחקן..." style="padding:10px;">
-        <button onclick="join()" style="margin-top:10px; padding:10px; background:lime; border:none;">כניסה</button>
+        <button onclick="join()" style="margin-top:10px; padding:10px; background:lime; border:none; cursor:pointer;">כניסה</button>
         <br><a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?usp=sharing" target="_blank" style="color:gold;">📜 חוקים</a>
     </div>
+
     <div id="status">
-        <span>פציעות: <b id="inj">0</b>/5</span> <span>כדורים: <b id="bul">3</b></span> <span>פצצות: <b id="bom">3</b></span>
+        <div id="stats-inner">
+            <span>פציעות: <b id="inj">0</b>/5</span> | <span>כדורים: <b id="bul">3</b></span> | <span>פצצות: <b id="bom">3</b></span>
+        </div>
+        <div id="spawn-hint" class="spawn-msg" style="display:none;">לחץ על משבצת כדי להתחיל!</div>
     </div>
-    <div id="board"></div>
+
+    <div id="board-container">
+        <div id="board"></div>
+    </div>
+
     <script>
         const socket = io();
         let mMode = "move";
-        function join() { const n = document.getElementById('nin').value; if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } }
+
+        function join() { 
+            const n = document.getElementById('nin').value; 
+            if(n){ socket.emit('join',{name:n}); document.getElementById('welcome').style.display='none'; } 
+        }
+
         window.oncontextmenu = (e) => e.preventDefault();
         window.onmousedown = (e) => { if (e.button === 0) mMode = "shoot"; else if (e.button === 2) mMode = "bomb"; };
         window.onmouseup = () => mMode = "move";
+        
         window.onkeydown = (e) => {
             const keys = {"ArrowUp":[0,-1], "ArrowDown":[0,1], "ArrowLeft":[-1,0], "ArrowRight":[1,0]};
             if(keys[e.key]) socket.emit('action', {type: mMode, dx: keys[e.key][0], dy: keys[e.key][1]});
         };
+
         socket.on('sync', d => {
             if(d.winner) { document.getElementById('win').style.display='flex'; document.getElementById('winner').innerText = d.winner; }
-            const b = document.getElementById('board'); b.innerHTML = '';
-            const my = d.my_data; if(!my) return;
+            
+            const b = document.getElementById('board');
+            b.innerHTML = '';
+            
+            const my = d.my_data;
+            if(!my) return; 
+
+            // Update Stats
             document.getElementById('inj').innerText = my.injuries;
             document.getElementById('bul').innerText = my.bul;
             document.getElementById('bom').innerText = my.bom;
-            for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
-                const td = d.maze[y][x]; const cell = document.createElement('div');
-                const known = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
-                if(d.is_spectator || (known && !my.is_lost)) {
-                    cell.className = 'cell revealed';
-                    if(td.walls.top) cell.classList.add('wall-top');
-                    if(td.walls.left) cell.classList.add('wall-left');
-                    if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                } else cell.className = 'cell';
-                if(d.phase === 2 && !my.has_spawned) { cell.style.cursor="crosshair"; cell.onclick = () => socket.emit('set_spawn', {x,y}); }
-                if(my.x===x && my.y===y && my.has_spawned) { const p = document.createElement('div'); p.className='p-self'; cell.appendChild(p); }
-                b.appendChild(cell);
+
+            // Show spawn hint if needed
+            const isSpawning = (d.phase === 2 && !my.has_spawned);
+            document.getElementById('spawn-hint').style.display = isSpawning ? "block" : "none";
+            document.getElementById('stats-inner').style.display = isSpawning ? "none" : "block";
+
+            for(let y=0; y<10; y++) {
+                for(let x=0; x<10; x++) {
+                    const td = d.maze[y][x]; 
+                    const cell = document.createElement('div');
+                    
+                    // Logic: Is this tile known to the player?
+                    const known = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
+                    
+                    // Show tile if Spectator OR Known OR it's Spawning Phase
+                    if(d.is_spectator || (known && !my.is_lost)) {
+                        cell.className = 'cell revealed';
+                        if(td.walls.top) cell.classList.add('wall-top');
+                        if(td.walls.left) cell.classList.add('wall-left');
+                        if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    } else {
+                        cell.className = 'cell';
+                    }
+
+                    // Click to Spawn Logic
+                    if(d.phase === 2 && !my.has_spawned) {
+                        cell.style.cursor = "crosshair";
+                        cell.onclick = () => socket.emit('set_spawn', {x, y});
+                    }
+
+                    // Draw Self
+                    if(my.x === x && my.y === y && my.has_spawned) {
+                        const p = document.createElement('div');
+                        p.className = 'p-self';
+                        cell.appendChild(p);
+                    }
+                    b.appendChild(cell);
+                }
             }
         });
     </script>
