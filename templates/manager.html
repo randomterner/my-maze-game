@@ -1,76 +1,53 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>מנחה - שליטה</title>
+    <meta charset="UTF-8"><title>Manager - Host</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; overflow: hidden; }
-        #sidebar { width: 220px; background: #222; padding: 10px; border-left: 1px solid #444; display: flex; flex-direction: column; }
-        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; }
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; border: 2px solid #555; }
+        #log-panel { width: 240px; background: #111; padding: 10px; border-left: 1px solid #444; overflow-y: auto; font-size: 12px; }
+        #grid-area { flex-grow: 1; display: flex; align-items: center; justify-content: center; }
+        #sidebar { width: 220px; background: #222; padding: 10px; border-right: 1px solid #444; }
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; border: 2px solid #555; }
         .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; }
-        .wall-top { border-top: 5px solid red !important; }
-        .wall-left { border-left: 5px solid red !important; }
+        .wall-top { border-top: 4px solid red !important; }
+        .wall-left { border-left: 4px solid red !important; }
         .p-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 2px solid white; top: 2px; right: 2px; z-index: 10; }
         .opt { padding: 5px; margin: 2px; background: #333; cursor: pointer; text-align: center; border: 1px solid #555; font-size: 11px; }
-        .selected { background: #007bff; border-color: white; }
-        #log-panel { width: 250px; background: #111; padding: 10px; border-right: 1px solid #444; overflow-y: auto; font-size: 12px; color: #aaa; }
-        .log-msg { border-bottom: 1px solid #222; padding: 5px 0; }
-        .locked-btn { opacity: 0.5; cursor: not-allowed; background: #555 !important; }
+        .selected { background: #007bff; border: 1px solid white; }
+        .locked { opacity: 0.5; pointer-events: none; filter: grayscale(1); }
         button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="log-panel">
-        <h3 style="color:gold;">יומן אירועים</h3>
-        <div id="logs-content"></div>
-    </div>
-
-    <div id="grid-container">
-        <div id="grid"></div>
-    </div>
-
+    <div id="log-panel"><h3>Game Log</h3><div id="logs"></div></div>
+    <div id="grid-area"><div id="grid"></div></div>
     <div id="sidebar">
-        <h4>שלב: <span id="cp">1</span></h4>
-        <button id="btn1" onclick="changePhase(1)">1. בנייה</button>
-        <button id="btn2" onclick="changePhase(2)">2. הולדה</button>
-        <button id="btn3" onclick="changePhase(3)" style="background:lime">3. התחל</button>
+        <h4>Phase: <span id="cp">1</span></h4>
+        <button id="b1" onclick="socket.emit('set_phase',{phase:1})">1. Build</button>
+        <button id="b2" onclick="socket.emit('set_phase',{phase:2})">2. Spawn</button>
+        <button id="b3" onclick="socket.emit('set_phase',{phase:3})" style="background:lime; color:black;">3. Start</button>
         <hr><div id="opts"></div>
     </div>
-
     <script>
         const socket = io();
         let sel = "empty";
+        socket.on('connect', () => socket.emit('join', { name: "MANAGER" }));
+        
         const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
-
-        socket.on('connect', () => socket.emit('join', {name: "MANAGER"}));
-
         types.forEach(t => {
             const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
-            d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected')); d.classList.add('selected'); };
+            d.onclick = () => { sel = t; document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected')); d.classList.add('selected'); };
             document.getElementById('opts').appendChild(d);
         });
 
-        function changePhase(p) { socket.emit('set_phase', {phase: p}); }
-
         socket.on('sync', d => {
             document.getElementById('cp').innerText = d.phase;
-            
-            // Phase Locking
             for(let i=1; i<=3; i++) {
-                const b = document.getElementById('btn' + i);
-                if(i <= d.phase) { b.classList.add('locked-btn'); b.disabled = true; }
+                const btn = document.getElementById('b'+i);
+                if(i <= d.phase) btn.classList.add('locked');
             }
-
-            // Logs
-            const lCont = document.getElementById('logs-content');
-            lCont.innerHTML = '';
-            d.logs.forEach(m => {
-                const div = document.createElement('div'); div.className = 'log-msg'; div.innerText = m;
-                lCont.appendChild(div);
-            });
-
-            // Grid
+            document.getElementById('logs').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
             const g = document.getElementById('grid'); g.innerHTML = '';
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
                 const td = d.maze[y][x]; const c = document.createElement('div');
@@ -78,21 +55,19 @@
                 if(td.walls.top) c.classList.add('wall-top');
                 if(td.walls.left) c.classList.add('wall-left');
                 if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
-
                 d.players.forEach(p => { if(p.x === x && p.y === y && !p.dead) { const dot = document.createElement('div'); dot.className = 'p-dot'; c.appendChild(dot); } });
-
                 c.onmousedown = (e) => {
                     if(d.phase > 1) return;
                     const r = c.getBoundingClientRect();
                     if(e.button === 0) {
                         const uniques = ["tresure", "exit", "boat", "raft", "flashlight", "river_start"];
-                        if(uniques.includes(sel) && d.maze.some(row => row.some(cell => cell.tile === sel))) { alert("ניתן למקם רק אחד!"); return; }
+                        if(uniques.includes(sel) && d.maze.some(row => row.some(cell => cell.tile === sel))) return;
                         d.maze[y][x].tile = sel;
                     } else if(e.button === 2) {
                         if(e.clientY - r.top < 12) d.maze[y][x].walls.top = !d.maze[y][x].walls.top;
                         else if(e.clientX - r.left < 12) d.maze[y][x].walls.left = !d.maze[y][x].walls.left;
                     }
-                    socket.emit('save_maze', {maze: d.maze});
+                    socket.emit('save_maze', { maze: d.maze });
                 };
                 g.appendChild(c);
             }
