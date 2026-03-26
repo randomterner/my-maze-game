@@ -5,52 +5,52 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; }
-        #sidebar { width: 220px; background: #222; padding: 10px; border-left: 1px solid #444; overflow-y: auto; }
-        #grid-area { flex-grow: 1; display: flex; justify-content: center; align-items: center; }
-        #grid { display: grid; grid-template-columns: repeat(10, 55px); gap: 2px; background: #444; border: 2px solid #555; }
-        .cell { width: 55px; height: 55px; background: #fff; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; border: 1px solid #ccc; }
-        .wall-top { border-top: 5px solid red !important; }
-        .wall-left { border-left: 5px solid red !important; }
-        .p-dot { position: absolute; width: 12px; height: 12px; background: blue; border-radius: 50%; border: 2px solid white; top: 2px; right: 2px; }
-        .opt { padding: 6px; margin: 3px; background: #333; cursor: pointer; text-align: center; border: 1px solid #555; font-size: 11px; }
+        #sidebar { width: 220px; background: #222; padding: 10px; border-left: 1px solid #444; }
+        #status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .online { background: lime; } .offline { background: red; }
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; margin: auto; }
+        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: pointer; }
+        .wall-top { border-top: 4px solid red !important; }
+        .wall-left { border-left: 4px solid red !important; }
+        .opt { padding: 5px; margin: 2px; background: #333; cursor: pointer; text-align: center; border: 1px solid #555; font-size: 11px; }
         .selected { background: #007bff; border-color: white; }
-        button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; font-weight: bold; }
+        button { width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h4>שלב נוכחי: <span id="cp">1</span></h4>
+        <div>סטטוס: <span id="status-dot" class="offline"></span></div>
+        <h4>שלב: <span id="cp">1</span></h4>
         <button onclick="changePhase(1)">1. בנייה</button>
         <button onclick="changePhase(2)">2. הולדה</button>
-        <button onclick="changePhase(3)" style="background:lime">3. התחל!</button>
+        <button onclick="changePhase(3)" style="background:lime">3. התחל</button>
         <hr><div id="opts"></div>
     </div>
-    <div id="grid-area"><div id="grid"></div></div>
+    <div id="grid"></div>
 
     <script>
-        const socket = io();
+        const socket = io({ reconnection: true, reconnectionAttempts: 5, timeout: 10000 });
         let currentSel = "empty";
         let localMaze = [];
 
-        const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
+        socket.on('connect', () => {
+            document.getElementById('status-dot').className = 'online';
+            socket.emit('join', { name: "MANAGER" });
+        });
 
-        types.forEach(t => {
-            const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
-            d.onclick = () => { 
-                currentSel = t; 
-                document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
-                d.classList.add('selected');
-            };
-            document.getElementById('opts').appendChild(d);
+        socket.on('disconnect', () => {
+            document.getElementById('status-dot').className = 'offline';
         });
 
         function changePhase(p) {
-            console.log("Changing phase to:", p);
             socket.emit('set_phase', { phase: p });
         }
 
-        socket.on('connect', () => {
-            socket.emit('join', { name: "MANAGER" });
+        const types = ["empty", "tresure", "fake_tresure", "exit", "river", "river_start", "black_hole", "clinc", "er", "monster", "devil", "armory", "flashlight", "battaries", "boat", "raft"];
+        types.forEach(t => {
+            const d = document.createElement('div'); d.className = 'opt'; d.innerText = t;
+            d.onclick = () => { currentSel = t; document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected')); d.classList.add('selected'); };
+            document.getElementById('opts').appendChild(d);
         });
 
         socket.on('sync', d => {
@@ -58,7 +58,6 @@
             document.getElementById('cp').innerText = d.phase;
             const g = document.getElementById('grid');
             g.innerHTML = '';
-
             for(let y=0; y<10; y++) {
                 for(let x=0; x<10; x++) {
                     const td = localMaze[y][x];
@@ -66,25 +65,14 @@
                     c.className = 'cell';
                     if(td.walls.top) c.classList.add('wall-top');
                     if(td.walls.left) c.classList.add('wall-left');
-                    
-                    if(td.tile !== "empty") {
-                        c.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                    }
-
-                    d.players.forEach(p => {
-                        if(p.x === x && p.y === y && !p.dead) {
-                            const dot = document.createElement('div'); dot.className = 'p-dot'; c.appendChild(dot);
-                        }
-                    });
-
+                    if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
                     c.onmousedown = (e) => {
                         if(d.phase >= 3) return;
                         const r = c.getBoundingClientRect();
-                        if(e.button === 0) {
-                            localMaze[y][x].tile = currentSel;
-                        } else if(e.button === 2) {
-                            if(e.clientY - r.top < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
-                            else if(e.clientX - r.left < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
+                        if(e.button === 0) localMaze[y][x].tile = currentSel;
+                        else if(e.button === 2) {
+                            if(e.clientY - r.top < 12) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
+                            else if(e.clientX - r.left < 12) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
                         }
                         socket.emit('save_maze', { maze: localMaze });
                     };
