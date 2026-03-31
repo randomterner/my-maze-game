@@ -6,7 +6,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'maze_family_secret_123'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60)
 
-# Game State
+# מצב המשחק
 maze = [[{"tile": "empty", "walls": {"top": False, "left": False}} for _ in range(10)] for _ in range(10)]
 players = {}
 game_phase = 1 
@@ -83,12 +83,12 @@ def on_move(data):
                 p['injuries'] += 1
                 add_log("LOG_RIVER_SWEEP", p['n'])
 
-        elif tile == "armory":
+        elif tile == "armory": # נשקייה: ממלא עד 3
             p['bul'] = max(p['bul'], 3)
             p['bom'] = max(p['bom'], 3)
             add_log("LOG_ARMORY", p['n'])
 
-        elif tile == "monster":
+        elif tile == "monster": # מפלצת: תור נוסף וציוד
             p['bul'] = min(5, p['bul'] + 1); p['bom'] = min(5, p['bom'] + 1)
             add_log("LOG_MONSTER", p['n'])
 
@@ -109,10 +109,11 @@ def on_move(data):
 @socketio.on('update_maze')
 def on_update_maze(data):
     global maze, river_start_pos
-    maze = data
-    for y in range(10):
-        for x in range(10):
-            if maze[y][x]['tile'] == "river_start": river_start_pos = (x,y)
+    if game_phase == 1: # מאפשר שינויים רק בשלב הבנייה
+        maze = data
+        for y in range(10):
+            for x in range(10):
+                if maze[y][x]['tile'] == "river_start": river_start_pos = (x,y)
     sync_all()
 
 if __name__ == '__main__':
