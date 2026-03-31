@@ -40,13 +40,13 @@ def on_join(data):
     sync_all()
 
 @socketio.on('set_phase')
-def handle_set_phase(phase):
+def on_set_phase(phase):
     global game_phase
     game_phase = int(phase)
     sync_all()
 
 @socketio.on('set_spawn')
-def handle_set_spawn(data):
+def on_set_spawn(data):
     p = players.get(request.sid)
     if p and game_phase == 2:
         p['x'], p['y'] = data['x'], data['y']
@@ -55,7 +55,7 @@ def handle_set_spawn(data):
         sync_all()
 
 @socketio.on('move')
-def handle_move(data):
+def on_move(data):
     global winner
     p = players.get(request.sid)
     if not p or game_phase != 3 or p['injuries'] >= 5 or winner: return
@@ -85,7 +85,7 @@ def handle_move(data):
     sync_all()
 
 @socketio.on('update_maze')
-def handle_update_maze(data):
+def on_update_maze(data):
     global maze, river_start_pos
     if game_phase == 1:
         maze = data
