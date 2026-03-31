@@ -1,38 +1,41 @@
 <!DOCTYPE html>
-<html>
+<html id="html-tag" lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8"><title>Maze Game</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        .rtl { direction: rtl; } .ltr { direction: ltr; }
-        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 1px; background: #333; padding: 5px; }
-        .cell { width: 50px; height: 50px; background: #111; position: relative; background-size: contain; box-sizing: border-box; }
+        .cell { width: 50px; height: 50px; background: #111; position: relative; background-size: contain; box-sizing: border-box; cursor: pointer; }
         .revealed { background: #444; }
         .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
         #log-box { flex-grow: 1; overflow-y: auto; background: #0a0a0a; padding: 10px; font-size: 13px; border: 1px solid #333; }
-        .p-dot { width: 16px; height: 16px; background: cyan; border-radius: 50%; margin: 17px auto; border: 2px solid white; }
-        .lang-btn { position: absolute; top: 10px; right: 10px; z-index: 110; padding: 5px 10px; cursor: pointer; }
+        .p-dot { width: 16px; height: 16px; background: cyan; border-radius: 50%; margin: 17px auto; border: 2px solid white; box-shadow: 0 0 10px cyan; }
+        .btn { padding: 12px 25px; cursor: pointer; border: none; color: white; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px; }
+        .btn-green { background: #2ecc71; }
+        .btn-blue { background: #3498db; text-decoration: none; display: inline-block; }
     </style>
 </head>
-<body id="b" class="rtl">
-    <button class="lang-btn" onclick="toggleL()">EN / עב</button>
+<body>
+    <button style="position:absolute; top:10px; left:10px; z-index:110;" onclick="toggleLang()">עברית/English</button>
 
     <div id="welcome-overlay">
-        <h1 id="t-welcome">מבוך</h1>
-        <input type="text" id="name-input" placeholder="Name / שם" style="padding:10px;"><br>
-        <button onclick="startGame()" style="padding:10px 20px; background:#2ecc71; color:white; border:none; border-radius:5px;">START / התחל</button>
+        <h1 id="t-welcome">מבוך משפחתי</h1>
+        <input type="text" id="name-input" placeholder="שם שחקן / Name" style="padding: 12px; font-size: 18px; margin-bottom: 10px;"><br>
+        <button class="btn btn-green" id="t-start" onclick="joinGame()">הצטרף למשחק</button><br>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" class="btn btn-blue" id="t-rules">חוקי המשחק (Rules)</a>
     </div>
 
-    <div style="display:flex; justify-content: space-around; padding: 10px; background: #111;">
+    <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111; border-bottom: 2px solid #333;">
         <div><span id="t-inj">פציעות</span>: <span id="inj">0</span>/5</div>
         <div><span id="t-bul">כדורים</span>: <span id="bul">3</span> | <span id="t-bom">פצצות</span>: <span id="bom">3</span></div>
+        <div id="vision-on" style="color:yellow; display:none;">🔦</div>
     </div>
 
     <div style="display: flex; flex-grow: 1;">
-        <div id="sidebar" style="width: 240px; display: flex; flex-direction: column; padding: 10px; border-left: 1px solid #333;">
+        <div id="sidebar" style="width: 250px; display: flex; flex-direction: column; padding: 10px; border-left: 1px solid #333;">
             <div id="log-box"></div>
         </div>
         <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
@@ -44,27 +47,24 @@
         const socket = io();
         let lang = 'he';
         const trans = {
-            he: { welcome: "מבוך משפחתי", inj: "פציעות", bul: "כדורים", bom: "פצצות",
-                LOG_RIVER_BOAT: " חצה את הנהר בבטחה.", LOG_RIVER_RAFT: " נסחף עם הרפסודה להתחלה.", LOG_RIVER_SWEEP: " נסחף ונפצע בנהר!",
-                LOG_ARMORY: " מילא ציוד בנשקייה!", LOG_DEVIL: " פגש את השטן ואיבד ציוד!", LOG_MONSTER: " פגש מפלצת וקיבל תור וציוד!",
-                LOG_PICKUP: " מצא: " },
-            en: { welcome: "Family Maze", inj: "Injuries", bul: "Bullets", bom: "Bombs",
-                LOG_RIVER_BOAT: " crossed the river safely.", LOG_RIVER_RAFT: " drifted back with the raft.", LOG_RIVER_SWEEP: " was swept and injured!",
-                LOG_ARMORY: " restocked at the armory!", LOG_DEVIL: " met the Devil!", LOG_MONSTER: " met a monster!",
-                LOG_PICKUP: " found: " }
+            he: { welcome: "מבוך משפחתי", start: "הצטרף למשחק", rules: "חוקי המשחק", inj: "פציעות", bul: "כדורים", bom: "פצצות", pickup: "מצא: ", river_sweep: "נסחף בנהר!", river_raft: "נסחף אך מוגן ע\"י רפסודה", devil: "פגש את השטן!" },
+            en: { welcome: "Family Maze", start: "Join Game", rules: "Game Rules", inj: "Injuries", bul: "Bullets", bom: "Bombs", pickup: "Found: ", river_sweep: "Swept by river!", river_raft: "Drifted but safe (Raft)", devil: "Met the Devil!" }
         };
 
-        function toggleL() {
+        function toggleLang() {
             lang = (lang === 'he' ? 'en' : 'he');
-            document.getElementById('b').className = (lang === 'he' ? 'rtl' : 'ltr');
+            document.getElementById('html-tag').dir = (lang === 'he' ? 'rtl' : 'ltr');
+            document.getElementById('t-welcome').innerText = trans[lang].welcome;
+            document.getElementById('t-start').innerText = trans[lang].start;
+            document.getElementById('t-rules').innerText = trans[lang].rules;
             document.getElementById('t-inj').innerText = trans[lang].inj;
             document.getElementById('t-bul').innerText = trans[lang].bul;
             document.getElementById('t-bom').innerText = trans[lang].bom;
         }
 
-        function startGame() {
-            const name = document.getElementById('name-input').value || "Player";
-            socket.emit('join', { name, is_man: false });
+        function joinGame() {
+            const name = document.getElementById('name-input').value || "Explorer";
+            socket.emit('join', { name: name, is_man: false });
             document.getElementById('welcome-overlay').style.display = 'none';
         }
 
@@ -73,18 +73,20 @@
             document.getElementById('inj').innerText = my.injuries;
             document.getElementById('bul').innerText = my.bul;
             document.getElementById('bom').innerText = my.bom;
-            
-            // חוק פנס + סוללות: רואים הכל 
             const hasVision = my.items.includes('flashlight') && my.items.includes('batteries');
+            document.getElementById('vision-on').style.display = hasVision ? 'block' : 'none';
             
-            document.getElementById('log-box').innerHTML = d.logs.map(l => `<div><b>${l.n}</b> ${trans[lang][l.key] || ''} ${l.i ? trans[lang].LOG_PICKUP + l.i : ''}</div>`).join('');
+            document.getElementById('log-box').innerHTML = d.logs.map(l => {
+                let msg = l.key ? (trans[lang][l.key] || l.key) : "";
+                return `<div><b>${l.n}</b> ${msg} ${l.e ? trans[lang].pickup + l.e : ""}</div>`;
+            }).join('');
             
             const b = document.getElementById('board'); b.innerHTML = '';
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
                 const td = d.maze[y][x]; const cell = document.createElement('div');
-                const known = hasVision || my.known_tiles.some(t => t[0] === x && t[1] === y);
-                cell.className = 'cell' + (known ? ' revealed' : '');
-                if(known) {
+                const isKnown = hasVision || my.known_tiles.some(t => t[0] === x && t[1] === y);
+                cell.className = 'cell' + (isKnown ? ' revealed' : '');
+                if(isKnown) {
                     if(td.walls.top) cell.classList.add('wall-top');
                     if(td.walls.left) cell.classList.add('wall-left');
                     if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
@@ -92,7 +94,7 @@
                 if(my.x === x && my.y === y) {
                     const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot);
                 }
-                if(d.phase === 2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x,y});
+                if(d.phase === 2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x, y});
                 b.appendChild(cell);
             }
         });
