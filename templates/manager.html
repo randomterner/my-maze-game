@@ -47,12 +47,12 @@
     </div>
 
     <script>
-        const socket = io(); let currentSelected = "empty"; let localMaze = []; let phase = 1;
+        const socket = io(); let currentSelected = "empty"; let localMaze = []; let currentPhase = 1;
         function sel(t, e) { currentSelected = t; document.querySelectorAll('.tile-opt').forEach(o => o.classList.remove('selected')); e.classList.add('selected'); }
 
         socket.on('sync', d => {
-            localMaze = d.maze; phase = d.phase;
-            document.getElementById('phase-txt').innerText = "Phase: " + d.phase + (d.phase > 1 ? " (LOCKED)" : "");
+            localMaze = d.maze; currentPhase = d.phase;
+            document.getElementById('phase-txt').innerText = "Phase: " + d.phase + (d.phase > 1 ? " (Locked)" : "");
             const g = document.getElementById('grid'); g.innerHTML = '';
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
                 const td = d.maze[y][x]; const cell = document.createElement('div'); cell.className = 'cell';
@@ -60,7 +60,7 @@
                 if(td.walls.left) cell.classList.add('wall-left');
                 if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                 cell.onmousedown = (e) => {
-                    if (phase !== 1) return; // חסימת בנייה
+                    if (currentPhase !== 1) return; // חסימת בנייה
                     if (e.button === 2) {
                         const r = cell.getBoundingClientRect();
                         if (e.clientY - r.top < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
