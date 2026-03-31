@@ -1,56 +1,47 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Maze Manager - Host</title>
+    <meta charset="UTF-8"><title>ניהול מבוך - מנחה</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; overflow: hidden; }
+        body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; }
         #sidebar { width: 220px; background: #222; padding: 15px; border-right: 2px solid #444; overflow-y: auto; }
         #grid-area { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 1px; background: #444; padding: 5px; }
-        .cell { width: 50px; height: 50px; background: #fff; position: relative; background-size: contain; background-repeat: no-repeat; cursor: pointer; box-sizing: border-box; }
-        
-        /* Wall Fix - Uses box-shadow to prevent black lines/shifting */
+        .cell { width: 50px; height: 50px; background: #fff; position: relative; background-size: contain; cursor: pointer; box-sizing: border-box; }
         .wall-top { box-shadow: inset 0 6px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 6px 0 0 0 #ff4d4d; }
-        .wall-top.wall-left { box-shadow: inset 6px 6px 0 0 #ff4d4d; }
-        
-        .tile-opt { padding: 8px; margin: 4px 0; background: #333; cursor: pointer; border-radius: 4px; border: 1px solid #555; text-align: center; font-size: 14px; }
+        .tile-opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border-radius: 4px; text-align: center; font-size: 13px; }
         .selected { border: 2px solid #2ecc71; background: #1e5631; }
-        .btn { width: 100%; padding: 10px; margin: 10px 0; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; color: white; }
-        #log-box { height: 150px; overflow-y: auto; font-size: 12px; background: #111; padding: 10px; border: 1px solid #333; }
-        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .btn { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; border: none; border-radius: 5px; color: white; font-weight: bold; }
     </style>
 </head>
 <body oncontextmenu="return false;">
-
     <div id="sidebar">
-        <div><span id="conn-status" class="status-dot" style="background: red;"></span> <span id="conn-text">Connecting...</span></div>
-        <hr>
-        <h3>Tile Tools</h3>
+        <h3>כלי מנחה [cite: 8]</h3>
         <div id="tools">
-            <div class="tile-opt selected" onclick="selectTile('empty', this)">Floor</div>
-            <div class="tile-opt" onclick="selectTile('river_start', this)">🌊 River Start</div>
-            <div class="tile-opt" onclick="selectTile('river', this)">💧 River Tile</div>
-            <div class="tile-opt" onclick="selectTile('raft', this)">🪵 Raft</div>
-            <div class="tile-opt" onclick="selectTile('boat', this)">🛶 Boat</div>
-            <div class="tile-opt" onclick="selectTile('black_hole', this)">🕳️ Black Hole</div>
-            <div class="tile-opt" onclick="selectTile('armory', this)">⚔️ Armory</div>
-            <div class="tile-opt" onclick="selectTile('clinc', this)">🏥 Clinic</div>
-            <div class="tile-opt" onclick="selectTile('er', this)">🚑 ER</div>
-            <div class="tile-opt" onclick="selectTile('devil', this)">😈 Devil</div>
-            <div class="tile-opt" onclick="selectTile('tresure', this)">🏆 Treasure</div>
-            <div class="tile-opt" onclick="selectTile('exit', this)">🚪 Exit</div>
+            <div class="tile-opt selected" onclick="selectTile('empty', this)">רצפה ריקה</div>
+            <div class="tile-opt" onclick="selectTile('treasure', this)">💰 אוצר אמיתי</div>
+            <div class="tile-opt" onclick="selectTile('fake_treasure', this)">💎 אוצר מדומה</div>
+            <div class="tile-opt" onclick="selectTile('monster', this)">👾 מפלצת</div>
+            <div class="tile-opt" onclick="selectTile('flashlight', this)">🔦 פנס</div>
+            <div class="tile-opt" onclick="selectTile('batteries', this)">🔋 סוללות</div>
+            <div class="tile-opt" onclick="selectTile('river_start', this)">🌊 תחילת נהר</div>
+            <div class="tile-opt" onclick="selectTile('river', this)">💧 נהר</div>
+            <div class="tile-opt" onclick="selectTile('boat', this)">🛶 סירה</div>
+            <div class="tile-opt" onclick="selectTile('raft', this)">🪵 רפסודה</div>
+            <div class="tile-opt" onclick="selectTile('clinc', this)">🏥 מרפאה</div>
+            <div class="tile-opt" onclick="selectTile('er', this)">🚑 מיון</div>
+            <div class="tile-opt" onclick="selectTile('black_hole', this)">🕳️ חור שחור</div>
+            <div class="tile-opt" onclick="selectTile('exit', this)">🚪 יציאה</div>
         </div>
-        <button class="btn" style="background:#e67e22" onclick="socket.emit('set_phase', 2)">Set SPAWN</button>
-        <button class="btn" style="background:#2ecc71" onclick="socket.emit('set_phase', 3)">START GAME</button>
-        <h4>Logs</h4>
-        <div id="log-box"></div>
+        <button class="btn" style="background:#e67e22" onclick="socket.emit('set_phase', 2)">שלב הצבת שחקנים</button>
+        <button class="btn" style="background:#2ecc71" onclick="socket.emit('set_phase', 3)">התחל משחק!</button>
     </div>
-
     <div id="grid-area">
-        <h2 id="phase-display">Phase: Loading...</h2>
+        <h2 id="phase-display">שלב 1: בניית מבוך</h2>
         <div id="grid"></div>
+        <p style="font-size:12px; color:#888;">קליק שמאלי: הצבת חפץ | קליק ימני: הצבת קיר (למעלה/שמאל)</p>
     </div>
 
     <script>
@@ -58,30 +49,16 @@
         let selectedTile = "empty";
         let localMaze = [];
 
-        socket.on('connect', () => {
-            document.getElementById('conn-status').style.background = 'green';
-            document.getElementById('conn-text').innerText = 'Connected';
-            socket.emit('join', { name: "Host", is_man: true });
-        });
-
-        socket.on('disconnect', () => {
-            document.getElementById('conn-status').style.background = 'red';
-            document.getElementById('conn-text').innerText = 'Disconnected';
-        });
-
-        function selectTile(type, el) {
-            selectedTile = type;
-            document.querySelectorAll('.tile-opt').forEach(opt => opt.classList.remove('selected'));
-            el.classList.add('selected');
+        function selectTile(t, e) {
+            selectedTile = t;
+            document.querySelectorAll('.tile-opt').forEach(o => o.classList.remove('selected'));
+            e.classList.add('selected');
         }
 
         socket.on('sync', d => {
             localMaze = d.maze;
-            document.getElementById('phase-display').innerText = "Phase: " + d.phase;
-            document.getElementById('log-box').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
-            
-            const grid = document.getElementById('grid');
-            grid.innerHTML = '';
+            document.getElementById('phase-display').innerText = "שלב: " + d.phase;
+            const grid = document.getElementById('grid'); grid.innerHTML = '';
             for(let y=0; y<10; y++) {
                 for(let x=0; x<10; x++) {
                     const data = d.maze[y][x];
@@ -90,21 +67,19 @@
                     if(data.walls.top) cell.classList.add('wall-top');
                     if(data.walls.left) cell.classList.add('wall-left');
                     if(data.tile !== "empty") cell.style.backgroundImage = `url('/static/${data.tile}.png')`;
-                    
                     cell.onmousedown = (e) => {
-                        if (e.button === 2) { // Right Click
+                        if (e.button === 2) {
                             const r = cell.getBoundingClientRect();
                             if (e.clientY - r.top < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
                             else if (e.clientX - r.left < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
-                        } else { // Left Click
-                            localMaze[y][x].tile = selectedTile;
-                        }
+                        } else { localMaze[y][x].tile = selectedTile; }
                         socket.emit('update_maze', localMaze);
                     };
                     grid.appendChild(cell);
                 }
             }
         });
+        socket.emit('join', { name: "Host", is_man: true });
     </script>
 </body>
 </html>
