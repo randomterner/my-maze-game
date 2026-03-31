@@ -3,7 +3,7 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'maze_family_secret_123'
+app.config['SECRET_KEY'] = 'maze_family_secret'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60)
 
 # מצב המשחק
@@ -82,23 +82,25 @@ def on_move(data):
                 p['x'], p['y'] = river_start_pos
                 p['injuries'] += 1
                 add_log("LOG_RIVER_SWEEP", p['n'])
-
-        elif tile == "armory": # נשקייה: ממלא עד 3
+        elif tile == "armory":
             p['bul'] = max(p['bul'], 3)
             p['bom'] = max(p['bom'], 3)
             add_log("LOG_ARMORY", p['n'])
-
-        elif tile == "monster": # מפלצת: תור נוסף וציוד
+        elif tile == "monster":
             p['bul'] = min(5, p['bul'] + 1); p['bom'] = min(5, p['bom'] + 1)
             add_log("LOG_MONSTER", p['n'])
-
         elif tile == "devil":
             p['injuries'] += 1; p['bul'] = max(0, p['bul']-1); p['bom'] = max(0, p['bom']-1)
             add_log("LOG_DEVIL", p['n'])
-
+        elif tile == "black_hole":
+            p['x'], p['y'] = random.randint(0,9), random.randint(0,9)
+            add_log("LOG_BLACK_HOLE", p['n'])
+        elif tile == "clinc" and p['injuries'] < 4:
+            p['injuries'] = 0; add_log("LOG_CLINIC", p['n'])
+        elif tile == "er" and p['injuries'] == 4:
+            p['injuries'] = 3; add_log("LOG_ER", p['n'])
         elif tile == "exit" and "treasure" in p['items']:
             winner = p['n']; add_log("LOG_WIN_EXIT", p['n'])
-
         elif tile in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries"]:
             p['items'].append(tile); maze[ny][nx]['tile'] = "empty"
             add_log("LOG_PICKUP", p['n'], tile)
@@ -109,7 +111,7 @@ def on_move(data):
 @socketio.on('update_maze')
 def on_update_maze(data):
     global maze, river_start_pos
-    if game_phase == 1: # מאפשר שינויים רק בשלב הבנייה
+    if game_phase == 1:
         maze = data
         for y in range(10):
             for x in range(10):
