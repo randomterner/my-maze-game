@@ -1,39 +1,31 @@
-import os
+import os, random
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'maze_secret_123'
-# ping_timeout help keep the connection alive on hosting platforms
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60, ping_interval=25)
+app.config['SECRET_KEY'] = 'maze_final_fix'
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60)
 
-# Global Game State
+# מצב המשחק
 maze = [[{"tile": "empty", "walls": {"top": False, "left": False}} for _ in range(10)] for _ in range(10)]
-players = {}
-game_phase = 1 
+players = {} 
+player_order = [] 
+current_turn_idx = 0
+game_phase = 1 # 1: Build, 2: Spawn, 3: Play
 game_logs = []
 winner = None
+river_start_pos = (0,0)
 
 def add_log(msg):
     game_logs.insert(0, msg)
-    if len(game_logs) > 25:
-        game_logs.pop()
+    if len(game_logs) > 30: game_logs.pop()
 
 def sync_all():
     p_list = [p for p in players.values() if not p['is_man']]
-    alive = [p for p in p_list if p['injuries'] < 5]
-    
-    global winner
-    if len(alive) == 1 and len(p_list) > 1 and not winner:
-        winner = alive[0]['n']
-        add_log(f"🏆 {winner} IS THE LAST SURVIVOR!")
-
+    active_id = player_order[current_turn_idx] if player_order else None
     socketio.emit('sync', {
-        "maze": maze,
-        "players": [{"n":pl['n'], "x":pl['x'], "y":pl['y'], "injuries":pl['injuries'], "dead":pl['injuries']>=5} for pl in players.values()],
-        "phase": game_phase,
-        "logs": game_logs,
-        "winner": winner
+        "maze": maze, "players": p_list, "phase": game_phase,
+        "logs": game_logs, "winner": winner, "turn_id": active_id
     })
 
 @app.route('/')
@@ -44,123 +36,105 @@ def manager(): return render_template('manager.html')
 
 @socketio.on('join')
 def on_join(data):
-    name = data.get('name', 'Player')
-    is_m = (name == "MANAGER")
+    is_man = data.get('is_man', False)
     players[request.sid] = {
-        "n": name, "x": 0, "y": 0, "has_spawned": False, 
-        "injuries": 0, "bul": 3, "bom": 3, "items": [], 
-        "is_man": is_m, "known_tiles": [], "is_lost": False
+        "id": request.sid, "n": data.get('name', 'Player'), "is_man": is_man,
+        "x": 0, "y": 0, "injuries": 0, "bul": 3, "bom": 3, "items": [], 
+        "has_spawned": False, "known_tiles": []
     }
-    if not is_m: add_log(f"📢 {name} joined the maze")
+    if not is_man and request.sid not in player_order:
+        player_order.append(request.sid)
     sync_all()
 
 @socketio.on('set_phase')
-def set_phase(data):
+def on_set_phase(ph):
     global game_phase
-    try:
-        val = int(data['phase'])
-        if val > game_phase: 
-            game_phase = val
-            add_log(f"🚩 Phase shifted to: {game_phase}")
-            sync_all()
-    except: pass
+    game_phase = int(ph)
+    sync_all()
 
-@socketio.on('save_maze')
-def save_maze(data):
-    global maze
-    if game_phase == 1:
-        maze = data['maze']
-        sync_all()
+@socketio.on('next_turn')
+def on_next_turn():
+    global current_turn_idx
+    if not player_order: return
+    current_turn_idx = (current_turn_idx + 1) % len(player_order)
+    sync_all()
 
-@socketio.on('action')
-def handle_action(data):
-    global winner
+@socketio.on('move')
+def on_move(data):
     p = players.get(request.sid)
-    if not p or game_phase != 3 or p['injuries'] >= 5 or p['is_man'] or winner: return
-    
-    act, dx, dy = data.get('type'), data.get('dx', 0), data.get('dy', 0)
-
-    if act == 'shoot' and p['bul'] > 0:
-        p['bul'] -= 1
-        tx, ty = p['x'], p['y']
-        hit_target = None
-        while 0 <= tx <= 9 and 0 <= ty <= 9:
-            if dy == -1 and maze[ty][tx]['walls']['top']: break
-            if dy == 1 and ty < 9 and maze[ty+1][tx]['walls']['top']: break
-            if dx == -1 and maze[ty][tx]['walls']['left']: break
-            if dx == 1 and tx < 9 and maze[ty][tx+1]['walls']['left']: break
-            tx += dx
-            ty += dy
-            target = next((pl for pl in players.values() if pl['x']==tx and pl['y']==ty and not pl['is_man']), None)
-            if target: 
-                target['injuries'] += 1
-                hit_target = target['n']
-                add_log(f"💥 {p['n']} shot and hit {hit_target}!")
-                break
-        if not hit_target: add_log(f"🔫 {p['n']} fired and missed")
-
-    elif act == 'bomb' and p['bom'] > 0:
-        p['bom'] -= 1
-        wall_destroyed = False
-        if dy == -1 and maze[p['y']][p['x']]['walls']['top']:
-            maze[p['y']][p['x']]['walls']['top'] = False
-            wall_destroyed = True
-        elif dy == 1 and p['y'] < 9 and maze[p['y']+1][p['x']]['walls']['top']:
-            maze[p['y']+1][p['x']]['walls']['top'] = False
-            wall_destroyed = True
-        elif dx == -1 and maze[p['y']][p['x']]['walls']['left']:
-            maze[p['y']][p['x']]['walls']['left'] = False
-            wall_destroyed = True
-        elif dx == 1 and p['x'] < 9 and maze[p['y']][p['x']+1]['walls']['left']:
-            maze[p['y']][p['x']+1]['walls']['left'] = False
-            wall_destroyed = True
+    if not p or game_phase != 3 or p['id'] != player_order[current_turn_idx]: return
+    dx, dy = data['dx'], data['dy']
+    nx, ny = p['x'] + dx, p['y'] + dy
+    if 0 <= nx < 10 and 0 <= ny < 10:
+        # בדיקת קירות
+        if dx == 1 and maze[p['y']][nx]['walls']['left']: return
+        if dx == -1 and maze[p['y']][p['x']]['walls']['left']: return
+        if dy == 1 and maze[ny][p['x']]['walls']['top']: return
+        if dy == -1 and maze[p['y']][p['x']]['walls']['top']: return
         
-        if wall_destroyed: add_log(f"💣 {p['n']} destroyed a wall!")
-        else: add_log(f"🧨 {p['n']} wasted a bomb on open air")
-
-    elif act == 'move':
-        blocked = (dy == -1 and maze[p['y']][p['x']]['walls']['top']) or \
-                  (dy == 1 and p['y'] < 9 and maze[p['y']+1][p['x']]['walls']['top']) or \
-                  (dx == -1 and maze[p['y']][p['x']]['walls']['left']) or \
-                  (dx == 1 and p['x'] < 9 and maze[p['y']][p['x']+1]['walls']['left'])
+        p['x'], p['y'] = nx, ny
+        tile = maze[ny][nx]['tile']
         
-        if not blocked:
-            p['x'] += dx; p['y'] += dy
-            tile = maze[p['y']][p['x']]['tile']
-            if tile == "monster": 
-                p['bul']+=1; p['bom']+=1
-                add_log(f"👾 {p['n']} found a Monster! Equipment found.")
-            elif tile == "devil": 
-                p['injuries']+=1
-                p['bul']=max(0,p['bul']-1); p['bom']=max(0,p['bom']-1)
-                add_log(f"😈 {p['n']} met the Devil! Injury sustained.")
-            elif tile == "clinic" and p['injuries'] <= 3: 
-                p['injuries'] = max(0, p['injuries']-1)
-                add_log(f"🏥 {p['n']} was healed.")
-            elif tile == "er" and p['injuries'] == 4: 
-                p['injuries'] = 3
-                add_log(f"🚑 {p['n']} saved at ER!")
-            elif tile in ["treasure", "fake_treasure", "flashlight", "batteries", "boat", "raft"]:
-                p['items'].append(tile)
-                maze[p['y']][p['x']]['tile'] = "empty"
-                add_log(f"📦 {p['n']} found {tile}!")
-            elif tile == "exit" and "treasure" in p['items']: 
-                winner = p['n']
-                add_log(f"🎉 {winner} reached the exit with the treasure!")
-            
-            if [p['x'], p['y']] not in p['known_tiles']: p['known_tiles'].append([p['x'], p['y']])
+        if tile == "river":
+            if "boat" in p['items']: add_log(f"🛶 {p['n']} עבר את הנהר.")
+            elif "raft" in p['items']: p['x'], p['y'] = river_start_pos; add_log(f"🌊 {p['n']} נסחף להתחלה.")
+            else: p['x'], p['y'] = river_start_pos; p['injuries'] += 1; add_log(f"🌊 {p['n']} נסחף ונפצע!")
+        elif tile == "armory":
+            p['bul'] = max(p['bul'], 3); p['bom'] = max(p['bom'], 3); add_log(f"⚔️ {p['n']} התחמש.")
+        elif tile == "monster":
+            p['bul'] += 1; p['bom'] += 1; add_log(f"👾 {p['n']} פגש מפלצת!")
+        elif tile == "devil":
+            p['injuries'] += 1; add_log(f"😈 {p['n']} פגש את השטן!")
+        elif tile == "exit" and "treasure" in p['items']:
+            global winner; winner = p['n']; add_log(f"🏆 {p['n']} ניצח!")
+        elif tile in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries"]:
+            p['items'].append(tile); maze[ny][nx]['tile'] = "empty"
+            add_log(f"📦 {p['n']} מצא {tile}.")
+        
+        if [p['x'], p['y']] not in p['known_tiles']: p['known_tiles'].append([p['x'], p['y']])
+    sync_all()
+
+@socketio.on('shoot')
+def on_shoot(data):
+    p = players.get(request.sid)
+    if not p or p['bul'] <= 0 or p['id'] != player_order[current_turn_idx]: return
+    p['bul'] -= 1; dx, dy = data['dx'], data['dy']; sx, sy = p['x'], p['y']
+    for _ in range(10):
+        if dx == 1 and (sx + 1 >= 10 or maze[sy][sx+1]['walls']['left']): break
+        if dx == -1 and maze[sy][sx]['walls']['left']: break
+        if dy == 1 and (sy + 1 >= 10 or maze[sy+1][sx]['walls']['top']): break
+        if dy == -1 and maze[sy][sx]['walls']['top']: break
+        sx += dx; sy += dy
+        target = next((pl for pl in players.values() if not pl['is_man'] and pl['x'] == sx and pl['y'] == sy), None)
+        if target: target['injuries'] += 1; add_log(f"💥 {p['n']} פגע ב-{target['n']}!"); break
+    sync_all()
+
+@socketio.on('bomb')
+def on_bomb(data):
+    p = players.get(request.sid)
+    if not p or p['bom'] <= 0 or p['id'] != player_order[current_turn_idx]: return
+    dx, dy = data['dx'], data['dy']; tx, ty = p['x'], p['y']; wt = ""
+    if dx == 1 and p['x'] < 9: tx += 1; wt = "left"
+    elif dx == -1: wt = "left"
+    elif dy == 1 and p['y'] < 9: ty += 1; wt = "top"
+    elif dy == -1: wt = "top"
+    if wt and maze[ty][tx]['walls'][wt]: maze[ty][tx]['walls'][wt] = False; p['bom'] -= 1; add_log(f"💣 {p['n']} פוצץ קיר.")
     sync_all()
 
 @socketio.on('set_spawn')
-def set_spawn(d):
+def on_set_spawn(d):
     p = players.get(request.sid)
-    if p and game_phase == 2:
-        p['x'], p['y'] = d['x'], d['y']
-        p['has_spawned'] = True
-        p['known_tiles'] = [[d['x'], d['y']]]
-        add_log(f"📍 {p['n']} spawned")
-        sync_all()
+    if p: p['x'],p['y'] = d['x'],d['y']; p['has_spawned'] = True; p['known_tiles'] = [[d['x'], d['y']]]; sync_all()
+
+@socketio.on('update_maze')
+def on_update_maze(d):
+    global maze, river_start_pos
+    if game_phase == 1: 
+        maze = d
+        for y in range(10):
+            for x in range(10):
+                if maze[y][x]['tile'] == "river_start": river_start_pos = (x,y)
+    sync_all()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=10000)
