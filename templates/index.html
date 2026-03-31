@@ -1,50 +1,39 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Family Maze Game</title>
+    <meta charset="UTF-8"><title>מבוך - שחקן</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-        
-        #board { display: grid; grid-template-columns: repeat(10, 55px); gap: 1px; background: #333; padding: 5px; }
-        .cell { 
-            width: 55px; height: 55px; background: #111; position: relative; 
-            background-size: contain; background-repeat: no-repeat; 
-            box-sizing: border-box; 
-        }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 1px; background: #333; padding: 5px; }
+        .cell { width: 50px; height: 50px; background: #111; position: relative; background-size: contain; box-sizing: border-box; }
         .revealed { background: #444; }
-        
-        /* Wall Fix - No layout shift */
+        /* תיקון קירות ללא תזוזה */
         .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
-        .wall-top.wall-left { box-shadow: inset 5px 5px 0 0 #ff4d4d; }
-
-        #log-box { flex-grow: 1; overflow-y: auto; background: #0a0a0a; padding: 10px; font-size: 13px; border: 1px solid #333; color: #aaa; }
-        .p-dot { width: 16px; height: 16px; background: cyan; border-radius: 50%; margin: 18px auto; border: 2px solid white; box-shadow: 0 0 10px cyan; }
-        
-        button { padding: 10px 20px; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 5px; font-weight: bold; }
-        .copy-btn { background: #3498db; margin-top: 5px; width: 100%; font-size: 12px; }
+        #log-box { flex-grow: 1; overflow-y: auto; background: #0a0a0a; padding: 10px; font-size: 13px; border: 1px solid #333; }
+        .p-dot { width: 14px; height: 14px; background: cyan; border-radius: 50%; margin: 18px auto; border: 2px solid white; }
+        button { padding: 8px 15px; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 5px; }
     </style>
 </head>
 <body>
     <div id="welcome-overlay">
-        <h1>Family Maze Adventure</h1>
-        <p><a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" style="color: #3498db;">Click here to read the Game Rules</a></p>
-        <input type="text" id="name-input" placeholder="Your Name" style="padding: 12px; font-size: 16px; border-radius: 5px; border: none;"><br>
-        <button onclick="startGame()">Enter Maze</button>
+        <h1>ברוכים הבאים למבוך</h1>
+        <input type="text" id="name-input" placeholder="שם שחקן" style="padding: 10px; margin: 10px;"><br>
+        <button onclick="startGame()">התחל משחק</button>
     </div>
 
-    <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111; border-bottom: 2px solid #333;">
-        <div>Injuries: <span id="inj">0</span>/5</div>
-        <div>Bullets: <span id="bul">3</span></div>
-        <div>Bombs: <span id="bom">3</span></div>
+    <div style="display:flex; justify-content: space-around; padding: 10px; background: #111;">
+        <div>פציעות: <span id="inj">0</span>/5</div>
+        <div>כדורים: <span id="bul">3</span> | פצצות: <span id="bom">3</span></div>
+        <div id="vision-msg" style="color: yellow; display:none;">🔦 פנס פעיל!</div>
     </div>
 
     <div style="display: flex; flex-grow: 1;">
-        <div id="sidebar" style="width: 240px; display: flex; flex-direction: column; padding: 10px; border-left: 1px solid #333;">
+        <div id="sidebar" style="width: 220px; display: flex; flex-direction: column; padding: 10px; border-left: 1px solid #333;">
             <div id="log-box"></div>
-            <button class="copy-btn" onclick="copyLogs()">📋 Copy History</button>
+            <button onclick="copyLogs()" style="margin-top:5px; background:#3498db;">📋 העתק לוג</button>
         </div>
         <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
             <div id="board"></div>
@@ -54,14 +43,15 @@
     <script>
         const socket = io();
         function startGame() {
-            const name = document.getElementById('name-input').value || "Explorer";
-            socket.emit('join', { name: name, is_man: false });
+            const name = document.getElementById('name-input').value || "שחקן";
+            socket.emit('join', { name, is_man: false });
             document.getElementById('welcome-overlay').style.display = 'none';
         }
 
         function copyLogs() {
             const logs = Array.from(document.querySelectorAll('.log-entry')).map(e => e.innerText).join('\n');
-            navigator.clipboard.writeText(logs).then(() => alert("Game log copied!"));
+            navigator.clipboard.writeText(logs);
+            alert("הלוג הועתק!");
         }
 
         socket.on('sync', d => {
@@ -70,20 +60,20 @@
             document.getElementById('inj').innerText = my.injuries;
             document.getElementById('bul').innerText = my.bul;
             document.getElementById('bom').innerText = my.bom;
+            document.getElementById('vision-msg').style.display = (my.items.includes('flashlight') && my.items.includes('batteries')) ? 'block' : 'none';
             document.getElementById('log-box').innerHTML = d.logs.map(m => `<div class="log-entry">${m}</div>`).join('');
             
             const b = document.getElementById('board'); b.innerHTML = '';
             for(let y=0; y<10; y++) {
                 for(let x=0; x<10; x++) {
-                    const cellData = d.maze[y][x];
+                    const td = d.maze[y][x];
                     const cell = document.createElement('div');
-                    const isKnown = my.known_tiles.some(t => t[0] === x && t[1] === y);
-                    
-                    cell.className = 'cell' + (isKnown ? ' revealed' : '');
-                    if(isKnown) {
-                        if(cellData.walls.top) cell.classList.add('wall-top');
-                        if(cellData.walls.left) cell.classList.add('wall-left');
-                        if(cellData.tile !== "empty") cell.style.backgroundImage = `url('/static/${cellData.tile}.png')`;
+                    const known = my.known_tiles.some(t => t[0] === x && t[1] === y);
+                    cell.className = 'cell' + (known ? ' revealed' : '');
+                    if(known) {
+                        if(td.walls.top) cell.classList.add('wall-top');
+                        if(td.walls.left) cell.classList.add('wall-left');
+                        if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                     }
                     if(my.x === x && my.y === y) {
                         const dot = document.createElement('div'); dot.className = 'p-dot';
