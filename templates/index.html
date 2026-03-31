@@ -7,13 +7,13 @@
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
         #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         #board { display: grid; grid-template-columns: repeat(10, 50px); gap: 1px; background: #333; padding: 5px; }
-        .cell { width: 50px; height: 50px; background: #111; position: relative; background-size: contain; box-sizing: border-box; cursor: pointer; }
+        .cell { width: 50px; height: 50px; background: #111; position: relative; background-size: contain; box-sizing: border-box; }
         .revealed { background: #444; }
         .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
         #log-box { flex-grow: 1; overflow-y: auto; background: #0a0a0a; padding: 10px; font-size: 13px; border: 1px solid #333; }
         .p-dot { width: 16px; height: 16px; background: cyan; border-radius: 50%; margin: 17px auto; border: 2px solid white; box-shadow: 0 0 10px cyan; }
-        .btn { padding: 12px 25px; cursor: pointer; border: none; color: white; border-radius: 5px; font-weight: bold; margin: 5px; text-decoration: none; display: inline-block; }
+        .btn { padding: 12px 25px; cursor: pointer; border: none; color: white; border-radius: 5px; font-weight: bold; margin: 5px; text-decoration: none; display: inline-block; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -21,7 +21,7 @@
 
     <div id="welcome-overlay">
         <h1 id="t-welcome">מבוך משפחתי</h1>
-        <input type="text" id="name-input" placeholder="שם שחקן / Name" style="padding: 12px; font-size: 18px;"><br>
+        <input type="text" id="name-input" placeholder="שם שחקן / Name" style="padding: 12px; font-size: 18px; margin-bottom: 10px;"><br>
         <button class="btn" style="background:#2ecc71;" id="t-start" onclick="joinGame()">הצטרף למשחק</button><br>
         <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" class="btn" style="background:#3498db;" id="t-rules">חוקי המשחק (Rules)</a>
     </div>
@@ -33,7 +33,7 @@
     </div>
 
     <div style="display: flex; flex-grow: 1;">
-        <div id="sidebar" style="width: 250px; display: flex; flex-direction: column; padding: 10px; border-left: 1px solid #333;">
+        <div id="sidebar" style="width: 250px; display: flex; flex-direction: column; padding: 10px; border-left: 1px solid #333; border-right: 1px solid #333;">
             <div id="log-box"></div>
         </div>
         <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
@@ -45,8 +45,8 @@
         const socket = io();
         let lang = 'he';
         const trans = {
-            he: { welcome: "מבוך משפחתי", start: "הצטרף", rules: "חוקים", inj: "פציעות", bul: "כדורים", bom: "פצצות", pickup: "מצא: " },
-            en: { welcome: "Family Maze", start: "Join", rules: "Rules", inj: "Injuries", bul: "Bullets", bom: "Bombs", pickup: "Found: " }
+            he: { welcome: "מבוך משפחתי", start: "הצטרף", rules: "חוקים", inj: "פציעות", bul: "כדורים", bom: "פצצות", pickup: "מצא: ", river_sweep: "נסחף בנהר!", river_raft: "נסחף אך מוגן ע\"י רפסודה", devil: "פגש את השטן!" },
+            en: { welcome: "Family Maze", start: "Join", rules: "Rules", inj: "Injuries", bul: "Bullets", bom: "Bombs", pickup: "Found: ", river_sweep: "Swept by river!", river_raft: "Drifted but safe (Raft)", devil: "Met the Devil!" }
         };
 
         function toggleLang() {
@@ -92,12 +92,15 @@
                 if(my.x === x && my.y === y) {
                     const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot);
                 }
-                if(d.phase === 2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x, y});
+                if(d.phase === 2 && !my.has_spawned) {
+                    cell.style.cursor = 'pointer';
+                    cell.onclick = () => socket.emit('set_spawn', {x, y});
+                }
                 b.appendChild(cell);
             }
         });
 
-        // תיקון החיצים: בגלל ה-RTL, החלפתי את Left ו-Right
+        // תיקון החיצים: בגלל ה-RTL (ימין הופך לשמאל ולהפך)
         window.addEventListener('keydown', e => {
             const k = {ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[1,0], ArrowRight:[-1,0]};
             if(k[e.key]) socket.emit('move', {dx: k[e.key][0], dy: k[e.key][1]});
