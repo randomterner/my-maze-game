@@ -1,66 +1,88 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html id="html-tag" lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maze Game</title>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maze Player</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        #board-area { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #111; direction: ltr; }
-        #board { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #444; }
-        .cell { width: 32px; height: 32px; background: #000; position: relative; background-size: contain; box-sizing: border-box; }
-        .revealed { background: #333; }
-        .wall-top { box-shadow: inset 0 4px 0 0 #ff4d4d; }
-        .wall-left { box-shadow: inset 4px 0 0 0 #ff4d4d; }
-        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 1px solid white; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #000; direction: ltr !important; }
+        #board { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #333; padding: 4px; border-radius: 4px; }
+        @media (min-width: 600px) { #board { grid-template-columns: repeat(10, 50px); } .cell { width: 50px !important; height: 50px !important; } }
+        .cell { width: 32px; height: 32px; background: #111; position: relative; background-size: contain; box-sizing: border-box; cursor: pointer; }
+        .revealed { background: #444; }
+        .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
+        .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
+        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 2px solid white; box-shadow: 0 0 10px cyan; }
+        .turn-active { border: 2px solid #2ecc71; animation: glow 1s infinite alternate; }
+        @keyframes glow { from { box-shadow: 0 0 5px #2ecc71; } to { box-shadow: 0 0 20px #2ecc71; } }
         
-        #controls-ui { height: 180px; background: #222; display: flex; border-top: 2px solid #444; }
-        #d-pad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 5px; padding: 10px; }
-        #actions { display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 10px; flex-grow: 1; }
-        
-        .btn { width: 50px; height: 50px; background: #444; border: none; color: white; border-radius: 8px; font-size: 20px; font-weight: bold; }
-        .action-btn { width: 100%; height: 45px; background: #555; color: white; border: none; border-radius: 5px; font-size: 16px; }
-        .active-mode { background: #f1c40f !important; color: #000; }
-        #log-box { width: 150px; font-size: 10px; overflow-y: auto; padding: 5px; background: #000; }
+        #ui-panel { height: 180px; background: #222; display: flex; border-top: 2px solid #444; }
+        #dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 4px; padding: 10px; }
+        .ctrl-btn { width: 50px; height: 50px; background: #444; border: none; color: white; border-radius: 8px; font-size: 20px; font-weight: bold; }
+        .action-area { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 10px; }
+        .act-btn { width: 100%; height: 45px; background: #555; border: none; color: white; border-radius: 5px; font-weight: bold; }
+        .mode-active { background: #f1c40f !important; color: #000; }
+        #spawn-alert { background: #e67e22; padding: 10px; text-align: center; font-weight: bold; display: none; }
+        #log-box { width: 120px; background: #000; font-size: 10px; padding: 5px; overflow-y: auto; color: #aaa; }
     </style>
 </head>
 <body>
-    <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111;">
-        <div>❤️ <span id="inj">0</span></div>
-        <div>🔫 <span id="bul">3</span></div>
-        <div>💣 <span id="bom">3</span></div>
+    <button style="position:absolute; top:10px; left:10px; z-index:110;" onclick="toggleLang()">עברית/EN</button>
+
+    <div id="welcome-overlay">
+        <h2 id="t-welcome">מבוך משפחתי</h2>
+        <input type="text" id="name-input" placeholder="..." style="padding:10px; border-radius:5px;"><br>
+        <button onclick="joinGame()" style="padding:10px 20px; background:#2ecc71; color:white; border:none; border-radius:5px; margin-top:10px;">START</button>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" style="color:#3498db; margin-top:10px; display:block;">חוקים / Rules</a>
     </div>
 
-    <div id="board-area"><div id="board"></div></div>
+    <div id="spawn-alert">בחר משבצת כדי להיוולד! / CHOOSE START POSITION!</div>
 
-    <div id="controls-ui">
-        <div id="d-pad">
-            <button class="btn" style="grid-area: up" onclick="handleDir(0,-1)">↑</button>
-            <button class="btn" style="grid-area: left" onclick="handleDir(-1,0)">←</button>
-            <button class="btn" style="grid-area: right" onclick="handleDir(1,0)">→</button>
-            <button class="btn" style="grid-area: down" onclick="handleDir(0,1)">↓</button>
+    <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111; border-bottom: 2px solid #333;">
+        <div id="turn-txt" style="color: #2ecc71; font-weight: bold;">...</div>
+        <div>❤️ <span id="inj">0</span>/5</div>
+        <div>🔫 <span id="bul">3</span> | 💣 <span id="bom">3</span></div>
+    </div>
+
+    <div id="board-container"><div id="board"></div></div>
+
+    <div id="ui-panel">
+        <div id="dpad">
+            <button class="ctrl-btn" style="grid-area: up" onclick="handleDir(0,-1)">↑</button>
+            <button class="ctrl-btn" style="grid-area: left" onclick="handleDir(-1,0)">←</button>
+            <button class="ctrl-btn" style="grid-area: right" onclick="handleDir(1,0)">→</button>
+            <button class="ctrl-btn" style="grid-area: down" onclick="handleDir(0,1)">↓</button>
         </div>
-        <div id="actions">
-            <button id="shoot-btn" class="action-btn" onclick="setMode('shoot')">SHOOT 🔫</button>
-            <button id="bomb-btn" class="action-btn" onclick="setMode('bomb')">BOMB 💣</button>
+        <div class="action-area">
+            <button id="btn-shoot" class="act-btn" onclick="setMode('shoot')">SHOOT 🔫</button>
+            <button id="btn-bomb" class="act-btn" onclick="setMode('bomb')">BOMB 💣</button>
         </div>
         <div id="log-box"></div>
     </div>
 
     <script>
         const socket = io();
-        let actionMode = 'move'; // 'move', 'shoot', 'bomb'
+        let lang = 'he', mode = 'move';
+        const trans = {
+            he: { turn_my: "תורך!", turn_wait: "מחכים ל: ", pickup: "מצאת: " },
+            en: { turn_my: "Your Turn!", turn_wait: "Waiting for: ", pickup: "Found: " }
+        };
 
+        function toggleLang() { lang = (lang === 'he' ? 'en' : 'he'); document.getElementById('html-tag').dir = (lang === 'he' ? 'rtl' : 'ltr'); }
+        function joinGame() { socket.emit('join', { name: document.getElementById('name-input').value || "Explorer", is_man: false }); document.getElementById('welcome-overlay').style.display = 'none'; }
+        
         function setMode(m) {
-            actionMode = (actionMode === m) ? 'move' : m;
-            document.getElementById('shoot-btn').className = (actionMode === 'shoot') ? 'action-btn active-mode' : 'action-btn';
-            document.getElementById('bomb-btn').className = (actionMode === 'bomb') ? 'action-btn active-mode' : 'action-btn';
+            mode = (mode === m) ? 'move' : m;
+            document.getElementById('btn-shoot').className = (mode === 'shoot') ? 'act-btn mode-active' : 'act-btn';
+            document.getElementById('btn-bomb').className = (mode === 'bomb') ? 'act-btn mode-active' : 'act-btn';
         }
 
         function handleDir(dx, dy) {
-            if (actionMode === 'move') socket.emit('move', {dx, dy});
-            else if (actionMode === 'shoot') { socket.emit('shoot', {dx, dy}); setMode('move'); }
-            else if (actionMode === 'bomb') { socket.emit('bomb', {dx, dy}); setMode('move'); }
+            if(mode === 'move') socket.emit('move', {dx, dy});
+            else if(mode === 'shoot') { socket.emit('shoot', {dx, dy}); setMode('move'); }
+            else if(mode === 'bomb') { socket.emit('bomb', {dx, dy}); setMode('move'); }
         }
 
         socket.on('sync', d => {
@@ -68,25 +90,30 @@
             document.getElementById('inj').innerText = my.injuries;
             document.getElementById('bul').innerText = my.bul;
             document.getElementById('bom').innerText = my.bom;
-            document.getElementById('log-box').innerHTML = d.logs.map(l => `<div>${l.n}: ${l.key}</div>`).join('');
+            document.getElementById('spawn-alert').style.display = (d.phase === 2 && !my.has_spawned) ? 'block' : 'none';
             
+            const isMyTurn = (d.turn_id === socket.id);
+            document.getElementById('turn-txt').innerText = isMyTurn ? trans[lang].turn_my : trans[lang].turn_wait + (d.players.find(p => p.id === d.turn_id)?.n || "...");
+            document.getElementById('board').className = isMyTurn ? 'turn-active' : '';
+
+            const hasVision = my.items.includes('flashlight') && my.items.includes('batteries');
+            document.getElementById('log-box').innerHTML = d.logs.map(l => `<div><b>${l.n}</b>: ${l.key}</div>`).join('');
+
             const b = document.getElementById('board'); b.innerHTML = '';
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
                 const td = d.maze[y][x]; const cell = document.createElement('div');
-                const known = my.known_tiles && my.known_tiles.some(t => t[0] === x && t[1] === y);
+                const known = hasVision || my.known_tiles.some(t => t[0] === x && t[1] === y);
                 cell.className = 'cell' + (known ? ' revealed' : '');
                 if(known) {
                     if(td.walls.top) cell.classList.add('wall-top');
                     if(td.walls.left) cell.classList.add('wall-left');
-                    if(td.tile !== 'empty') cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                 }
-                if(my.x === x && my.y === y) {
-                    const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot);
-                }
+                if(my.x === x && my.y === y) { const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot); }
+                if(d.phase === 2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x, y});
                 b.appendChild(cell);
             }
         });
-        socket.emit('join', {name: "Explorer"});
     </script>
 </body>
 </html>
