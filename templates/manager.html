@@ -1,116 +1,60 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Maze Manager - Host</title>
+    <meta charset="UTF-8"><title>Maze Manager</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; overflow: hidden; }
         #sidebar { width: 220px; background: #222; padding: 15px; border-right: 2px solid #444; overflow-y: auto; }
         #grid-area { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        #log-panel { width: 260px; background: #111; padding: 15px; border-left: 2px solid #444; display: flex; flex-direction: column; }
+        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 1px; background: #444; padding: 5px; }
+        .cell { width: 50px; height: 50px; background: #fff; position: relative; background-size: contain; background-repeat: no-repeat; cursor: pointer; box-sizing: border-box; }
         
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 2px; background: #444; padding: 5px; border: 3px solid #555; }
-        .cell { width: 50px; height: 50px; background: #fff; border: 1px solid #ccc; position: relative; background-size: contain; background-repeat: no-repeat; cursor: pointer; }
+        .wall-top { box-shadow: inset 0 6px 0 0 #ff4d4d; }
+        .wall-left { box-shadow: inset 6px 0 0 0 #ff4d4d; }
         
-        /* Walls */
-        .wall-top { border-top: 5px solid #ff4d4d !important; }
-        .wall-left { border-left: 5px solid #ff4d4d !important; }
-        
-        /* UI Elements */
-        .tile-opt { padding: 8px; margin: 4px 0; background: #333; cursor: pointer; border-radius: 4px; border: 1px solid #555; text-align: center; }
-        .tile-opt:hover { background: #444; }
+        .tile-opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border-radius: 4px; text-align: center; font-size: 13px; }
         .selected { border: 2px solid #2ecc71; background: #1e5631; }
-        .btn { width: 100%; padding: 10px; margin: 10px 0; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; color: white; }
-        .btn-phase { background: #e67e22; }
-        .btn-start { background: #2ecc71; }
-        #log-box { flex-grow: 1; overflow-y: auto; font-size: 13px; color: #ccc; }
-        .p-dot { width: 14px; height: 14px; background: #00ffff; border-radius: 50%; position: absolute; top: 18px; left: 18px; border: 2px solid black; }
-    </style>
+        .btn { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; color: white; }
+        #log-box { height: 200px; overflow-y: auto; font-size: 12px; background: #111; padding: 5px; }
+    </script>
 </head>
 <body oncontextmenu="return false;">
-
     <div id="sidebar">
-        <h3>Tile Tools</h3>
+        <h3>Host Tools</h3>
         <div id="tools">
-            <div class="tile-opt selected" onclick="selectTile('empty', this)">Empty / Floor</div>
+            <div class="tile-opt selected" onclick="selectTile('empty', this)">Empty Floor</div>
             <div class="tile-opt" onclick="selectTile('river_start', this)">🌊 River Start</div>
             <div class="tile-opt" onclick="selectTile('river', this)">💧 River Tile</div>
+            <div class="tile-opt" onclick="selectTile('raft', this)">🪵 Raft</div>
+            <div class="tile-opt" onclick="selectTile('boat', this)">🛶 Boat</div>
             <div class="tile-opt" onclick="selectTile('black_hole', this)">🕳️ Black Hole</div>
             <div class="tile-opt" onclick="selectTile('armory', this)">⚔️ Armory</div>
             <div class="tile-opt" onclick="selectTile('clinc', this)">🏥 Clinic</div>
             <div class="tile-opt" onclick="selectTile('er', this)">🚑 ER</div>
             <div class="tile-opt" onclick="selectTile('devil', this)">😈 Devil</div>
-            <div class="tile-opt" onclick="selectTile('tresure', this)">🏆 Real Treasure</div>
-            <div class="tile-opt" onclick="selectTile('fake_tresure', this)">💎 Fake Treasure</div>
+            <div class="tile-opt" onclick="selectTile('tresure', this)">🏆 Treasure</div>
             <div class="tile-opt" onclick="selectTile('exit', this)">🚪 Exit</div>
-            <div class="tile-opt" onclick="selectTile('boat', this)">🛶 Boat</div>
-            <div class="tile-opt" onclick="selectTile('flashlight', this)">🔦 Flashlight</div>
-            <div class="tile-opt" onclick="selectTile('batteries', this)">🔋 Batteries</div>
         </div>
-        <hr>
-        <button class="btn btn-phase" onclick="setPhase(2)">Move to SPAWN Phase</button>
-        <button class="btn btn-start" onclick="setPhase(3)">START GAME</button>
-    </div>
-
-    <div id="grid-area">
-        <h2 id="phase-display">Phase 1: Building Maze</h2>
-        <div id="grid"></div>
-        <p style="font-size: 12px; color: #888; margin-top: 10px;">Left Click: Place Tile | Right Click: Toggle Wall (Top/Left)</p>
-    </div>
-
-    <div id="log-panel">
-        <h3>Game Event Log</h3>
+        <button class="btn" style="background:#e67e22" onclick="socket.emit('set_phase', 2)">Set SPAWN</button>
+        <button class="btn" style="background:#2ecc71" onclick="socket.emit('set_phase', 3)">START GAME</button>
         <div id="log-box"></div>
+    </div>
+    <div id="grid-area">
+        <h2 id="phase-display">Phase 1: Build</h2>
+        <div id="grid"></div>
     </div>
 
     <script>
         const socket = io();
         let selectedTile = "empty";
-        let localMaze = Array(10).fill().map(() => Array(10).fill().map(() => ({tile: "empty", walls: {top: false, left: false}})));
-
-        socket.on('connect', () => {
-            socket.emit('join', { name: "Manager", is_man: true });
-        });
-
-        function selectTile(type, el) {
-            selectedTile = type;
-            document.querySelectorAll('.tile-opt').forEach(opt => opt.classList.remove('selected'));
-            el.classList.add('selected');
-        }
-
-        function setPhase(p) {
-            socket.emit('set_phase', p);
-        }
-
-        function handleCellClick(e, x, y) {
-            // Right Click for Walls
-            if (e.button === 2) {
-                const cellRect = e.target.getBoundingClientRect();
-                const relativeY = e.clientY - cellRect.top;
-                const relativeX = e.clientX - cellRect.left;
-
-                if (relativeY < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
-                else if (relativeX < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
-            } 
-            // Left Click for Tiles
-            else {
-                const uniques = ["tresure", "exit", "river_start"];
-                // Don't allow multiple of unique items
-                if (uniques.includes(selectedTile)) {
-                    for(let r=0; r<10; r++) for(let c=0; c<10; c++) if(localMaze[r][c].tile === selectedTile) localMaze[r][c].tile = "empty";
-                }
-                localMaze[y][x].tile = selectedTile;
-            }
-            socket.emit('update_maze', localMaze);
-        }
-
+        let localMaze = [];
+        function selectTile(t, e) { selectedTile = t; document.querySelectorAll('.tile-opt').forEach(o => o.classList.remove('selected')); e.classList.add('selected'); }
+        
         socket.on('sync', d => {
             localMaze = d.maze;
-            document.getElementById('phase-display').innerText = `Phase ${d.phase}: ` + (d.phase==1 ? "Building" : d.phase==2 ? "Spawning" : "Active");
-            document.getElementById('log-box').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
-            
-            const grid = document.getElementById('grid');
-            grid.innerHTML = '';
+            document.getElementById('phase-display').innerText = "Phase: " + d.phase;
+            const grid = document.getElementById('grid'); grid.innerHTML = '';
             for(let y=0; y<10; y++) {
                 for(let x=0; x<10; x++) {
                     const data = d.maze[y][x];
@@ -119,23 +63,19 @@
                     if(data.walls.top) cell.classList.add('wall-top');
                     if(data.walls.left) cell.classList.add('wall-left');
                     if(data.tile !== "empty") cell.style.backgroundImage = `url('/static/${data.tile}.png')`;
-                    
-                    cell.onmousedown = (e) => handleCellClick(e, x, y);
-                    
-                    // Show player locations to Manager
-                    d.players.forEach(p => {
-                        if(p.x === x && p.y === y) {
-                            const dot = document.createElement('div');
-                            dot.className = 'p-dot';
-                            dot.title = p.n;
-                            cell.appendChild(dot);
-                        }
-                    });
-
+                    cell.onmousedown = (e) => {
+                        if (e.button === 2) {
+                            const r = cell.getBoundingClientRect();
+                            if (e.clientY - r.top < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
+                            else if (e.clientX - r.left < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
+                        } else { localMaze[y][x].tile = selectedTile; }
+                        socket.emit('update_maze', localMaze);
+                    };
                     grid.appendChild(cell);
                 }
             }
         });
+        socket.emit('join', { name: "Host", is_man: true });
     </script>
 </body>
 </html>
