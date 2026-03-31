@@ -10,7 +10,7 @@
         .cell { width: 50px; height: 50px; background: #fff; position: relative; background-size: contain; box-sizing: border-box; cursor: pointer; }
         .wall-top { box-shadow: inset 0 6px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 6px 0 0 0 #ff4d4d; }
-        .tile-opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border-radius: 4px; text-align: center; font-size: 13px; }
+        .tile-opt { padding: 6px; margin: 3px 0; background: #333; cursor: pointer; border-radius: 4px; text-align: center; font-size: 13px; border: 1px solid #555; }
         .selected { border: 2px solid #2ecc71; background: #1e5631; }
         .btn { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; border: none; border-radius: 5px; color: white; font-weight: bold; }
     </style>
@@ -19,56 +19,53 @@
     <div id="sidebar">
         <h3>Host Tools</h3>
         <div id="tools">
-            <div class="tile-opt selected" onclick="sel('empty', this)">Floor</div>
-            <div class="tile-opt" onclick="sel('treasure', this)">💰 Treasure</div>
-            <div class="tile-opt" onclick="sel('armory', this)">⚔️ Armory</div>
-            <div class="tile-opt" onclick="sel('river_start', this)">🌊 River Start</div>
-            <div class="tile-opt" onclick="sel('river', this)">💧 River</div>
-            <div class="tile-opt" onclick="sel('monster', this)">👾 Monster</div>
-            <div class="tile-opt" onclick="sel('devil', this)">😈 Devil</div>
-            <div class="tile-opt" onclick="sel('exit', this)">🚪 Exit</div>
-            <div class="tile-opt" onclick="sel('boat', this)">🛶 Boat</div>
-            <div class="tile-opt" onclick="sel('raft', this)">🪵 Raft</div>
-            <div class="tile-opt" onclick="sel('flashlight', this)">🔦 Flashlight</div>
-            <div class="tile-opt" onclick="sel('batteries', this)">🔋 Batteries</div>
+            <div class="tile-opt selected" onclick="sel('empty', this)">רצפה</div>
+            <div class="tile-opt" onclick="sel('treasure', this)">💰 אוצר</div>
+            <div class="tile-opt" onclick="sel('fake_treasure', this)">💎 אוצר מזויף</div>
+            <div class="tile-opt" onclick="sel('armory', this)">⚔️ נשקייה</div>
+            <div class="tile-opt" onclick="sel('monster', this)">👾 מפלצת</div>
+            <div class="tile-opt" onclick="sel('devil', this)">😈 שטן</div>
+            <div class="tile-opt" onclick="sel('flashlight', this)">🔦 פנס</div>
+            <div class="tile-opt" onclick="sel('batteries', this)">🔋 סוללות</div>
+            <div class="tile-opt" onclick="sel('river_start', this)">🌊 תחילת נהר</div>
+            <div class="tile-opt" onclick="sel('river', this)">💧 נהר</div>
+            <div class="tile-opt" onclick="sel('boat', this)">🛶 סירה</div>
+            <div class="tile-opt" onclick="sel('raft', this)">🪵 רפסודה</div>
+            <div class="tile-opt" onclick="sel('clinc', this)">🏥 מרפאה</div>
+            <div class="tile-opt" onclick="sel('er', this)">🚑 מיון</div>
+            <div class="tile-opt" onclick="sel('black_hole', this)">🕳️ חור שחור</div>
+            <div class="tile-opt" onclick="sel('exit', this)">🚪 יציאה</div>
         </div>
         <hr>
-        <button class="btn" style="background:#e67e22" onclick="socket.emit('set_phase', 2)">1. Move to SPAWN</button>
-        <button class="btn" style="background:#2ecc71" onclick="socket.emit('set_phase', 3)">2. START GAME</button>
-        <button class="btn" style="background:#888" onclick="socket.emit('set_phase', 1)">Reset to BUILD</button>
+        <button class="btn" style="background:#e67e22" onclick="socket.emit('set_phase', 2)">Set SPAWN</button>
+        <button class="btn" style="background:#2ecc71" onclick="socket.emit('set_phase', 3)">START GAME</button>
+        <button class="btn" style="background:#888" onclick="socket.emit('set_phase', 1)">Reset to Build</button>
     </div>
     <div style="flex-grow:1; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-        <h2 id="phase-txt">Phase: 1 (Build)</h2>
+        <h2 id="phase-txt">Phase: 1</h2>
         <div id="grid"></div>
     </div>
 
     <script>
-        const socket = io(); let selected = "empty"; let localMaze = []; let currentPhase = 1;
-        function sel(t, e) { selected = t; document.querySelectorAll('.tile-opt').forEach(o => o.classList.remove('selected')); e.classList.add('selected'); }
+        const socket = io(); let currentSelected = "empty"; let localMaze = []; let phase = 1;
+        function sel(t, e) { currentSelected = t; document.querySelectorAll('.tile-opt').forEach(o => o.classList.remove('selected')); e.classList.add('selected'); }
 
         socket.on('sync', d => {
-            localMaze = d.maze; 
-            currentPhase = d.phase;
-            document.getElementById('phase-txt').innerText = "Phase: " + d.phase + (d.phase > 1 ? " (Locked)" : "");
-            
+            localMaze = d.maze; phase = d.phase;
+            document.getElementById('phase-txt').innerText = "Phase: " + d.phase + (d.phase > 1 ? " (LOCKED)" : "");
             const g = document.getElementById('grid'); g.innerHTML = '';
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
                 const td = d.maze[y][x]; const cell = document.createElement('div'); cell.className = 'cell';
                 if(td.walls.top) cell.classList.add('wall-top');
                 if(td.walls.left) cell.classList.add('wall-left');
                 if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                
                 cell.onmousedown = (e) => {
-                    // מניעת שינויים אם המשחק כבר התחיל או בשלב ההצבה
-                    if (currentPhase !== 1) return;
-
+                    if (phase !== 1) return; // חסימת בנייה
                     if (e.button === 2) {
                         const r = cell.getBoundingClientRect();
                         if (e.clientY - r.top < 15) localMaze[y][x].walls.top = !localMaze[y][x].walls.top;
                         else if (e.clientX - r.left < 15) localMaze[y][x].walls.left = !localMaze[y][x].walls.left;
-                    } else { 
-                        localMaze[y][x].tile = selected; 
-                    }
+                    } else { localMaze[y][x].tile = currentSelected; }
                     socket.emit('update_maze', localMaze);
                 };
                 g.appendChild(cell);
