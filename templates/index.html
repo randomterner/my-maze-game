@@ -6,39 +6,40 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-        #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
+        #welcome-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         
-        #inventory { width: 130px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 12px; }
-        #log-area { width: 180px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 11px; overflow-y: auto; color: #ccc; }
+        #main-container { display: flex; flex-grow: 1; overflow: hidden; }
+        #inventory { width: 120px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 12px; }
+        #log-area { width: 160px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 11px; overflow-y: auto; color: #ccc; }
         
         #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #000; direction: ltr !important; }
-        #board { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #333; padding: 4px; }
-        @media (min-width: 600px) { #board { grid-template-columns: repeat(10, 50px); } .cell { width: 50px !important; height: 50px !important; } }
+        #board { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #333; padding: 4px; border-radius: 4px; }
+        @media (min-width: 700px) { #board { grid-template-columns: repeat(10, 50px); } .cell { width: 50px !important; height: 50px !important; } }
         
         .cell { width: 32px; height: 32px; background: #111; position: relative; background-size: contain; box-sizing: border-box; }
         .revealed { background: #2a2a2a; }
         
-        /* תיקון קירות: שימוש בצללים פנימיים משולבים */
+        /* תיקון קירות ללא underline שחור */
         .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
         .wall-top.wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d, inset 0 5px 0 0 #ff4d4d !important; }
 
         .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 2px solid white; box-shadow: 0 0 10px cyan; }
-        #ui-panel { height: 170px; background: #222; display: flex; border-top: 2px solid #444; }
+        .turn-active { border: 2px solid #2ecc71; box-shadow: 0 0 15px #2ecc71; }
+        
+        #ui-panel { height: 160px; background: #222; display: flex; border-top: 2px solid #444; }
         .dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 4px; padding: 10px; }
         .ctrl-btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; }
         .act-area { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 10px; }
-        .act-btn { width: 100%; height: 42px; background: #555; color: white; border: none; border-radius: 5px; font-weight: bold; }
+        .act-btn { width: 100%; height: 40px; background: #555; color: white; border: none; border-radius: 5px; font-weight: bold; }
         .mode-active { background: #f1c40f !important; color: #000; }
-        
         .rules-btn { display: inline-block; padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="welcome-overlay">
         <h1>מבוך משפחתי</h1>
-        <input type="text" id="name-input" placeholder="שם שחקן..."><br>
+        <input type="text" id="name-input" placeholder="הכנס שם..."><br>
         <button onclick="joinGame()" style="padding:10px 20px; background:#2ecc71; border:none; color:white; border-radius:5px; margin-top:10px;">START</button><br>
         <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" class="rules-btn">חוקי המשחק (Rules)</a>
     </div>
@@ -49,7 +50,7 @@
         <div>🔫 <span id="bul">3</span> | 💣 <span id="bom">3</span></div>
     </div>
 
-    <div id="main-ui">
+    <div id="main-container">
         <div id="inventory"><b>🎒 תיק:</b><div id="inv-list"></div></div>
         <div id="board-container"><div id="board"></div></div>
         <div id="log-area"><b>📜 יומן:</b><div id="log-content"></div></div>
@@ -83,27 +84,32 @@
         }
 
         socket.on('sync', d => {
-            const my = d.players.find(p => p.id === socket.id); if(!my) return;
+            const my = d.players.find(p => p.id === socket.id);
             if(d.winner) alert("המנצח: " + d.winner);
-            document.getElementById('inj').innerText = my.injuries;
-            document.getElementById('bul').innerText = my.bul; document.getElementById('bom').innerText = my.bom;
-            document.getElementById('turn-txt').innerText = (d.turn_id === socket.id) ? "תורך!" : "ממתין...";
-            document.getElementById('inv-list').innerHTML = my.items.map(i => `<div>- ${i}</div>`).join('');
+            
+            if(my) {
+                document.getElementById('inj').innerText = my.injuries;
+                document.getElementById('bul').innerText = my.bul; document.getElementById('bom').innerText = my.bom;
+                document.getElementById('turn-txt').innerText = (d.turn_id === socket.id) ? "תורך!" : "ממתין לתור...";
+                document.getElementById('inv-list').innerHTML = my.items.map(i => `<div>- ${i}</div>`).join('');
+            }
+            
             document.getElementById('log-content').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
 
             const b = document.getElementById('board'); b.innerHTML = '';
-            const vision = my.items.includes('flashlight') && my.items.includes('batteries');
+            const vision = my ? (my.items.includes('flashlight') && my.items.includes('batteries')) : false;
+            
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
                 const td = d.maze[y][x]; const cell = document.createElement('div');
-                const known = vision || my.known_tiles.some(t => t[0] === x && t[1] === y);
+                const known = vision || (my && my.known_tiles.some(t => t[0] === x && t[1] === y));
                 cell.className = 'cell' + (known ? ' revealed' : '');
                 if(known) {
                     if(td.walls.top) cell.classList.add('wall-top');
                     if(td.walls.left) cell.classList.add('wall-left');
                     if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                 }
-                if(my.x === x && my.y === y) { const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot); }
-                if(d.phase === 2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x, y});
+                if(my && my.x === x && my.y === y) { const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot); }
+                if(d.phase === 2 && my && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x, y});
                 b.appendChild(cell);
             }
         });
