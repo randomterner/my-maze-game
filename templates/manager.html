@@ -13,11 +13,9 @@
         #grid { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #444; }
         @media (min-width: 600px) { #grid { grid-template-columns: repeat(10, 45px); } .cell { width: 45px !important; height: 45px !important; } }
         .cell { width: 32px; height: 32px; background: #fff; position: relative; background-size: contain; box-sizing: border-box; cursor: pointer; }
-        
         .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
         .wall-top.wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d, inset 0 5px 0 0 #ff4d4d !important; }
-
         .tile-opt { min-width: 80px; padding: 6px; background: #333; border-radius: 4px; text-align: center; font-size: 11px; flex-shrink: 0; border: 1px solid #555; }
         .selected { border: 2px solid #2ecc71; background: #1e5631; }
         .p-dot { width: 14px; height: 14px; background: #00ffff; border-radius: 50%; position: absolute; top: 10px; left: 10px; border: 1px solid black; }
