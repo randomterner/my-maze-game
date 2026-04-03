@@ -10,10 +10,12 @@
         #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
         #bag { width: 110px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 11px; }
         #log-area { width: 170px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 10px; overflow-y: auto; color: #ccc; }
-        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; }
-        #board { display: grid; grid-template-columns: 25px repeat(10, 32px); grid-template-rows: 25px repeat(10, 32px); gap: 1px; background: #333; padding: 5px; }
-        @media (min-width: 600px) { #board { grid-template-columns: 30px repeat(10, 48px); grid-template-rows: 30px repeat(10, 48px); } .cell { width: 48px !important; height: 48px !important; } }
-        .cell { width: 32px; height: 32px; background: #111; position: relative; background-size: contain; }
+        
+        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; overflow: auto; }
+        #board { display: grid; grid-template-columns: 30px repeat(10, 48px); grid-template-rows: 30px repeat(10, 48px); gap: 1px; background: #333; padding: 10px; margin: auto; min-width: max-content; }
+        @media (min-width: 600px) { #board { grid-template-columns: 30px repeat(10, 65px); grid-template-rows: 30px repeat(10, 65px); } .cell { width: 65px !important; height: 65px !important; } }
+        
+        .cell { width: 48px; height: 48px; background: #111; position: relative; background-size: contain; }
         .coord { background: #222; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #777; font-weight: bold; }
         .revealed { background: #222; }
         .wall-top { box-shadow: inset 0 5px 0 0 red; }
@@ -116,8 +118,9 @@
                         const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot);
                     }
 
+                    // מסתיר שחקנים אחרים בזמן שלב 2
                     d.players.forEach(p => {
-                        if(p.id !== my.id && p.x === x && p.y === y && known && p.has_spawned) {
+                        if(p.id !== my.id && p.x === x && p.y === y && known && p.has_spawned && d.phase === 3) {
                             const o = document.createElement('div'); o.className = 'p-other'; cell.appendChild(o);
                         }
                     });
