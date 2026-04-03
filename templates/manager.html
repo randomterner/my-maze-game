@@ -20,9 +20,6 @@
         .coord { background: #333; display: flex; align-items: center; justify-content: center; font-size: 12px; }
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
-        .p-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
-        .p-dot { width: 12px; height: 12px; background: cyan; border-radius: 50%; border: 1px solid #000; }
-        .p-name { font-size: 8px; background: rgba(0,0,0,0.8); color: white; padding: 1px 3px; border-radius: 2px; margin-top: 2px; }
         .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; color: #fff; touch-action: manipulation; }
         .sel { background: cyan; color: #000; }
     </style>
@@ -59,7 +56,7 @@
         <div id="tele-wait"></div>
         <button onclick="socket.emit('set_phase', 2)" style="touch-action: manipulation;">Phase 2: Spawn</button>
         <button onclick="socket.emit('set_phase', 3)" style="touch-action: manipulation;">Phase 3: Start</button>
-        <button onclick="socket.emit('next_turn')" style="touch-action: manipulation;">Next Turn</button>
+        <button onclick="socket.emit('next_turn')" style="touch-action: manipulation;">Force Next Turn</button>
     </div>
     <script>
         const socket = io(); let mazeD = [], curS = "empty", phase = 1, teleT = null;
@@ -86,13 +83,24 @@
                         c.style.backgroundImage = `url('/static/${td.tile}.png')`;
                     }
 
-                    d.players.forEach(p => {
-                        if(p.x === x && p.y === y && p.has_spawned){
-                            const w = document.createElement('div'); w.className='p-wrap';
-                            w.innerHTML = `<div class="p-dot" style="background:${p.is_lost?'red':'cyan'}"></div><div class="p-name">${p.n}</div>`;
-                            c.appendChild(w);
-                        }
-                    });
+                    const playersHere = d.players.filter(p => p.x === x && p.y === y && p.has_spawned && p.injuries < 5);
+                    if(playersHere.length > 0) {
+                        const pc = document.createElement('div');
+                        pc.style.cssText = "position:absolute; inset:0; display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:2px; padding:2px; z-index:10;";
+                        playersHere.forEach(p => {
+                            const dotWrap = document.createElement('div');
+                            dotWrap.style.cssText = "display:flex; flex-direction:column; align-items:center;";
+                            const dot = document.createElement('div');
+                            dot.style.cssText = `width:12px; height:12px; background:${p.is_lost?'red':'cyan'}; border-radius:50%; border:1px solid #000;`;
+                            const name = document.createElement('div');
+                            name.innerText = p.n;
+                            name.style.cssText = "font-size:8px; background:rgba(0,0,0,0.8); color:white; border-radius:2px; padding:1px 3px; margin-top:2px; line-height:1;";
+                            dotWrap.appendChild(dot);
+                            dotWrap.appendChild(name);
+                            pc.appendChild(dotWrap);
+                        });
+                        c.appendChild(pc);
+                    }
 
                     c.onpointerdown = (e) => {
                         if(teleT && td.tile === "empty") { socket.emit('host_teleport', {target_id: teleT, x, y}); teleT = null; return; }
