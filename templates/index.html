@@ -2,36 +2,35 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Castle Maze</title>
+    <title>Maze Player</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         #welcome { position: fixed; inset: 0; background: #000; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
         #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; }
-        
         #board { display: grid; grid-template-columns: 25px repeat(10, 32px); grid-template-rows: 25px repeat(10, 32px); gap: 1px; background: #333; padding: 5px; }
         @media (min-width: 600px) { #board { grid-template-columns: 30px repeat(10, 48px); grid-template-rows: 30px repeat(10, 48px); } .cell { width: 48px !important; height: 48px !important; } }
-        
         .cell { width: 32px; height: 32px; background: #111; position: relative; background-size: contain; }
         .coord { background: #222; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; font-weight: bold; }
         .revealed { background: #2a2a2a; }
         .wall-top { box-shadow: inset 0 5px 0 0 red; }
         .wall-left { box-shadow: inset 5px 0 0 0 red; }
-        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 2px solid white; box-shadow: 0 0 10px cyan; z-index: 10; }
+        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 2px solid white; box-shadow: 0 0 10px cyan; }
         .p-other { width: 40%; height: 40%; background: lime; border-radius: 50%; margin: 30%; border: 1px solid white; }
-        
-        #ui { height: 140px; background: #222; display: flex; border-top: 2px solid #444; }
+        #ui { height: 160px; background: #222; display: flex; border-top: 2px solid #444; }
         .dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 5px; padding: 10px; }
-        .btn { width: 42px; height: 42px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; }
-        #log-box { width: 160px; background: #111; font-size: 10px; padding: 10px; overflow-y: auto; color: #ccc; border-left: 2px solid #333; }
+        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; }
+        #log-box { width: 170px; background: #111; font-size: 10px; padding: 10px; overflow-y: auto; color: #ccc; border-left: 2px solid #333; }
+        .act-group { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; padding: 10px; gap: 8px; }
+        .act-btn { padding: 10px; border: none; color: white; border-radius: 5px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="welcome">
-        <h2>Castle Maze RPG</h2>
+        <h2>Castle Maze 🏰</h2>
         <input type="text" id="nin" placeholder="שם שחקן..." style="padding:10px;"><br>
-        <button onclick="join()" style="padding:10px 25px; background:green; color:white; border:none; border-radius:5px; margin-top:10px;">START</button>
+        <button onclick="join()" style="padding:10px 25px; background:green; color:white; border:none; border-radius:5px; cursor:pointer;">START</button>
         <br><a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" style="color:cyan; font-size:12px;">חוקים (Rules)</a>
     </div>
     <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111;">
@@ -39,7 +38,7 @@
         <div id="lost-tag" style="color: red; font-weight: bold; display: none;">⚠️ LOST</div>
         <div>❤️ <span id="inj">0</span>/5 | 🔫 <span id="bul">3</span> | 💣 <span id="bom">3</span></div>
     </div>
-    <div id="main-ui">
+    <div style="display:flex; flex-grow:1; overflow:hidden;">
         <div id="board-container"><div id="board"></div></div>
         <div id="log-box"></div>
     </div>
@@ -50,14 +49,14 @@
             <button class="btn" onclick="socket.emit('move',{dx:1,dy:0})">→</button>
             <button class="btn" onclick="socket.emit('move',{dx:0,dy:1})">↓</button>
         </div>
-        <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; padding:10px;">
-            <button onclick="socket.emit('shoot',{dx:0,dy:-1})" style="background:#800; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold;">SHOOT UP 🔫</button>
+        <div class="act-group">
+            <button onclick="socket.emit('shoot',{dx:0,dy:-1})" style="background:#800;" class="act-btn">SHOOT UP 🔫</button>
+            <button onclick="socket.emit('bomb',{dx:0,dy:-1})" style="background:#444;" class="act-btn">BOMB UP 💣</button>
         </div>
     </div>
     <script>
         const socket = io();
         function join() { socket.emit('join', { name: document.getElementById('nin').value || "Explorer" }); document.getElementById('welcome').style.display='none'; }
-        
         socket.on('sync', d => {
             const my = d.players.find(p => p.id === socket.id); if(!my) return;
             if(d.winner) alert("המנצח: " + d.winner);
@@ -66,19 +65,16 @@
             document.getElementById('bul').innerText = my.bul; document.getElementById('bom').innerText = my.bom;
             document.getElementById('turn').innerText = (d.turn_id === socket.id) ? "תורך!" : "ממתין לתור...";
             document.getElementById('log-box').innerHTML = d.logs.map(l => `<div style="margin-bottom:3px;">${l}</div>`).join('');
-            
             const b = document.getElementById('board'); b.innerHTML = '';
-            b.appendChild(document.createElement('div')); // פינה
+            b.appendChild(document.createElement('div'));
             for(let i=1; i<=10; i++){ const h=document.createElement('div'); h.className='coord'; h.innerText=i; b.appendChild(h); }
-
             for(let y=0; y<10; y++) {
                 const l=document.createElement('div'); l.className='coord'; l.innerText=y+1; b.appendChild(l);
                 for(let x=0; x<10; x++) {
                     const td = d.maze[y][x]; const c = document.createElement('div');
                     const known = my.known_tiles.some(t => t[0] === x && t[1] === y) || 
                                   my.post_lost_tiles.some(t => t[0] === x && t[1] === y) || 
-                                  d.phase === 2;
-
+                                  d.phase === 2 || (my.items.includes('flashlight') && my.items.includes('batteries'));
                     c.className = 'cell' + (known ? ' revealed' : '');
                     if(known && d.phase === 3) {
                         if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
