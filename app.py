@@ -58,6 +58,16 @@ def clear_lost(p):
         p['post_lost_tiles'] = []
         add_log(f"🧠 {p['n']} recognized the area and is no longer lost!")
 
+def on_next():
+    global current_turn_idx
+    if not player_order: return
+    for _ in range(len(player_order)):
+        current_turn_idx = (current_turn_idx + 1) % len(player_order)
+        next_sid = player_order[current_turn_idx]
+        p = players.get(next_sid)
+        if p and p['injuries'] < 5 and p['has_spawned']:
+            break
+
 @app.route('/')
 def index(): return render_template('index.html')
 
@@ -111,21 +121,27 @@ def on_move(data):
                 add_log(f"🎒 {p['n']} picked up a dropped {item}!")
             tile['dropped_items'] = []
 
-        for other in [pl for pl in players.values() if not pl['is_man'] and pl['id'] != p['id']]:
-            if other['x'] == nx and other['y'] == ny and p['is_lost'] and curr_pos in p['known_tiles']:
-                clear_lost(p)
+        if p['n'] not in tile['visited_by'] and tile['tile'] != "empty" and tile['tile'] != "river":
+            tile['visited_by'].append(p['n'])
+
         if p['is_lost'] and (p['n'] in tile['visited_by'] or tile['tile'] == "river_start"):
             clear_lost(p)
 
-        if tile['tile'] != "empty" and tile['tile'] != "river":
-            if p['n'] not in tile['visited_by']: tile['visited_by'].append(p['n'])
-            for other in [pl for pl in players.values() if not pl['is_man'] and pl['n'] in tile['visited_by']]:
-                src = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
-                for t in src:
-                    if t not in other['known_tiles']: other['known_tiles'].append(t)
-                if not p['is_lost']:
-                    for t in other['known_tiles']:
-                        if t not in p['known_tiles']: p['known_tiles'].append(t)
+        # Direct Map Fusion on Meeting
+        for other in [pl for pl in players.values() if not pl['is_man'] and pl['id'] != p['id']]:
+            if other['x'] == p['x'] and other['y'] == p['y'] and other['has_spawned'] and other['injuries'] < 5:
+                if not p['is_lost'] and other['is_lost']: clear_lost(other)
+                elif not other['is_lost'] and p['is_lost']: clear_lost(p)
+                
+                src_p = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
+                src_other = other['post_lost_tiles'] if other['is_lost'] else other['known_tiles']
+                
+                for t in src_p:
+                    if t not in src_other: src_other.append(t)
+                for t in src_other:
+                    if t not in src_p: src_p.append(t)
+                    
+                add_log(f"🤝 {p['n']} and {other['n']} met and shared maps!")
 
         item_name = tile['tile']
         
@@ -146,7 +162,9 @@ def on_move(data):
 
         elif item_name == "monster":
             p['bul'] = min(5, p['bul']+1); p['bom'] = min(5, p['bom']+1)
-            add_log(f"👾 Monster gave {p['n']} gear and an extra turn!"); return
+            add_log(f"👾 Monster gave {p['n']} gear and an extra turn!")
+            sync_all()
+            return
 
         elif item_name == "devil":
             p['injuries'] += 1; p['bul'] = max(0, p['bul']-1); p['bom'] = max(0, p['bom']-1)
@@ -181,6 +199,7 @@ def on_move(data):
         if curr_c not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
             (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append(curr_c)
 
+        on_next()
     sync_all()
 
 @socketio.on('shoot')
@@ -236,10 +255,20 @@ def on_h_tele(data):
     p_t = players.get(data['target_id'])
     if p_t:
         p_t['x'], p_t['y'] = data['x'], data['y']; p_t['waiting_teleport'] = False
-        p_t['post_lost_tiles'].append([data['x'], data['y']]); sync_all()
+        p_t['post_lost_tiles'].append([data['x'], data['y']])
+        sync_all()
 
 @socketio.on('set_phase')
-def on_ph(ph): global game_phase; game_phase = int(ph.get('phase', ph) if isinstance(ph, dict) else ph); sync_all()
+def on_ph(ph): 
+    global game_phase, current_turn_idx
+    game_phase = int(ph.get('phase', ph) if isinstance(ph, dict) else ph)
+    if game_phase == 3 and player_order:
+        for i in range(len(player_order)):
+            p = players.get(player_order[i])
+            if p and p['injuries'] < 5 and p['has_spawned']:
+                current_turn_idx = i
+                break
+    sync_all()
 
 @socketio.on('update_maze')
 def on_uz(d):
@@ -255,11 +284,8 @@ def on_uz(d):
 def on_sp(d):
     p = players.get(request.sid)
     if p and game_phase == 2:
-        p['x'], p['y'] = d['x'], d['y']; p['has_spawned'] = True; p['known_tiles'] = [[d['x'], d['y']]]; sync_all()
-
-def on_next():
-    global current_turn_idx
-    if player_order: current_turn_idx = (current_turn_idx + 1) % len(player_order)
+        p['x'], p['y'] = d['x'], d['y']; p['has_spawned'] = True; p['known_tiles'] = [[d['x'], d['y']]]
+        sync_all()
 
 @socketio.on('next_turn')
 def manual_next(): on_next(); sync_all()
