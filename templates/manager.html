@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Manager - Castle Host</title>
+    <meta charset="UTF-8"><title>Manager - Host</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #111; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
@@ -14,33 +14,34 @@
         .wall-left { border-left: 5px solid red; }
         .p-wrapper { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
         .p-dot { width: 12px; height: 12px; background: cyan; border-radius: 50%; border: 1px solid #000; }
-        .p-name { font-size: 8px; background: rgba(0,0,0,0.8); color: #fff; padding: 1px; border-radius: 2px; margin-top: 2px; }
-        .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; }
+        .p-name { font-size: 8px; background: rgba(0,0,0,0.8); color: white; padding: 1px; border-radius: 2px; }
+        .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; color: white; }
         .sel { background: cyan; color: #000; }
+        #tele-info { background: #333; padding: 10px; text-align: center; border-top: 2px solid #444; }
     </style>
 </head>
 <body>
     <div id="sidebar">
         <button class="tile-opt sel" onclick="sel('empty',this)">Floor</button>
         <button class="tile-opt" onclick="sel('treasure',this)">💰 Treasure</button>
-        <button class="tile-opt" onclick="sel('fake_treasure',this)">💎 Fake Treasure</button>
-        <button onclick="sel('river',this)" class="tile-opt">💧 River</button>
-        <button onclick="sel('river_start',this)" class="tile-opt">🌊 River Start</button>
-        <button onclick="sel('boat',this)" class="tile-opt">🛶 Boat</button>
-        <button onclick="sel('raft',this)" class="tile-opt">🪵 Raft</button>
-        <button onclick="sel('flashlight',this)" class="tile-opt">🔦 Flash</button>
-        <button onclick="sel('batteries',this)" class="tile-opt">🔋 Battery</button>
-        <button onclick="sel('exit',this)" class="tile-opt">🚪 Exit</button>
-        <button onclick="sel('monster',this)" class="tile-opt">👾 Monster</button>
-        <button onclick="sel('devil',this)" class="tile-opt">😈 Devil</button>
-        <button onclick="sel('clinic',this)" class="tile-opt">🏥 Clinic</button>
-        <button onclick="sel('er',this)" class="tile-opt">🚑 ER</button>
-        <button onclick="sel('black_hole',this)" class="tile-opt">🕳️ BlackHole</button>
-        <button onclick="sel('armory',this)" class="tile-opt">⚔️ Armory</button>
+        <button class="tile-opt" onclick="sel('fake_treasure',this)">💎 Fake</button>
+        <button class="tile-opt" onclick="sel('river',this)">💧 River</button>
+        <button class="tile-opt" onclick="sel('river_start',this)">🌊 Start</button>
+        <button class="tile-opt" onclick="sel('boat',this)">🛶 Boat</button>
+        <button class="tile-opt" onclick="sel('raft',this)">🪵 Raft</button>
+        <button class="tile-opt" onclick="sel('flashlight',this)">🔦 Flash</button>
+        <button class="tile-opt" onclick="sel('batteries',this)">🔋 Battery</button>
+        <button class="tile-opt" onclick="sel('exit',this)">🚪 Exit</button>
+        <button class="tile-opt" onclick="sel('monster',this)">👾 Monster</button>
+        <button class="tile-opt" onclick="sel('devil',this)">😈 Devil</button>
+        <button class="tile-opt" onclick="sel('clinic',this)">🏥 Clinic</button>
+        <button class="tile-opt" onclick="sel('er',this)">🚑 ER</button>
+        <button class="tile-opt" onclick="sel('black_hole',this)">🕳️ BlackHole</button>
+        <button class="tile-opt" onclick="sel('armory',this)">⚔️ Armory</button>
     </div>
     <div id="grid-container"><div id="grid"></div></div>
-    <div style="padding: 15px; background: #222; display: flex; gap: 10px; justify-content: center; border-top: 2px solid #444;">
-        <div id="waiters"></div>
+    <div id="tele-info"><b>שיגור:</b> <span id="waiters">אין ממתינים</span></div>
+    <div style="padding: 15px; background: #222; display: flex; gap: 10px; justify-content: center;">
         <button onclick="socket.emit('set_phase', 2)">Phase 2: Spawn</button>
         <button onclick="socket.emit('set_phase', 3)">Phase 3: Start</button>
         <button onclick="socket.emit('next_turn')">Next Turn</button>
@@ -50,9 +51,8 @@
         function sel(t, e) { curS = t; document.querySelectorAll('.tile-opt').forEach(b=>b.classList.remove('sel')); e.classList.add('sel'); }
         socket.on('sync', d => {
             mazeD = d.maze; phase = d.phase;
-            const waiters = d.players.filter(p => p.waiting_teleport);
-            document.getElementById('waiters').innerHTML = waiters.map(p => `<button onclick="teleT='${p.id}';alert('בחר משבצת ריקה לשיגור את ${p.n}')">Teleport ${p.n}</button>`).join('');
-            
+            const w = d.players.filter(p => p.waiting_teleport);
+            document.getElementById('waiters').innerHTML = w.map(p => `<button onclick="teleT='${p.id}';alert('בחר משבצת לשיגור את ${p.n}')">${p.n}</button>`).join(' ');
             const g = document.getElementById('grid'); g.innerHTML = '';
             g.appendChild(document.createElement('div'));
             for(let i=1; i<=10; i++){ const h=document.createElement('div'); h.className='coord'; h.innerText=i; g.appendChild(h); }
