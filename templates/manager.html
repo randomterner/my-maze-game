@@ -4,20 +4,29 @@
     <meta charset="UTF-8"><title>Host Monitor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #111; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        /* תיקון Mobile בגובה */
+        body { background: #111; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         #sidebar { background: #222; padding: 10px; display: flex; gap: 5px; overflow-x: auto; border-bottom: 2px solid #444; }
+        
+        /* אזור ראשי שמכיל את המפה ואת הלוג */
+        #main-area { display: flex; flex-grow: 1; overflow: hidden; }
         
         #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr; overflow: auto; }
         #grid { display: grid; grid-template-columns: 30px repeat(10, 55px); grid-template-rows: 30px repeat(10, 55px); gap: 1px; background: #444; margin: auto; padding: 10px; min-width: max-content; }
-        .cell { width: 55px; height: 55px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; }
         
+        /* הוספתי touch-action כדי שלחיצות מובייל יגיבו מהר וללא עיכוב זום */
+        .cell { width: 55px; height: 55px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; touch-action: none; }
+        
+        /* החזרת אזור הלוג למנחה */
+        #host-log { width: 220px; background: #111; border-left: 2px solid #444; padding: 10px; overflow-y: auto; font-size: 11px; color: lime; }
+
         .coord { background: #333; display: flex; align-items: center; justify-content: center; font-size: 12px; }
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
         .p-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
         .p-dot { width: 12px; height: 12px; background: cyan; border-radius: 50%; border: 1px solid #000; }
         .p-name { font-size: 8px; background: rgba(0,0,0,0.8); color: white; padding: 1px 3px; border-radius: 2px; margin-top: 2px; }
-        .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; color: #fff; }
+        .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; color: #fff; touch-action: manipulation; }
         .sel { background: cyan; color: #000; }
     </style>
 </head>
@@ -40,18 +49,27 @@
         <button class="tile-opt" onclick="sel('black_hole',this)">🕳️ BlackHole</button>
         <button class="tile-opt" onclick="sel('armory',this)">⚔️ Armory</button>
     </div>
-    <div id="grid-container"><div id="grid"></div></div>
+    
+    <div id="main-area">
+        <div id="grid-container"><div id="grid"></div></div>
+        <div id="host-log"><b>📜 יומן מנחה:</b><div id="log-list"></div></div>
+    </div>
+
     <div style="padding: 15px; background: #222; display: flex; gap: 10px; justify-content: center;">
         <div id="tele-wait"></div>
-        <button onclick="socket.emit('set_phase', 2)">Phase 2: Spawn</button>
-        <button onclick="socket.emit('set_phase', 3)">Phase 3: Start</button>
-        <button onclick="socket.emit('next_turn')">Next Turn</button>
+        <button onclick="socket.emit('set_phase', 2)" style="touch-action: manipulation;">Phase 2: Spawn</button>
+        <button onclick="socket.emit('set_phase', 3)" style="touch-action: manipulation;">Phase 3: Start</button>
+        <button onclick="socket.emit('next_turn')" style="touch-action: manipulation;">Next Turn</button>
     </div>
     <script>
         const socket = io(); let mazeD = [], curS = "empty", phase = 1, teleT = null;
         function sel(t, e) { curS = t; document.querySelectorAll('.tile-opt').forEach(b=>b.classList.remove('sel')); e.classList.add('sel'); }
         socket.on('sync', d => {
             mazeD = d.maze; phase = d.phase;
+            
+            // עדכון הלוג שהוחזר
+            document.getElementById('log-list').innerHTML = d.logs.map(l => `<div style="margin-bottom:5px;">- ${l}</div>`).join('');
+            
             const waiters = d.players.filter(p => p.waiting_teleport);
             document.getElementById('tele-wait').innerHTML = waiters.map(p => `<button onclick="teleT='${p.id}';alert('Click empty cell to teleport ${p.n}')">Teleport ${p.n}</button>`).join(' ');
             
@@ -77,15 +95,25 @@
                         }
                     });
 
-                    c.onmousedown = (e) => {
+                    // החלפתי onmousedown ב-onpointerdown כדי שיתמוך בצורה מלאה גם במסכי מגע
+                    c.onpointerdown = (e) => {
                         if(teleT && td.tile === "empty") { socket.emit('host_teleport', {target_id: teleT, x, y}); teleT = null; return; }
                         if(phase === 1) {
                             const r = c.getBoundingClientRect();
-                            if(e.button === 0) d.maze[y][x].tile = curS;
-                            else { if(e.clientY - r.top < 12) d.maze[y][x].walls.top = !d.maze[y][x].walls.top; else d.maze[y][x].walls.left = !d.maze[y][x].walls.left; }
+                            // בעכבר - לחיצה ימנית (button 2) שמה קיר. אחרת שמה משבצת.
+                            // במסך מגע e.button הוא תמיד 0.
+                            if(e.pointerType === 'mouse' && e.button === 2) {
+                                if(e.clientY - r.top < 15) d.maze[y][x].walls.top = !d.maze[y][x].walls.top; 
+                                else d.maze[y][x].walls.left = !d.maze[y][x].walls.left;
+                            } else {
+                                d.maze[y][x].tile = curS;
+                            }
                             socket.emit('update_maze', d.maze);
                         }
                     };
+                    // מונע את התפריט של לחיצה ימנית בדפדפן כדי לאפשר לשים קירות בנוחות
+                    c.oncontextmenu = (e) => e.preventDefault();
+                    
                     g.appendChild(c);
                 }
             }
