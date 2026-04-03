@@ -6,9 +6,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'castle_maze_ultimate_2026'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# אתחול לוח 10x10
 maze = [[{
-    "tile": "empty", "was": None, 
+    "tile": "empty", 
+    "collected": False, 
     "walls": {"top": False, "left": False},
     "ex_walls": {"top": {"broken": False, "by": ""}, "left": {"broken": False, "by": ""}},
     "visited_by": [],
@@ -38,7 +38,6 @@ def get_rel_dir(p1, p2):
 
 def sync_all():
     p_list = [p for p in players.values() if not p['is_man']]
-    # Last Man Standing
     alive = [p for p in p_list if p['injuries'] < 5]
     global winner
     if not winner and len(p_list) > 1 and len(alive) == 1:
@@ -112,17 +111,13 @@ def on_move(data):
                 add_log(f"🎒 {p['n']} picked up a dropped {item}!")
             tile['dropped_items'] = []
 
-        if tile['tile'] == "empty" and tile['was']:
-            add_log(f"👀 {p['n']} found where {tile['was']} used to be.")
-
         for other in [pl for pl in players.values() if not pl['is_man'] and pl['id'] != p['id']]:
             if other['x'] == nx and other['y'] == ny and p['is_lost'] and curr_pos in p['known_tiles']:
                 clear_lost(p)
         if p['is_lost'] and (p['n'] in tile['visited_by'] or tile['tile'] == "river_start"):
             clear_lost(p)
 
-        t_name = tile['tile'] if tile['tile'] != "empty" else tile['was']
-        if t_name and t_name not in ["empty", "river"]:
+        if tile['tile'] != "empty" and tile['tile'] != "river":
             if p['n'] not in tile['visited_by']: tile['visited_by'].append(p['n'])
             for other in [pl for pl in players.values() if not pl['is_man'] and pl['n'] in tile['visited_by']]:
                 src = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
@@ -133,6 +128,7 @@ def on_move(data):
                         if t not in p['known_tiles']: p['known_tiles'].append(t)
 
         item_name = tile['tile']
+        
         if item_name == "river":
             if "boat" in p['items']:
                 add_log(f"🛶 {p['n']} crossed the river safely.")
@@ -165,13 +161,16 @@ def on_move(data):
                 add_log(f"🏆 {p['n']} escaped with the treasure and won!")
 
         elif item_name in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries", "clinic", "er", "armory"]:
-            if item_name == "clinic" and p['injuries'] < 4: p['injuries'] = 0
-            elif item_name == "er" and p['injuries'] == 4: p['injuries'] = 3
-            elif item_name == "armory": p['bul']=3; p['bom']=3
+            if item_name == "clinic" and p['injuries'] < 4: p['injuries'] = 0; add_log(f"✨ {p['n']} reached {item_name}.")
+            elif item_name == "er" and p['injuries'] == 4: p['injuries'] = 3; add_log(f"✨ {p['n']} reached {item_name}.")
+            elif item_name == "armory": p['bul']=3; p['bom']=3; add_log(f"✨ {p['n']} reached {item_name}.")
             else:
-                p['items'].append(item_name)
-                tile['was'] = item_name; tile['tile'] = "empty"
-            add_log(f"✨ {p['n']} reached {item_name}.")
+                if tile['collected']:
+                    add_log(f"👀 {p['n']} found where {item_name} used to be.")
+                else:
+                    p['items'].append(item_name)
+                    tile['collected'] = True
+                    add_log(f"✨ {p['n']} reached {item_name}.")
 
         if p['injuries'] >= 5:
             add_log(f"💀 {p['n']} has died!")
