@@ -1,73 +1,90 @@
 <!DOCTYPE html>
-<html id="html-tag" lang="he" dir="rtl">
+<html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maze RPG - Fusion</title>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maze RPG</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #welcome { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
-        #inventory { width: 140px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 12px; }
-        #log-area { width: 220px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 11px; overflow-y: auto; color: #ccc; }
-        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; }
-        #board { display: grid; grid-template-columns: repeat(10, 35px); gap: 1px; background: #333; padding: 4px; }
+        #inv { width: 120px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 11px; }
+        #logs { width: 180px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 10px; overflow-y: auto; }
+        #board-area { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; }
+        #board { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #333; padding: 4px; }
         @media (min-width: 600px) { #board { grid-template-columns: repeat(10, 50px); } .cell { width: 50px !important; height: 50px !important; } }
-        .cell { width: 35px; height: 35px; background: #111; position: relative; background-size: contain; box-sizing: border-box; }
+        .cell { width: 32px; height: 32px; background: #111; position: relative; background-size: contain; }
         .revealed { background: #2a2a2a; }
         .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
         .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
         .wall-top.wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d, inset 0 5px 0 0 #ff4d4d !important; }
-        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 2px solid white; box-shadow: 0 0 10px cyan; }
-        .lost-mode { filter: sepia(1) grayscale(0.5) contrast(0.8); } /* אפקט ויזואלי כשהשחקן אבוד */
+        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; margin: 20%; border: 2px solid white; }
+        .lost { filter: grayscale(1) brightness(0.5); }
+        #controls { height: 160px; background: #222; display: flex; border-top: 2px solid #444; }
+        .dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 5px; padding: 10px; }
+        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; }
+        .act-btn { height: 40px; background: #555; border: none; color: white; border-radius: 5px; margin-bottom: 5px; width: 100%; font-weight: bold; }
+        .on { background: #f1c40f !important; color: #000; }
     </style>
 </head>
 <body>
-    <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111; border-bottom: 2px solid #333;">
-        <div id="turn-txt" style="color: #2ecc71;">ממתין...</div>
-        <div id="lost-status" style="color: red; font-weight: bold; display: none;">⚠️ אבוד (LOST)</div>
+    <div id="welcome">
+        <h1>מבוך המשפחה</h1>
+        <input type="text" id="name" placeholder="שם שחקן..."><br>
+        <button onclick="join()" style="padding:10px 20px; background:green; color:white; border:none; border-radius:5px;">START</button>
+        <a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" style="color:cyan; margin-top:10px;">חוקים</a>
+    </div>
+    <div id="status" style="display:flex; justify-content: space-around; padding: 10px; background: #111;">
+        <div id="turn" style="color: lime;">...</div>
         <div>❤️ <span id="inj">0</span>/5</div>
         <div>🔫 <span id="bul">3</span> | 💣 <span id="bom">3</span></div>
     </div>
     <div id="main-ui">
-        <div id="inventory"><b>🎒 מלאי:</b><div id="inv-list"></div></div>
-        <div id="board-container"><div id="board"></div></div>
-        <div id="log-area"><b>📜 יומן:</b><div id="log-content"></div></div>
+        <div id="inv"><b>🎒 מלאי:</b><div id="inv-list"></div></div>
+        <div id="board-area"><div id="board"></div></div>
+        <div id="logs"><b>📜 יומן:</b><div id="log-content"></div></div>
     </div>
-    <div id="ui-panel" style="height: 150px; background: #222; display: flex;">
-        <div style="padding: 10px; display: grid; grid-template-columns: repeat(3, 40px); gap: 5px;">
-            <div style="grid-column: 2"><button onclick="socket.emit('move',{dx:0,dy:-1})">↑</button></div>
-            <div style="grid-column: 1"><button onclick="socket.emit('move',{dx:-1,dy:0})">←</button></div>
-            <div style="grid-column: 3"><button onclick="socket.emit('move',{dx:1,dy:0})">→</button></div>
-            <div style="grid-column: 2"><button onclick="socket.emit('move',{dx:0,dy:1})">↓</button></div>
+    <div id="controls">
+        <div class="dpad">
+            <button class="btn" style="grid-area: up" onclick="dir(0,-1)">↑</button>
+            <button class="btn" style="grid-area: left" onclick="dir(-1,0)">←</button>
+            <button class="btn" style="grid-area: right" onclick="dir(1,0)">→</button>
+            <button class="btn" style="grid-area: down" onclick="dir(0,1)">↓</button>
         </div>
-        <div style="padding: 10px; flex-grow: 1;">
-            <button onclick="socket.emit('bomb',{dx:0,dy:-1})">פצצה למעלה 💣</button>
+        <div style="flex-grow:1; padding:10px;">
+            <button id="s-btn" class="act-btn" onclick="setM('shoot')">SHOOT 🔫</button>
+            <button id="b-btn" class="act-btn" onclick="setM('bomb')">BOMB 💣</button>
+            <div id="lost-alert" style="color:red; display:none; text-align:center;">⚠️ אבוד!</div>
         </div>
     </div>
     <script>
-        const socket = io();
-        function joinGame() { socket.emit('join', { name: prompt("שם שחקן:") }); }
+        const socket = io(); let m = 'move';
+        function join() { socket.emit('join', { name: document.getElementById('name').value }); document.getElementById('welcome').style.display = 'none'; }
+        function setM(mode) { m = (m === mode) ? 'move' : mode; document.getElementById('s-btn').className = (m==='shoot')?'act-btn on':'act-btn'; document.getElementById('b-btn').className = (m==='bomb')?'act-btn on':'act-btn'; }
+        function dir(dx, dy) { if(m==='move') socket.emit('move',{dx,dy}); else if(m==='shoot'){ socket.emit('shoot',{dx,dy}); setM('move'); } else { socket.emit('bomb',{dx,dy}); setM('move'); } }
         socket.on('sync', d => {
             const my = d.players.find(p => p.id === socket.id); if(!my) return;
-            document.getElementById('lost-status').style.display = my.is_lost ? "block" : "none";
-            document.getElementById('board').className = my.is_lost ? "lost-mode" : "";
-            document.getElementById('turn-txt').innerText = (d.turn_id === socket.id) ? "תורך!" : "ממתין...";
+            document.getElementById('inj').innerText = my.injuries;
+            document.getElementById('bul').innerText = my.bul; document.getElementById('bom').innerText = my.bom;
+            document.getElementById('turn').innerText = (d.turn_id === socket.id) ? "תורך!" : "ממתין...";
+            document.getElementById('lost-alert').style.display = my.is_lost ? "block" : "none";
             document.getElementById('inv-list').innerHTML = my.items.map(i => `<div>- ${i}</div>`).join('');
-            document.getElementById('log-content').innerHTML = d.logs.map(m => `<div>${m}</div>`).join('');
+            document.getElementById('log-content').innerHTML = d.logs.map(l => `<div>${l}</div>`).join('');
             const b = document.getElementById('board'); b.innerHTML = '';
+            const vision = my.items.includes('flashlight') && my.items.includes('batteries');
             for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
-                const td = d.maze[y][x]; const cell = document.createElement('div');
-                const known = my.known_tiles.some(t => t[0] === x && t[1] === y);
-                cell.className = 'cell' + (known ? ' revealed' : '');
+                const td = d.maze[y][x]; const c = document.createElement('div');
+                const known = vision || my.known_tiles.some(t => t[0] === x && t[1] === y);
+                c.className = 'cell' + (known ? ' revealed' : '');
                 if(known) {
-                    if(td.walls.top) cell.classList.add('wall-top'); if(td.walls.left) cell.classList.add('wall-left');
-                    if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
+                    if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
                 }
-                if(!my.is_lost && my.x === x && my.y === y) { const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot); }
-                b.appendChild(cell);
+                if(!my.is_lost && my.x === x && my.y === y) { const dot = document.createElement('div'); dot.className = 'p-dot'; c.appendChild(dot); }
+                if(d.phase === 2 && !my.has_spawned) c.onclick = () => socket.emit('set_spawn', {x, y});
+                b.appendChild(c);
             }
         });
-        joinGame();
     </script>
 </body>
 </html>
