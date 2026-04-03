@@ -6,9 +6,11 @@
     <style>
         body { background: #111; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
         #sidebar { background: #222; padding: 10px; display: flex; gap: 5px; overflow-x: auto; border-bottom: 2px solid #444; }
-        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr; }
-        #grid { display: grid; grid-template-columns: 25px repeat(10, 45px); grid-template-rows: 25px repeat(10, 45px); gap: 1px; background: #444; }
-        .cell { width: 45px; height: 45px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; }
+        
+        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr; overflow: auto; }
+        #grid { display: grid; grid-template-columns: 30px repeat(10, 55px); grid-template-rows: 30px repeat(10, 55px); gap: 1px; background: #444; margin: auto; padding: 10px; min-width: max-content; }
+        .cell { width: 55px; height: 55px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; }
+        
         .coord { background: #333; display: flex; align-items: center; justify-content: center; font-size: 12px; }
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
