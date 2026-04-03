@@ -3,10 +3,10 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'castle_maze_final_2026'
+app.config['SECRET_KEY'] = 'castle_maze_2026_pro'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# אתחול לוח 10x10 עם כל השדות הנדרשים
+# אתחול לוח 10x10
 maze = [[{
     "tile": "empty", "was": None, 
     "walls": {"top": False, "left": False},
@@ -35,7 +35,17 @@ def get_rel_dir(p1, p2):
     elif dx > 0: res.append("מזרח")
     return "-".join(res) if res else "ממש כאן"
 
+def check_win():
+    global winner
+    if winner: return
+    p_list = [p for p in players.values() if not p['is_man']]
+    alive = [p for p in p_list if p['injuries'] < 5]
+    if len(p_list) > 1 and len(alive) == 1:
+        winner = alive[0]['n']
+        add_log(f"🏆 {winner} הוא השורד האחרון וניצח!")
+
 def sync_all():
+    check_win()
     p_list = [p for p in players.values() if not p['is_man']]
     active_id = player_order[current_turn_idx] if (player_order and current_turn_idx < len(player_order)) else None
     socketio.emit('sync', {
@@ -49,7 +59,7 @@ def clear_lost(p):
         for t in p['post_lost_tiles']:
             if t not in p['known_tiles']: p['known_tiles'].append(t)
         p['post_lost_tiles'] = []
-        add_log(f"🧠 {p['n']} כבר לא אבוד!")
+        add_log(f"🧠 {p['n']} זיהה את מיקומו וחזר למפה!")
 
 @app.route('/')
 def index(): return render_template('index.html')
@@ -86,7 +96,7 @@ def on_move(data):
     else: blocked = True
 
     if not blocked:
-        # בדיקת רמז קיר שבור יחיד
+        # קיר שבור יחיד
         target_w = maze[ny][nx] if (data['dx']==1 or data['dy']==1) else maze[p['y']][p['x']]
         if target_w['ex_walls'][wall_key]['broken']:
             broken_total = sum(1 for r in maze for c in r if c['ex_walls'][wall_key]['broken'])
@@ -99,15 +109,13 @@ def on_move(data):
         tile = maze[ny][nx]
         curr_pos = [nx, ny]
 
-        # יציאה מ-Lost: מפגש עם שחקן שקיים על המפה שלי
+        # יציאה מ-Lost: מפגש או זיהוי
         for other in [pl for pl in players.values() if not pl['is_man'] and pl['id'] != p['id']]:
             if other['x'] == nx and other['y'] == ny and p['is_lost'] and curr_pos in p['known_tiles']:
                 clear_lost(p)
-        
-        # יציאה מ-Lost: זיהוי מקום מוכר
         if p['is_lost'] and p['n'] in tile['visited_by']: clear_lost(p)
 
-        # Map Fusion & Visited
+        # Map Fusion
         t_name = tile['tile'] if tile['tile'] != "empty" else tile['was']
         if t_name and t_name not in ["empty", "river"]:
             if p['n'] not in tile['visited_by']: tile['visited_by'].append(p['n'])
@@ -128,10 +136,13 @@ def on_move(data):
         elif tile['tile'] == "black_hole":
             p['is_lost'] = True; p['waiting_teleport'] = True; p['post_lost_tiles'] = []
             add_log(f"🕳️ {p['n']} נשאב לחור שחור!")
-        elif tile['tile'] == "river_start": p['knows_river_start'] = True
-        elif tile['tile'] == "monster": p['bul']=min(5,p['bul']+1); p['bom']=min(5,p['bom']+1); add_log(f"👾 {p['n']} קיבל ציוד ותור נוסף!"); return
-        elif tile['tile'] == "devil": p['injuries']+=1; p['bul']=max(0,p['bul']-1); p['bom']=max(0,p['bom']-1)
+        elif tile['tile'] == "monster": 
+            p['bul']=min(5,p['bul']+1); p['bom']=min(5,p['bom']+1)
+            add_log(f"👾 {p['n']} קיבל ציוד ותור נוסף!"); return 
+        elif tile['tile'] == "devil": 
+            p['injuries']+=1; p['bul']=max(0,p['bul']-1); p['bom']=max(0,p['bom']-1)
         elif tile['tile'] == "exit" and "treasure" in p['items']: global winner; winner = p['n']
+        elif tile['tile'] == "river_start": p['knows_river_start'] = True
         elif tile['tile'] in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries", "clinic", "er", "armory"]:
             if tile['tile'] == "clinic" and p['injuries'] < 4: p['injuries'] = 0
             elif tile['tile'] == "er" and p['injuries'] == 4: p['injuries'] = 3
@@ -199,8 +210,7 @@ def on_uz(d):
 def on_sp(d):
     p = players.get(request.sid)
     if p and game_phase == 2:
-        p['x'], p['y'] = d['x'], d['y']
-        p['has_spawned'] = True; p['known_tiles'] = [[d['x'], d['y']]]
+        p['x'], p['y'] = d['x'], d['y']; p['has_spawned'] = True; p['known_tiles'] = [[d['x'], d['y']]]
         sync_all()
 
 @socketio.on('next_turn')
