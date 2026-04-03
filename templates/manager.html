@@ -1,106 +1,85 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Manager - Host</title>
+    <meta charset="UTF-8"><title>Manager - Castle Host</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; flex-direction: column; }
-        #sidebar { background: #222; border-bottom: 2px solid #444; padding: 10px; display: flex; gap: 8px; overflow-x: auto; }
-        #main { display: flex; flex-grow: 1; overflow: hidden; }
-        #grid-area { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; direction: ltr !important; }
-        #grid { display: grid; grid-template-columns: repeat(10, 45px); gap: 1px; background: #444; }
+        body { background: #111; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        #sidebar { background: #222; padding: 10px; display: flex; gap: 5px; overflow-x: auto; border-bottom: 2px solid #444; }
+        #grid-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr; }
+        #grid { display: grid; grid-template-columns: 25px repeat(10, 45px); grid-template-rows: 25px repeat(10, 45px); gap: 1px; background: #444; }
         .cell { width: 45px; height: 45px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; }
+        .coord { background: #333; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; }
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
-        .tile-opt { min-width: 85px; padding: 8px; background: #333; border-radius: 5px; text-align: center; font-size: 11px; flex-shrink: 0; cursor: pointer; }
-        .selected { border: 2px solid cyan; background: #004444; }
-        #host-logs { width: 220px; background: #111; border-right: 2px solid #444; padding: 10px; overflow-y: auto; font-size: 11px; color: lime; }
-        .p-wrapper { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
-        .p-dot { width: 14px; height: 14px; background: cyan; border-radius: 50%; border: 1px solid #000; }
-        .p-name { font-size: 9px; background: rgba(0,0,0,0.8); color: white; padding: 1px 3px; border-radius: 3px; }
-        #tele-panel { padding: 10px; background: #333; border-top: 1px solid #444; text-align: center; }
-        .tele-btn { background: #e74c3c; padding: 5px 10px; border: none; color: white; border-radius: 3px; cursor: pointer; margin: 2px; }
+        .p-wrapper { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+        .p-dot { width: 12px; height: 12px; background: cyan; border-radius: 50%; border: 1px solid #000; }
+        .p-name { font-size: 8px; background: rgba(0,0,0,0.8); color: #fff; padding: 1px; border-radius: 2px; margin-top: 2px; }
+        .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; }
+        .sel { background: cyan; color: #000; }
     </style>
 </head>
-<body oncontextmenu="return false;">
+<body>
     <div id="sidebar">
-        <div class="tile-opt selected" onclick="sel('empty', this)">רצפה</div>
-        <div class="tile-opt" onclick="sel('treasure', this)">💰 Treasure</div>
-        <div class="tile-opt" onclick="sel('fake_treasure', this)">💎 Fake</div>
-        <div class="tile-opt" onclick="sel('river', this)">💧 נהר</div>
-        <div class="tile-opt" onclick="sel('river_start', this)">🌊 התחלה</div>
-        <div class="tile-opt" onclick="sel('boat', this)">🛶 סירה</div>
-        <div class="tile-opt" onclick="sel('raft', this)">🪵 רפסודה</div>
-        <div class="tile-opt" onclick="sel('flashlight', this)">🔦 פנס</div>
-        <div class="tile-opt" onclick="sel('batteries', this)">🔋 סוללות</div>
-        <div class="tile-opt" onclick="sel('exit', this)">🚪 יציאה</div>
-        <div class="tile-opt" onclick="sel('monster', this)">👾 מפלצת</div>
-        <div class="tile-opt" onclick="sel('devil', this)">😈 שטן</div>
-        <div class="tile-opt" onclick="sel('clinic', this)">🏥 מרפאה</div>
-        <div class="tile-opt" onclick="sel('er', this)">🚑 מיון</div>
-        <div class="tile-opt" onclick="sel('black_hole', this)">🕳️ חור שחור</div>
-        <div class="tile-opt" onclick="sel('armory', this)">⚔️ נשקייה</div>
+        <button class="tile-opt sel" onclick="sel('empty',this)">Floor</button>
+        <button class="tile-opt" onclick="sel('treasure',this)">💰 Treasure</button>
+        <button class="tile-opt" onclick="sel('fake_treasure',this)">💎 Fake Treasure</button>
+        <button onclick="sel('river',this)" class="tile-opt">💧 River</button>
+        <button onclick="sel('river_start',this)" class="tile-opt">🌊 River Start</button>
+        <button onclick="sel('boat',this)" class="tile-opt">🛶 Boat</button>
+        <button onclick="sel('raft',this)" class="tile-opt">🪵 Raft</button>
+        <button onclick="sel('flashlight',this)" class="tile-opt">🔦 Flash</button>
+        <button onclick="sel('batteries',this)" class="tile-opt">🔋 Battery</button>
+        <button onclick="sel('exit',this)" class="tile-opt">🚪 Exit</button>
+        <button onclick="sel('monster',this)" class="tile-opt">👾 Monster</button>
+        <button onclick="sel('devil',this)" class="tile-opt">😈 Devil</button>
+        <button onclick="sel('clinic',this)" class="tile-opt">🏥 Clinic</button>
+        <button onclick="sel('er',this)" class="tile-opt">🚑 ER</button>
+        <button onclick="sel('black_hole',this)" class="tile-opt">🕳️ BlackHole</button>
+        <button onclick="sel('armory',this)" class="tile-opt">⚔️ Armory</button>
     </div>
-    <div id="main">
-        <div id="host-logs"><b>📜 יומן מנחה:</b><div id="log-list"></div></div>
-        <div id="grid-area"><div id="grid"></div></div>
-    </div>
-    <div id="tele-panel">
-        <b>שחקנים הממתינים לשיגור:</b>
-        <div id="waiting-list">אין</div>
-    </div>
-    <div style="padding: 10px; background: #222; display: flex; gap: 10px; justify-content: center;">
-        <button onclick="socket.emit('set_phase', 2)">Set Spawn</button>
-        <button onclick="socket.emit('set_phase', 3)">START</button>
-        <button onclick="socket.emit('next_turn')">תור הבא ➡️</button>
+    <div id="grid-container"><div id="grid"></div></div>
+    <div style="padding: 15px; background: #222; display: flex; gap: 10px; justify-content: center; border-top: 2px solid #444;">
+        <div id="waiters"></div>
+        <button onclick="socket.emit('set_phase', 2)">Phase 2: Spawn</button>
+        <button onclick="socket.emit('set_phase', 3)">Phase 3: Start</button>
+        <button onclick="socket.emit('next_turn')">Next Turn</button>
     </div>
     <script>
-        const socket = io(); let curS = "empty"; let mazeD = [], phase = 1, teleTarget = null;
-        function sel(t, e) { curS = t; document.querySelectorAll('.tile-opt').forEach(o => o.classList.remove('selected')); e.classList.add('selected'); }
-        
+        const socket = io(); let mazeD = [], curS = "empty", phase = 1, teleT = null;
+        function sel(t, e) { curS = t; document.querySelectorAll('.tile-opt').forEach(b=>b.classList.remove('sel')); e.classList.add('sel'); }
         socket.on('sync', d => {
             mazeD = d.maze; phase = d.phase;
-            document.getElementById('log-list').innerHTML = d.logs.map(l => `<div>- ${l}</div>`).join('');
-            
-            // עדכון רשימת הממתינים לשיגור
             const waiters = d.players.filter(p => p.waiting_teleport);
-            const wList = document.getElementById('waiting-list');
-            if(waiters.length > 0) {
-                wList.innerHTML = waiters.map(p => `<button class="tele-btn" onclick="teleTarget='${p.id}'; alert('בחר משבצת ריקה לשיגור את ${p.n}')">${p.n}</button>`).join('');
-            } else { wList.innerHTML = "אין"; teleTarget = null; }
-
+            document.getElementById('waiters').innerHTML = waiters.map(p => `<button onclick="teleT='${p.id}';alert('בחר משבצת ריקה לשיגור את ${p.n}')">Teleport ${p.n}</button>`).join('');
+            
             const g = document.getElementById('grid'); g.innerHTML = '';
-            for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
-                const td = d.maze[y][x]; const c = document.createElement('div'); c.className = 'cell';
-                if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
-                if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                
-                d.players.forEach(p => {
-                    if(p.x === x && p.y === y) {
-                        const w = document.createElement('div'); w.className = 'p-wrapper';
-                        const dot = document.createElement('div'); dot.className = 'p-dot';
-                        if(p.is_lost) dot.style.background = "red";
-                        const n = document.createElement('div'); n.className = 'p-name'; n.innerText = p.n;
-                        w.appendChild(dot); w.appendChild(n); c.appendChild(w);
-                    }
-                });
-
-                c.onmousedown = (e) => {
-                    // אם אנחנו במצב שיגור
-                    if(teleTarget && td.tile === "empty") {
-                        socket.emit('host_teleport', { target_id: teleTarget, x: x, y: y });
-                        teleTarget = null; return;
-                    }
-                    if (phase !== 1) return;
-                    const r = c.getBoundingClientRect();
-                    if (e.button === 0) mazeD[y][x].tile = curS;
-                    else if (e.button === 2) {
-                        if (e.clientY - r.top < 12) mazeD[y][x].walls.top = !mazeD[y][x].walls.top;
-                        else if (e.clientX - r.left < 12) mazeD[y][x].walls.left = !mazeD[y][x].walls.left;
-                    }
-                    socket.emit('update_maze', mazeD);
-                };
-                g.appendChild(c);
+            g.appendChild(document.createElement('div'));
+            for(let i=1; i<=10; i++){ const h=document.createElement('div'); h.className='coord'; h.innerText=i; g.appendChild(h); }
+            for(let y=0; y<10; y++){
+                const l=document.createElement('div'); l.className='coord'; l.innerText=y+1; g.appendChild(l);
+                for(let x=0; x<10; x++){
+                    const td = d.maze[y][x]; const c = document.createElement('div'); c.className = 'cell';
+                    if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
+                    if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    d.players.forEach(p => {
+                        if(p.x === x && p.y === y && p.has_spawned){
+                            const w = document.createElement('div'); w.className='p-wrapper';
+                            w.innerHTML = `<div class="p-dot" style="background:${p.is_lost?'red':'cyan'}"></div><div class="p-name">${p.n}</div>`;
+                            c.appendChild(w);
+                        }
+                    });
+                    c.onmousedown = (e) => {
+                        if(teleT && td.tile === "empty") { socket.emit('host_teleport', {target_id: teleT, x, y}); teleT = null; return; }
+                        if(phase === 1) {
+                            const r = c.getBoundingClientRect();
+                            if(e.button === 0) mazeD[y][x].tile = curS;
+                            else { if(e.clientY - r.top < 10) mazeD[y][x].walls.top = !mazeD[y][x].walls.top; else mazeD[y][x].walls.left = !mazeD[y][x].walls.left; }
+                            socket.emit('update_maze', mazeD);
+                        }
+                    };
+                    g.appendChild(c);
+                }
             }
         });
         socket.emit('join', { name: "Host", is_man: true });
