@@ -5,7 +5,8 @@
     <title>Castle Maze Player</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        /* הוספתי 100dvh כדי לתקן את הבעיה שסרגל הכלים במובייל מסתיר את הכפתורים */
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
         #welcome { position: fixed; inset: 0; background: #000; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
         #bag { width: 110px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 11px; }
@@ -15,7 +16,8 @@
         #board { display: grid; grid-template-columns: 30px repeat(10, 48px); grid-template-rows: 30px repeat(10, 48px); gap: 1px; background: #333; padding: 10px; margin: auto; min-width: max-content; }
         @media (min-width: 600px) { #board { grid-template-columns: 30px repeat(10, 65px); grid-template-rows: 30px repeat(10, 65px); } .cell { width: 65px !important; height: 65px !important; } }
         
-        .cell { width: 48px; height: 48px; background: #111; position: relative; background-size: contain; }
+        /* הוספתי cursor:pointer כדי שלחיצות במובייל יעבדו חלק */
+        .cell { width: 48px; height: 48px; background: #111; position: relative; background-size: contain; cursor: pointer; }
         .coord { background: #222; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #777; font-weight: bold; }
         .revealed { background: #222; }
         .wall-top { box-shadow: inset 0 5px 0 0 red; }
@@ -24,9 +26,11 @@
         .p-other { width: 40%; height: 40%; background: lime; border-radius: 50%; margin: 30%; border: 1px solid white; }
         #ui { height: 160px; background: #222; display: flex; border-top: 2px solid #444; }
         .dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 5px; padding: 10px; }
-        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; }
+        
+        /* הוספתי touch-action ו-cursor כדי שכפתורי הממשק יגיבו מיד במובייל */
+        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; cursor: pointer; touch-action: manipulation; }
         .action-btns { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; padding: 10px; gap: 5px; }
-        .act-btn { padding: 8px; border: none; color: white; border-radius: 5px; font-weight: bold; font-size: 10px; cursor: pointer; }
+        .act-btn { padding: 8px; border: none; color: white; border-radius: 5px; font-weight: bold; font-size: 10px; cursor: pointer; touch-action: manipulation; }
     </style>
 </head>
 <body>
@@ -118,14 +122,16 @@
                         const dot = document.createElement('div'); dot.className = 'p-dot'; cell.appendChild(dot);
                     }
 
-                    // מסתיר שחקנים אחרים בזמן שלב 2
                     d.players.forEach(p => {
                         if(p.id !== my.id && p.x === x && p.y === y && known && p.has_spawned && d.phase === 3) {
                             const o = document.createElement('div'); o.className = 'p-other'; cell.appendChild(o);
                         }
                     });
 
-                    if(d.phase === 2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x, y});
+                    // הוספתי תמיכה בלחיצה גם בעכבר וגם במסך מגע (Mobile)
+                    if(d.phase === 2 && !my.has_spawned) {
+                        cell.onpointerdown = () => socket.emit('set_spawn', {x, y});
+                    }
                     b.appendChild(cell);
                 }
             }
