@@ -27,6 +27,15 @@ def add_log(msg):
     game_logs.insert(0, msg)
     if len(game_logs) > 60: game_logs.pop()
 
+def get_rel_dir(p1, p2):
+    dy, dx = p2['y'] - p1['y'], p2['x'] - p1['x']
+    res = []
+    if dy < 0: res.append("צפון")
+    elif dy > 0: res.append("דרום")
+    if dx < 0: res.append("מערב")
+    elif dx > 0: res.append("מזרח")
+    return "-".join(res) if res else "ממש כאן"
+
 def sync_all():
     p_list = [p for p in players.values() if not p['is_man']]
     # Last Man Standing
