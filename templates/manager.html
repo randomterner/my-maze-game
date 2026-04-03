@@ -1,24 +1,23 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manager - Host</title>
+    <meta charset="UTF-8"><title>Manager - Host</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { display: flex; background: #1a1a1a; color: white; margin: 0; font-family: sans-serif; height: 100vh; flex-direction: column; }
         #sidebar { background: #222; border-bottom: 2px solid #444; padding: 10px; display: flex; gap: 8px; overflow-x: auto; }
         #main-area { display: flex; flex-grow: 1; overflow: hidden; }
-        #host-logs { width: 220px; background: #111; border-right: 2px solid #444; padding: 10px; overflow-y: auto; font-size: 11px; color: #0f0; }
+        #host-logs { width: 240px; background: #111; border-right: 2px solid #444; padding: 10px; overflow-y: auto; font-size: 11px; color: lime; }
         #grid-area { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; direction: ltr !important; }
-        #grid { display: grid; grid-template-columns: repeat(10, 32px); gap: 1px; background: #444; }
-        @media (min-width: 600px) { #grid { grid-template-columns: repeat(10, 45px); } .cell { width: 45px !important; height: 45px !important; } }
-        .cell { width: 32px; height: 32px; background: #fff; position: relative; background-size: contain; box-sizing: border-box; cursor: pointer; }
-        .wall-top { box-shadow: inset 0 5px 0 0 #ff4d4d; }
-        .wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d; }
-        .wall-top.wall-left { box-shadow: inset 5px 0 0 0 #ff4d4d, inset 0 5px 0 0 #ff4d4d !important; }
-        .tile-opt { min-width: 80px; padding: 6px; background: #333; border-radius: 4px; text-align: center; font-size: 11px; flex-shrink: 0; border: 1px solid #555; }
-        .selected { border: 2px solid #2ecc71; background: #1e5631; }
-        .p-dot { width: 14px; height: 14px; background: #00ffff; border-radius: 50%; position: absolute; top: 10px; left: 10px; border: 1px solid black; }
+        #grid { display: grid; grid-template-columns: repeat(10, 45px); gap: 1px; background: #444; }
+        .cell { width: 45px; height: 45px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; }
+        .wall-top { border-top: 5px solid red; }
+        .wall-left { border-left: 5px solid red; }
+        .tile-opt { min-width: 85px; padding: 8px; background: #333; border: 1px solid #555; border-radius: 5px; text-align: center; font-size: 11px; flex-shrink: 0; cursor: pointer; }
+        .selected { border: 2px solid cyan; background: #004444; }
+        .p-wrapper { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+        .p-dot { width: 14px; height: 14px; background: cyan; border-radius: 50%; border: 1px solid #000; }
+        .p-name { font-size: 9px; background: rgba(0,0,0,0.8); color: white; padding: 1px 3px; border-radius: 3px; }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -26,28 +25,28 @@
         <div class="tile-opt selected" onclick="sel('empty', this)">רצפה</div>
         <div class="tile-opt" onclick="sel('treasure', this)">💰 Treasure</div>
         <div class="tile-opt" onclick="sel('fake_treasure', this)">💎 Fake</div>
-        <div class="tile-opt" onclick="sel('armory', this)">⚔️ נשקייה</div>
-        <div class="tile-opt" onclick="sel('monster', this)">👾 מפלצת</div>
-        <div class="tile-opt" onclick="sel('devil', this)">😈 שטן</div>
         <div class="tile-opt" onclick="sel('river', this)">💧 נהר</div>
         <div class="tile-opt" onclick="sel('river_start', this)">🌊 התחלה</div>
         <div class="tile-opt" onclick="sel('boat', this)">🛶 סירה</div>
         <div class="tile-opt" onclick="sel('raft', this)">🪵 רפסודה</div>
         <div class="tile-opt" onclick="sel('flashlight', this)">🔦 פנס</div>
         <div class="tile-opt" onclick="sel('batteries', this)">🔋 סוללות</div>
+        <div class="tile-opt" onclick="sel('exit', this)">🚪 יציאה</div>
+        <div class="tile-opt" onclick="sel('monster', this)">👾 מפלצת</div>
+        <div class="tile-opt" onclick="sel('devil', this)">😈 שטן</div>
         <div class="tile-opt" onclick="sel('clinic', this)">🏥 מרפאה</div>
         <div class="tile-opt" onclick="sel('er', this)">🚑 מיון</div>
         <div class="tile-opt" onclick="sel('black_hole', this)">🕳️ חור שחור</div>
-        <div class="tile-opt" onclick="sel('exit', this)">🚪 יציאה</div>
+        <div class="tile-opt" onclick="sel('armory', this)">⚔️ נשקייה</div>
     </div>
     <div id="main-area">
         <div id="host-logs"><b>📜 יומן מנחה:</b><div id="log-list"></div></div>
         <div id="grid-area"><div id="grid"></div></div>
     </div>
-    <div style="padding:10px; background:#222; display:flex; gap:10px; justify-content:center;">
-        <button style="padding:10px; background:#e67e22; color:white; border:none; border-radius:5px;" onclick="socket.emit('set_phase', 2)">Set Spawn</button>
-        <button style="padding:10px; background:#2ecc71; color:white; border:none; border-radius:5px;" onclick="socket.emit('set_phase', 3)">START</button>
-        <button style="padding:10px; background:#3498db; color:white; border:none; border-radius:5px;" onclick="socket.emit('next_turn')">תור הבא ➡️</button>
+    <div style="padding: 10px; background: #222; display: flex; gap: 10px; justify-content: center;">
+        <button onclick="socket.emit('set_phase', 2)">Set Spawn</button>
+        <button onclick="socket.emit('set_phase', 3)">START</button>
+        <button onclick="socket.emit('next_turn')">תור הבא ➡️</button>
     </div>
     <script>
         const socket = io(); let curS = "empty"; let mazeD = [], phase = 1;
@@ -60,7 +59,17 @@
                 const td = d.maze[y][x]; const c = document.createElement('div'); c.className = 'cell';
                 if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
                 if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                d.players.forEach(p => { if(p.x === x && p.y === y) { const dot=document.createElement('div'); dot.className='p-dot'; c.appendChild(dot); } });
+                
+                d.players.forEach(p => {
+                    if(p.x === x && p.y === y) {
+                        const w = document.createElement('div'); w.className = 'p-wrapper';
+                        const dot = document.createElement('div'); dot.className = 'p-dot';
+                        if(p.is_lost) dot.style.background = "red";
+                        const n = document.createElement('div'); n.className = 'p-name'; n.innerText = p.n;
+                        w.appendChild(dot); w.appendChild(n); c.appendChild(w);
+                    }
+                });
+
                 c.onmousedown = (e) => {
                     if (phase !== 1) return;
                     const r = c.getBoundingClientRect();
