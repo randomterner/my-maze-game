@@ -3,23 +3,28 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'maze_rpg_fix_2026'
+app.config['SECRET_KEY'] = 'maze_fusion_system_2026'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-maze = [[{"tile": "empty", "was": None, "walls": {"top": False, "left": False}, "ex_walls": {"top": False, "left": False}} for _ in range(10)] for _ in range(10)]
+# maze[y][x] structure
+maze = [[{
+    "tile": "empty", 
+    "was": None, 
+    "walls": {"top": False, "left": False},
+    "visited_by": [] # רשימת שמות שחקנים שביקרו כאן
+} for _ in range(10)] for _ in range(10)]
+
 players = {}
 player_order = []
 current_turn_idx = 0
 game_phase = 1 
 game_logs = []
 winner = None
-river_start_pos = (0,0)
-
-DIR_L = {(0, -1): "למעלה ↑", (0, 1): "למטה ↓", (-1, 0): "שמאלה ←", (1, 0): "ימינה →"}
+river_start_pos = (-1, -1)
 
 def add_log(msg):
     game_logs.insert(0, msg)
-    if len(game_logs) > 40: game_logs.pop()
+    if len(game_logs) > 50: game_logs.pop()
 
 def sync_all():
     p_list = [p for p in players.values() if not p['is_man']]
@@ -41,20 +46,13 @@ def on_join(data):
     players[request.sid] = {
         "id": request.sid, "n": data.get('name', 'Player'), "is_man": is_man,
         "x": 0, "y": 0, "injuries": 0, "bul": 3, "bom": 3, "items": [], 
-        "has_spawned": False, "known_tiles": []
+        "has_spawned": False, 
+        "known_tiles": [], # List of [x, y]
+        "post_lost_tiles": [], # ידע שנצבר רק בזמן שהיה אבוד
+        "is_lost": False,
+        "knows_river_start": False
     }
-    if not is_man and request.sid not in player_order:
-        player_order.append(request.sid)
-    sync_all()
-
-@socketio.on('set_phase')
-def on_set_phase(data):
-    global game_phase
-    # תמיכה גם ב-Integer וגם ב-Dict
-    if isinstance(data, dict): val = data.get('phase', 1)
-    else: val = data
-    game_phase = int(val)
-    add_log(f"📢 המנחה העביר לשלב: {game_phase}")
+    if not is_man and request.sid not in player_order: player_order.append(request.sid)
     sync_all()
 
 @socketio.on('move')
@@ -62,82 +60,91 @@ def on_move(data):
     global winner
     p = players.get(request.sid)
     if not p or game_phase != 3 or p['id'] != player_order[current_turn_idx] or winner: return
+    
     dx, dy = data['dx'], data['dy']
     nx, ny = p['x'] + dx, p['y'] + dy
     
     blocked = False
-    passed_destroyed = False
     if 0 <= nx < 10 and 0 <= ny < 10:
         if dx == 1 and maze[p['y']][nx]['walls']['left']: blocked = True
         if dx == -1 and maze[p['y']][p['x']]['walls']['left']: blocked = True
         if dy == 1 and maze[ny][p['x']]['walls']['top']: blocked = True
         if dy == -1 and maze[p['y']][p['x']]['walls']['top']: blocked = True
-        
-        # לוג הריסות
-        if not blocked:
-            if (dx == 1 and maze[p['y']][nx]['ex_walls']['left']) or \
-               (dx == -1 and maze[p['y']][p['x']]['ex_walls']['left']) or \
-               (dy == 1 and maze[ny][p['x']]['ex_walls']['top']) or \
-               (dy == -1 and maze[p['y']][p['x']]['ex_walls']['top']):
-                passed_destroyed = True
     else: blocked = True
 
     if not blocked:
-        if passed_destroyed: add_log(f"💨 {p['n']} עבר דרך הריסות קיר.")
         p['x'], p['y'] = nx, ny
         tile = maze[ny][nx]
-        add_log(f"👣 {p['n']} זז {DIR_L.get((dx,dy))}.")
-        
-        if tile['tile'] == "empty" and tile['was']:
-            add_log(f"👀 {p['n']} ראה איפה ה-{tile['was']} היה פעם.")
-        elif tile['tile'] == "river":
+        tile_name = tile['tile'] if tile['tile'] != "empty" else tile['was']
+
+        # 1. בדיקת יציאה ממצב Lost (אם ביקר כאן בעבר)
+        if p['is_lost'] and p['n'] in tile['visited_by']:
+            p['is_lost'] = False
+            add_log(f"🧠 {p['n']} זיהה את האזור ויצא ממצב אבוד!")
+
+        # 2. עדכון רשימת מבקרים (רק למשבצות שאינן ריקות/נהר)
+        if tile_name and tile_name not in ["empty", "river"]:
+            if p['n'] not in tile['visited_by']:
+                tile['visited_by'].append(p['n'])
+
+        # 3. מנגנון מיזוג מפות (Map Fusion)
+        if tile_name and tile_name not in ["empty", "river"]:
+            for other_id, other_p in players.items():
+                if other_id != request.sid and not other_p['is_man']:
+                    # אם השחקן השני כבר ביקר כאן בעבר
+                    if other_p['n'] in tile['visited_by']:
+                        # מיזוג ידע: השני מקבל את כל מה שהנוכחי גילה
+                        # אם הנוכחי אבוד, הוא מעביר רק את מה שגילה מאז שהלך לאיבוד
+                        tiles_to_share = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
+                        
+                        # הוספת הידע לשחקן השני
+                        for t in tiles_to_share:
+                            if t not in other_p['known_tiles']: other_p['known_tiles'].append(t)
+                        
+                        # אם הנוכחי לא אבוד, הוא מקבל גם את הידע של השני
+                        if not p['is_lost']:
+                            for t in other_p['known_tiles']:
+                                if t not in p['known_tiles']: p['known_tiles'].append(t)
+                        
+                        add_log(f"🔗 מפות מוזגו! {p['n']} ו-{other_p['n']} חולקים מידע דרך ה-{tile_name}.")
+
+        # 4. אפקטים מיוחדים
+        if tile['tile'] == "river":
             p['x'], p['y'] = river_start_pos
-            if "boat" not in p['items']: p['injuries'] += 1; add_log(f"🌊 {p['n']} נסחף ונפצע!")
-            else: add_log(f"🛶 {p['n']} חצה בבטחה.")
-        elif tile['tile'] == "exit" and "treasure" in p['items']:
-            winner = p['n']; add_log(f"🏆 {p['n']} ניצח!")
-        elif tile['tile'] in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries"]:
-            p['items'].append(tile['tile']); tile['was'] = tile['tile']; tile['tile'] = "empty"
-            add_log(f"🎁 {p['n']} מצא {tile['was']}!")
-        
-        if [p['x'], p['y']] not in p['known_tiles']: p['known_tiles'].append([p['x'], p['y']])
+            if not p['knows_river_start']:
+                p['is_lost'] = True
+                p['post_lost_tiles'] = [] # איפוס ידע אבוד חדש
+            if "boat" not in p['items']: p['injuries'] += 1
+            add_log(f"🌊 {p['n']} נסחף בנהר!")
+
+        elif tile['tile'] == "black_hole":
+            p['x'], p['y'] = random.randint(0,9), random.randint(0,9)
+            p['is_lost'] = True
+            p['post_lost_tiles'] = []
+            add_log(f"🕳️ {p['n']} נשאב לחור שחור ואבד!")
+
+        elif tile['tile'] == "river_start":
+            p['knows_river_start'] = True
+            add_log(f"📍 {p['n']} גילה את מקור הנהר.")
+
+        # איסוף חפצים (לוגיקה רגילה)
+        if tile['tile'] in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries"]:
+            p['items'].append(tile['tile'])
+            tile['was'] = tile['tile']
+            tile['tile'] = "empty"
+
+        # עדכון ידע מפה
+        current_pos = [p['x'], p['y']]
+        if current_pos not in p['known_tiles']:
+            p['known_tiles'].append(current_pos)
+            if p['is_lost']:
+                p['post_lost_tiles'].append(current_pos)
+
     sync_all()
 
-@socketio.on('shoot')
-def on_shoot(data):
-    p = players.get(request.sid)
-    if not p or p['bul'] <= 0 or p['id'] != player_order[current_turn_idx]: return
-    p['bul'] -= 1; dx, dy = data['dx'], data['dy']; sx, sy = p['x'], p['y']
-    add_log(f"🔫 {p['n']} ירה {DIR_L.get((dx,dy))}.")
-    for _ in range(10):
-        if dx == 1 and (sx+1 >= 10 or maze[sy][sx+1]['walls']['left']): break
-        if dx == -1 and maze[sy][sx]['walls']['left']: break
-        if dy == 1 and (sy+1 >= 10 or maze[sy+1][sx]['walls']['top']): break
-        if dy == -1 and maze[sy][sx]['walls']['top']: break
-        sx += dx; sy += dy
-        target = next((pl for pl in players.values() if not pl['is_man'] and pl['x'] == sx and pl['y'] == sy), None)
-        if target: target['injuries'] += 1; add_log(f"💥 פגיעה ב-{target['n']}!"); break
-    sync_all()
-
-@socketio.on('bomb')
-def on_bomb(data):
-    p = players.get(request.sid)
-    if not p or p['bom'] <= 0 or p['id'] != player_order[current_turn_idx]: return
-    dx, dy = data['dx'], data['dy']; tx, ty = p['x'], p['y']; wt = ""
-    if dx == 1 and p['x'] < 9: tx += 1; wt = "left"
-    elif dx == -1: wt = "left"
-    elif dy == 1 and p['y'] < 9: ty += 1; wt = "top"
-    elif dy == -1: wt = "top"
-    if wt and maze[ty][tx]['walls'][wt]:
-        maze[ty][tx]['walls'][wt] = False
-        maze[ty][tx]['ex_walls'][wt] = True
-        p['bom'] -= 1; add_log(f"💣 {p['n']} פוצץ קיר {DIR_L.get((dx,dy))}.")
-    sync_all()
-
-@socketio.on('next_turn')
-def on_next():
-    global current_turn_idx
-    if player_order: current_turn_idx = (current_turn_idx + 1) % len(player_order); sync_all()
+@socketio.on('set_phase')
+def on_set_ph(d):
+    global game_phase; game_phase = int(d.get('phase', d) if isinstance(d, dict) else d); sync_all()
 
 @socketio.on('update_maze')
 def on_uz(d):
@@ -149,10 +156,10 @@ def on_uz(d):
                 if maze[y][x]['tile'] == "river_start": river_start_pos = (x,y)
     sync_all()
 
-@socketio.on('set_spawn')
-def on_sp(d):
-    p=players.get(request.sid)
-    if p: p['x'],p['y']=d['x'],d['y']; p['has_spawned']=True; p['known_tiles']=[[d['x'],d['y']]]; sync_all()
+@socketio.on('next_turn')
+def on_next():
+    global current_turn_idx
+    if player_order: current_turn_idx = (current_turn_idx + 1) % len(player_order); sync_all()
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000)
