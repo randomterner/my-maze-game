@@ -27,15 +27,6 @@ def add_log(msg):
     game_logs.insert(0, msg)
     if len(game_logs) > 60: game_logs.pop()
 
-def get_rel_dir(p1, p2):
-    dy, dx = p2['y'] - p1['y'], p2['x'] - p1['x']
-    res = []
-    if dy < 0: res.append("צפון")
-    elif dy > 0: res.append("דרום")
-    if dx < 0: res.append("מערב")
-    elif dx > 0: res.append("מזרח")
-    return "-".join(res) if res else "ממש כאן"
-
 def sync_all():
     p_list = [p for p in players.values() if not p['is_man']]
     alive = [p for p in p_list if p['injuries'] < 5]
@@ -131,7 +122,7 @@ def apply_tile(p):
     elif item_name == "monster":
         p['bul'] = min(5, p['bul']+1); p['bom'] = min(5, p['bom']+1)
         add_log(f"👾 Monster gave {p['n']} gear and an extra turn!")
-        return True # Return true to give an extra turn
+        return True # Extra turn
 
     elif item_name == "devil":
         p['injuries'] += 1; p['bul'] = max(0, p['bul']-1); p['bom'] = max(0, p['bom']-1)
@@ -180,7 +171,7 @@ def on_join(data):
     players[request.sid] = {
         "id": request.sid, "n": data.get('name', 'Player'), "is_man": is_man,
         "x": 0, "y": 0, "injuries": 0, "bul": 3, "bom": 3, "items": [], 
-        "has_spawned": False, "known_tiles": [], "post_lost_tiles": [],
+        "has_spawned": False, "known_tiles": [], "post_lost_tiles": [], "crossed_edges": [],
         "is_lost": False, "waiting_teleport": False, "knows_river_start": False
     }
     if not is_man and request.sid not in player_order: player_order.append(request.sid)
@@ -211,20 +202,24 @@ def on_move(data):
     if not blocked:
         target_w = maze[ny][nx] if (data['dx']==1 or data['dy']==1) else maze[p['y']][p['x']]
         if target_w['ex_walls'][wall_key]['broken']:
-            broken_total = sum(1 for r in maze for c in r if c['ex_walls'][wall_key]['broken'])
-            if broken_total == 1 and (not p['is_lost'] or p['knows_river_start']):
-                b_name = target_w['ex_walls'][wall_key]['by']
-                b_obj = next((pl for pl in players.values() if pl['n'] == b_name), None)
-                if b_obj: add_log(f"🕵️ {p['n']} passed a wall broken by {b_name}. They are to the {get_rel_dir(p, b_obj)}.")
+            add_log(f"🕵️ {p['n']} passed through a broken wall.")
+
+        # Track the crossed edge for the dotted line trail
+        edge = None
+        if data['dy'] == 1: edge = {"x": nx, "y": ny, "dir": "top"}
+        elif data['dy'] == -1: edge = {"x": p['x'], "y": p['y'], "dir": "top"}
+        elif data['dx'] == 1: edge = {"x": nx, "y": ny, "dir": "left"}
+        elif data['dx'] == -1: edge = {"x": p['x'], "y": p['y'], "dir": "left"}
+        
+        if edge and edge not in p['crossed_edges']:
+            p['crossed_edges'].append(edge)
 
         p['x'], p['y'] = nx, ny
         
-        # Apply tile effect
         extra_turn = apply_tile(p)
-        
         if extra_turn:
             sync_all()
-            return # Skip turn advancement
+            return 
         on_next()
     else:
         emit('error_msg', "Blocked by a wall!")
@@ -252,7 +247,7 @@ def on_shoot(data):
             target['injuries'] += 1
             add_log(f"💥 {target['n']} was hit!")
             if target['injuries'] >= 5:
-                add_log(f"💀 {target['n']} was killed by a bullet!")
+                add_log(f"💀 {target['n']} was eliminated by a shot!")
                 maze[sy][sx]['dropped_items'].extend(target['items'])
                 target['items'] = []
             break
@@ -275,10 +270,10 @@ def on_bomb(data):
         maze[ty][tx]['walls'][wt] = False
         maze[ty][tx]['ex_walls'][wt] = {"broken": True, "by": p['n']}
         p['bom'] -= 1
-        add_log(f"💣 {p['n']} blew up a wall.")
+        add_log(f"💣 {p['n']} broke a wall.")
         on_next()
     else:
-        emit('error_msg', "No wall there to bomb!")
+        emit('error_msg', "No wall there to break!")
         return
     sync_all()
 
@@ -343,7 +338,8 @@ def on_uz(d):
 def on_sp(d):
     p = players.get(request.sid)
     if p and game_phase == 2:
-        p['x'], p['y'] = d['x'], d['y']; p['has_spawned'] = True; p['known_tiles'] = [[d['x'], d['y']]]
+        p['x'], p['y'] = d['x'], d['y']; p['has_spawned'] = True; 
+        p['known_tiles'] = [[d['x'], d['y']]]
         sync_all()
 
 @socketio.on('next_turn')
