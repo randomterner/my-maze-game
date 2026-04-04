@@ -98,6 +98,45 @@
       overflow-x: auto;
     }
 
+    .boardOuter {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      grid-template-rows: 24px 1fr;
+      gap: 6px;
+      align-items: start;
+    }
+
+    .cornerBox {
+      width: 28px;
+      height: 24px;
+    }
+
+    .colLabels {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      width: var(--board-size);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .rowLabels {
+      display: grid;
+      grid-template-rows: repeat(10, 1fr);
+      height: var(--board-size);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .rowLabel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     .board {
       width: var(--board-size);
       height: var(--board-size);
@@ -105,7 +144,7 @@
       grid-template-columns: repeat(10, 1fr);
       grid-template-rows: repeat(10, 1fr);
       gap: 2px;
-      margin-top: 10px;
+      margin-top: 0;
     }
 
     .cell {
@@ -247,6 +286,14 @@
         height: min(96vw, 420px);
       }
 
+      .colLabels {
+        width: min(96vw, 420px);
+      }
+
+      .rowLabels {
+        height: min(96vw, 420px);
+      }
+
       .logs {
         max-height: 180px;
       }
@@ -320,8 +367,18 @@
           Exit must be on the edge. Outer walls are always present.
         </div>
 
-        <div class="boardWrap">
-          <div id="board" class="board"></div>
+        <div class="boardOuter">
+          <div class="cornerBox"></div>
+
+          <div class="boardWrap">
+            <div class="colLabels" id="colLabels"></div>
+          </div>
+
+          <div class="rowLabels" id="rowLabels"></div>
+
+          <div class="boardWrap">
+            <div id="board" class="board"></div>
+          </div>
         </div>
       </div>
 
@@ -452,6 +509,31 @@
         (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
       );
     });
+  }
+
+  function buildBoardLabels() {
+    const colLabels = document.getElementById("colLabels");
+    const rowLabels = document.getElementById("rowLabels");
+
+    if (!colLabels || !rowLabels) return;
+
+    colLabels.innerHTML = "";
+    rowLabels.innerHTML = "";
+
+    const letters = ["A","B","C","D","E","F","G","H","I","J"];
+
+    letters.forEach(letter => {
+      const div = document.createElement("div");
+      div.textContent = letter;
+      colLabels.appendChild(div);
+    });
+
+    for (let i = 1; i <= 10; i++) {
+      const div = document.createElement("div");
+      div.className = "rowLabel";
+      div.textContent = i;
+      rowLabels.appendChild(div);
+    }
   }
 
   function buildBoard() {
@@ -619,6 +701,7 @@
 
   socket.on("manager_state", data => {
     state = data;
+    buildBoardLabels();
     buildBoard();
     buildPlayersTable();
     updateTopInfo();
