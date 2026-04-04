@@ -163,7 +163,7 @@ def create_player(sid, name):
         },
         "known_tiles": {},
         "known_players": {},
-        "last_message": "Choose a spawn tile.",
+        "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
     }
 
@@ -687,7 +687,6 @@ def manager_set_tile(data):
 
     GAME["board"][(x, y)] = tile
     GAME["consumed_tiles"].discard((x, y))
-    log(f"Manager set tile ({x},{y}) to {tile}.")
     emit_full_state()
 
 
@@ -726,10 +725,8 @@ def manager_toggle_inner_wall(data):
     ek = edge_key((x, y), (nx, ny))
     if ek in GAME["inner_walls"]:
         GAME["inner_walls"].remove(ek)
-        log(f"Manager removed inner wall between ({x},{y}) and ({nx},{ny}).")
     else:
         GAME["inner_walls"].add(ek)
-        log(f"Manager added inner wall between ({x},{y}) and ({nx},{ny}).")
 
     emit_full_state()
 
@@ -744,7 +741,6 @@ def manager_clear_board():
         GAME["board"][pos] = "empty"
     GAME["consumed_tiles"].clear()
     GAME["inner_walls"].clear()
-    log("Manager cleared the board.")
     emit_full_state()
 
 
