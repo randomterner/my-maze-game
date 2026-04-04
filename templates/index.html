@@ -1,115 +1,164 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html>
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Castle Maze Player</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <title>Maze Game</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
-        #bag { width: 100px; background: #111; padding: 10px; font-size: 11px; }
-        #log-area { width: 160px; background: #111; padding: 10px; font-size: 10px; overflow-y: auto; color: #ccc; }
-        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; overflow: auto; background: #000; }
-        #board { display: grid; gap: 1px; background: #333; padding: 10px; }
-        .cell { background: #111; position: relative; background-size: contain; background-repeat: no-repeat; }
-        .revealed { background: #222; }
-        .wall-top { box-shadow: inset 0 4px 0 0 red; }
-        .wall-left { box-shadow: inset 4px 0 0 0 red; }
-        .crossed-top::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-top: 2px dotted rgba(255,255,255,0.6); }
-        .crossed-left::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; border-left: 2px dotted rgba(255,255,255,0.6); }
-        #ui { height: 150px; background: #222; display: flex; border-top: 2px solid #444; }
-        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 5px; }
-        .act-btn { padding: 8px; border: none; color: white; border-radius: 4px; font-size: 10px; margin-bottom: 4px; width: 100%; }
-        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; border: 1px solid #fff; position: absolute; top: 20%; left: 20%; z-index: 10; }
-        .birth-icon { position: absolute; bottom: 1px; right: 1px; font-size: 10px; }
+        body { font-family: Arial; background: #f0f0f0; }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(10, 48px);
+            gap: 2px;
+            margin-top: 20px;
+        }
+
+        .cell {
+            width: 48px;
+            height: 48px;
+            position: relative;
+        }
+
+        .cell img {
+            width: 100%;
+            height: 100%;
+        }
+
+        .player {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            font-size: 10px;
+            background: black;
+            color: white;
+            padding: 2px 4px;
+            border-radius: 6px;
+        }
+
+        .you {
+            background: blue;
+        }
+
+        button { margin: 4px; }
     </style>
 </head>
 <body>
-    <div id="welcome" style="position:fixed;inset:0;background:#000;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-        <h2>Castle Maze 🏰</h2>
-        <input type="text" id="name-in" placeholder="Name..."><br>
-        <button onclick="join()" style="background:green;color:white;padding:10px;">START</button>
-    </div>
-    <div id="status" style="padding:8px;background:#111;border-bottom:2px solid #333;display:flex;justify-content:space-between;align-items:center;font-size:12px;">
-        <div>❤️ <span id="inj-val">0</span>/5 | 🔫 <span id="bul-val">3</span> | 💣 <span id="bom-val">3</span></div>
-        <div id="turn-info" style="color:lime;font-weight:bold;">Wait...</div>
-        <button onclick="toggleMap()" id="map-btn" style="background:purple;color:white;border:none;padding:5px 10px;border-radius:4px;font-weight:bold;">MAIN MAP</button>
-    </div>
-    <div id="main-ui">
-        <div id="bag"><b>🎒 BAG:</b><div id="item-list"></div></div>
-        <div id="board-container"><div id="board"></div></div>
-        <div id="log-area"></div>
-    </div>
-    <div id="ui">
-        <div style="display:grid;grid-template-areas:'. u .' 'l . r' '. d .';gap:4px;padding:10px;">
-            <button class="btn" onclick="handleInput(0,-1)">↑</button>
-            <button class="btn" onclick="handleInput(-1,0)">←</button>
-            <button class="btn" onclick="handleInput(1,0)">→</button>
-            <button class="btn" onclick="handleInput(0,1)">↓</button>
-        </div>
-        <div style="flex-grow:1;padding:10px;">
-            <button onclick="setAction('shoot')" style="background:#a00;" class="act-btn">SHOT 🔫</button>
-            <button onclick="setAction('bomb')" style="background:#555;" class="act-btn">BOMB 💣</button>
-            <button onclick="setAction('flash')" style="background:#f1c40f;color:#000;" class="act-btn">FLASH 🔦</button>
-        </div>
-    </div>
-    <script>
-        const socket = io(); let curA = 'move'; let forceMain = false;
-        function join() { socket.emit('join', { name: document.getElementById('name-in').value || "Explorer" }); document.getElementById('welcome').style.display='none'; }
-        function setAction(a) { curA = (curA === a) ? 'move' : a; }
-        function toggleMap() { forceMain = !forceMain; document.getElementById('map-btn').innerText = forceMain ? "VOID MAP" : "MAIN MAP"; }
-        function handleInput(dx, dy) {
-            if(curA === 'move') socket.emit('move', {dx, dy});
-            else { socket.emit(curA === 'flash' ? 'use_flashlight' : curA, {dx, dy}); curA = 'move'; }
-        }
-        socket.on('sync', d => {
-            const my = d.players.find(p => p.id === socket.id); if(!my) return;
-            document.getElementById('inj-val').innerText = my.injuries;
-            document.getElementById('bul-val').innerText = my.bul;
-            document.getElementById('bom-val').innerText = my.bom;
-            document.getElementById('item-list').innerHTML = my.items.map(i => `<div>• ${i.replace('_', ' ')}</div>`).join('');
-            document.getElementById('log-area').innerHTML = d.logs.map(l => `<div>${l}</div>`).join('');
-            document.getElementById('turn-info').innerText = (d.turn_id === socket.id) ? "YOUR TURN!" : "Waiting...";
-            
-            const b = document.getElementById('board'); b.innerHTML = '';
-            const cellW = window.innerWidth >= 600 ? 55 : 40;
-            
-            if(my.is_lost && !forceMain) {
-                b.style.display = 'block'; b.style.position = 'relative'; b.style.width = '2000px'; b.style.height = '2000px';
-                const sX = my.post_lost_tiles[0][0], sY = my.post_lost_tiles[0][1];
-                my.post_lost_tiles.forEach(t => {
-                    const cell = document.createElement('div'); cell.className = 'cell revealed';
-                    cell.style.cssText = `position:absolute; left:${1000+(t[0]-sX)*cellW}px; top:${1000+(t[1]-sY)*cellW}px; width:${cellW}px; height:${cellW}px;`;
-                    const td = d.maze[t[1]][t[0]];
-                    if(td.walls.top) cell.classList.add('wall-top'); if(td.walls.left) cell.classList.add('wall-left');
-                    if(td.is_birthplace) { const ic = document.createElement('span'); ic.className='birth-icon'; ic.innerText='👶'; cell.appendChild(ic); }
-                    if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                    if(my.x===t[0] && my.y===t[1]) { const dot = document.createElement('div'); dot.className='p-dot'; cell.appendChild(dot); }
-                    b.appendChild(cell);
-                });
-            } else {
-                b.style.display = 'grid'; b.style.position = 'static'; b.style.width = 'auto'; b.style.height = 'auto';
-                b.style.gridTemplateColumns = `repeat(10, ${cellW}px)`;
-                for(let y=0; y<10; y++) {
-                    for(let x=0; x<10; x++) {
-                        const td = d.maze[y][x]; const cell = document.createElement('div');
-                        cell.style.width = cellW+'px'; cell.style.height = cellW+'px';
-                        const known = my.known_tiles.some(t => t[0]===x && t[1]===y);
-                        cell.className = 'cell' + (known ? ' revealed' : '');
-                        if(known) {
-                            if(td.walls.top) cell.classList.add('wall-top'); if(td.walls.left) cell.classList.add('wall-left');
-                            if(my.crossed_edges.some(e=>e.x===x && e.y===y && e.dir==='top')) cell.classList.add('crossed-top');
-                            if(my.crossed_edges.some(e=>e.x===x && e.y===y && e.dir==='left')) cell.classList.add('crossed-left');
-                            if(td.is_birthplace) { const ic = document.createElement('span'); ic.className='birth-icon'; ic.innerText='👶'; cell.appendChild(ic); }
-                            if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                        }
-                        if(my.x===x && my.y===y) { const dot = document.createElement('div'); dot.className='p-dot'; cell.appendChild(dot); }
-                        if(d.phase===2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x,y});
-                        b.appendChild(cell);
-                    }
+
+<h2>Maze Game</h2>
+
+<input id="name" placeholder="Name">
+<button onclick="join()">Join</button>
+
+<br><br>
+
+<button onclick="move('up')">⬆</button>
+<button onclick="move('down')">⬇</button>
+<button onclick="move('left')">⬅</button>
+<button onclick="move('right')">➡</button>
+
+<br>
+
+<button onclick="shoot('up')">Shoot ⬆</button>
+<button onclick="shoot('down')">Shoot ⬇</button>
+<button onclick="shoot('left')">Shoot ⬅</button>
+<button onclick="shoot('right')">Shoot ➡</button>
+
+<br>
+
+<button onclick="bomb('up')">Bomb ⬆</button>
+<button onclick="bomb('down')">Bomb ⬇</button>
+<button onclick="bomb('left')">Bomb ⬅</button>
+<button onclick="bomb('right')">Bomb ➡</button>
+
+<br>
+
+<button onclick="flash('up')">Flash ⬆</button>
+<button onclick="flash('down')">Flash ⬇</button>
+<button onclick="flash('left')">Flash ⬅</button>
+<button onclick="flash('right')">Flash ➡</button>
+
+<h3 id="message"></h3>
+
+<div id="board"></div>
+
+<script>
+const socket = io();
+let state = null;
+
+const textures = {
+    empty: "empty.png",
+    treasure: "treasure.png",
+    fake_treasure: "fake_treasure.png",
+    exit: "exit.png",
+    river: "river.png",
+    river_start: "river_start.png",
+    boat: "boat.png",
+    raft: "raft.png",
+    clinic: "clinic.png",
+    er: "er.png",
+    monster: "monster.png",
+    devil: "devil.png",
+    black_hole: "black_hole.png",
+    flashlight: "flashlight.png",
+    batteries: "batteries.png",
+    armory: "armory.png"
+};
+
+function join(){
+    socket.emit("join_player", {name: document.getElementById("name").value});
+}
+
+function move(d){ socket.emit("player_move",{direction:d}); }
+function shoot(d){ socket.emit("player_shoot",{direction:d}); }
+function bomb(d){ socket.emit("player_bomb",{direction:d}); }
+function flash(d){ socket.emit("player_flashlight",{direction:d}); }
+
+socket.on("player_state", data=>{
+    state = data;
+    draw();
+});
+
+function draw(){
+    const board = document.getElementById("board");
+    board.innerHTML = "";
+
+    const known = state.your_known_tiles;
+
+    for(let y=0;y<10;y++){
+        for(let x=0;x<10;x++){
+
+            const key = `${x},${y}`;
+            const tile = known[key] || "empty";
+
+            const div = document.createElement("div");
+            div.className = "cell";
+
+            const img = document.createElement("img");
+
+            let file = textures[tile] || "empty.png";
+            img.src = "/static/" + file;
+
+            div.appendChild(img);
+
+            // show players
+            state.all_players_public.forEach(p=>{
+                if(p.x===x && p.y===y && p.alive){
+                    const marker = document.createElement("div");
+                    marker.className = "player";
+                    if(p.sid === state.you.sid) marker.classList.add("you");
+                    marker.innerText = p.name;
+                    div.appendChild(marker);
                 }
-            }
-        });
-    </script>
+            });
+
+            board.appendChild(div);
+        }
+    }
+
+    document.getElementById("message").innerText = state.you.last_message;
+}
+</script>
+
 </body>
 </html>
