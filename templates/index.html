@@ -5,272 +5,110 @@
     <title>Castle Maze Player</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
-        #welcome { position: fixed; inset: 0; background: #000; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
-        #bag { width: 110px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 11px; z-index: 20; display: flex; flex-direction: column; }
-        #log-area { width: 170px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 10px; overflow-y: auto; color: #ccc; z-index: 20; }
-        
-        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; overflow: auto; background: #000; }
-        
-        #board { display: grid; gap: 1px; background: #333; padding: 10px; margin: auto; min-width: max-content; }
-        
-        .cell { background: #111; position: relative; background-size: contain; cursor: pointer; }
-        .coord { background: #222; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #777; font-weight: bold; }
+        #bag { width: 100px; background: #111; padding: 10px; font-size: 11px; }
+        #log-area { width: 160px; background: #111; padding: 10px; font-size: 10px; overflow-y: auto; color: #ccc; }
+        #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; overflow: auto; background: #000; }
+        #board { display: grid; gap: 1px; background: #333; padding: 10px; }
+        .cell { background: #111; position: relative; background-size: contain; background-repeat: no-repeat; }
         .revealed { background: #222; }
-        
-        /* Walls */
-        .wall-top { box-shadow: inset 0 5px 0 0 red; }
-        .wall-left { box-shadow: inset 5px 0 0 0 red; }
-        .broken-top { box-shadow: inset 0 5px 0 0 #3498db; }
-        .broken-left { box-shadow: inset 5px 0 0 0 #3498db; }
-
-        /* Crossed Edges (Dotted Lines) */
-        .crossed-top::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-top: 3px dotted rgba(255, 255, 255, 0.7); box-sizing: border-box; pointer-events: none; z-index: 5; }
-        .crossed-left::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; border-left: 3px dotted rgba(255, 255, 255, 0.7); box-sizing: border-box; pointer-events: none; z-index: 5; }
-        
-        #ui { height: 160px; background: #222; display: flex; border-top: 2px solid #444; z-index: 20; }
-        .dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 5px; padding: 10px; }
-        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; cursor: pointer; touch-action: manipulation; }
-        .action-btns { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; padding: 10px; gap: 5px; }
-        .act-btn { padding: 8px; border: none; color: white; border-radius: 5px; font-weight: bold; font-size: 10px; cursor: pointer; touch-action: manipulation; }
+        .wall-top { box-shadow: inset 0 4px 0 0 red; }
+        .wall-left { box-shadow: inset 4px 0 0 0 red; }
+        .crossed-top::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-top: 2px dotted rgba(255,255,255,0.6); }
+        .crossed-left::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; border-left: 2px dotted rgba(255,255,255,0.6); }
+        #ui { height: 150px; background: #222; display: flex; border-top: 2px solid #444; }
+        .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 5px; }
+        .act-btn { padding: 8px; border: none; color: white; border-radius: 4px; font-size: 10px; margin-bottom: 4px; width: 100%; }
+        .p-dot { width: 60%; height: 60%; background: cyan; border-radius: 50%; border: 1px solid #fff; position: absolute; top: 20%; left: 20%; z-index: 10; }
+        .birth-icon { position: absolute; bottom: 1px; right: 1px; font-size: 10px; }
     </style>
 </head>
 <body>
-    <div id="welcome">
+    <div id="welcome" style="position:fixed;inset:0;background:#000;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;">
         <h2>Castle Maze 🏰</h2>
-        <input type="text" id="name-in" placeholder="Name..." style="padding:10px;"><br>
-        <button onclick="join()" style="padding:10px 20px; background:green; color:white; border:none; border-radius:5px; font-weight:bold; margin-top:10px;">START</button>
-        <br><a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" style="color:cyan; font-size:12px; display:inline-block; margin-top:15px; border:1px solid cyan; padding:5px 10px; text-decoration:none; border-radius:4px;">RULES 📜</a>
+        <input type="text" id="name-in" placeholder="הכנס שם..."><br>
+        <button onclick="join()" style="background:green;color:white;padding:10px;">START</button>
     </div>
-    
-    <div id="status" style="display:flex; flex-direction:column; align-items:center; padding: 8px; background: #111; border-bottom: 2px solid #333; z-index: 20;">
-        <div style="display:flex; width:100%; justify-content: space-around;">
-            <div id="turn-info" style="color: lime; font-weight: bold;">Wait...</div>
-            <div id="lost-tag" style="color: red; font-weight: bold; display: none;">⚠️ LOST</div>
-            <div>❤️ <span id="inj-val">0</span>/5 | 🔫 <span id="bul-val">3</span> | 💣 <span id="bom-val">3</span></div>
-        </div>
-        <div style="font-size:10px; color:#aaa; margin-top:5px; font-weight:bold;">🟥 Red = Wall | 🟦 Blue = Broken Wall | ⬜ Dotted line = No wall at all</div>
+    <div id="status" style="padding:8px;background:#111;border-bottom:2px solid #333;display:flex;justify-content:space-between;align-items:center;font-size:12px;">
+        <div>❤️ <span id="inj-val">0</span>/5 | 🔫 <span id="bul-val">3</span> | 💣 <span id="bom-val">3</span></div>
+        <div id="turn-info" style="color:lime;font-weight:bold;">Wait...</div>
+        <button onclick="toggleMap()" id="map-btn" style="background:purple;color:white;border:none;padding:5px 10px;border-radius:4px;font-weight:bold;">MAIN MAP</button>
     </div>
-    
     <div id="main-ui">
-        <div id="bag">
-            <b>🎒 BAG:</b>
-            <div id="item-list" style="flex-grow: 1;"></div>
-            <div style="margin-top:10px; padding-top:10px; border-top:1px solid #333; font-size:9px; color:#aaa; font-weight:bold; text-align:center;">
-                ⬜ Dotted line =<br>No wall at all
-            </div>
-        </div>
+        <div id="bag"><b>🎒 BAG:</b><div id="item-list"></div></div>
         <div id="board-container"><div id="board"></div></div>
         <div id="log-area"></div>
     </div>
     <div id="ui">
-        <div class="dpad">
+        <div style="display:grid;grid-template-areas:'. u .' 'l . r' '. d .';gap:4px;padding:10px;">
             <button class="btn" onclick="handleInput(0,-1)">↑</button>
             <button class="btn" onclick="handleInput(-1,0)">←</button>
             <button class="btn" onclick="handleInput(1,0)">→</button>
             <button class="btn" onclick="handleInput(0,1)">↓</button>
         </div>
-        <div class="action-btns">
-            <button id="shoot-btn" onclick="setAction('shoot')" style="background:#a00;" class="act-btn">PREPARE SHOT 🔫</button>
-            <button id="bomb-btn" onclick="setAction('bomb')" style="background:#555;" class="act-btn">PREPARE BOMB 💣</button>
-            <button id="flash-btn" onclick="setAction('flash')" style="background:#f1c40f; color:black;" class="act-btn">USE FLASHLIGHT 🔦</button>
+        <div style="flex-grow:1;padding:10px;">
+            <button onclick="setAction('shoot')" style="background:#a00;" class="act-btn">SHOT 🔫</button>
+            <button onclick="setAction('bomb')" style="background:#555;" class="act-btn">BOMB 💣</button>
+            <button onclick="setAction('flash')" style="background:#f1c40f;color:#000;" class="act-btn">FLASH 🔦</button>
         </div>
     </div>
     <script>
-        const socket = io(); let curAction = 'move';
+        const socket = io(); let curA = 'move'; let forceMain = false;
         function join() { socket.emit('join', { name: document.getElementById('name-in').value || "Explorer" }); document.getElementById('welcome').style.display='none'; }
-        
-        socket.on('error_msg', msg => { alert("❌ " + msg); });
-
-        function setAction(a) {
-            curAction = (curAction === a) ? 'move' : a;
-            document.getElementById('shoot-btn').style.border = (curAction === 'shoot') ? '2px solid white' : 'none';
-            document.getElementById('bomb-btn').style.border = (curAction === 'bomb') ? '2px solid white' : 'none';
-            document.getElementById('flash-btn').style.border = (curAction === 'flash') ? '2px solid black' : 'none';
-        }
-
+        function setAction(a) { curA = (curA === a) ? 'move' : a; }
+        function toggleMap() { forceMain = !forceMain; document.getElementById('map-btn').innerText = forceMain ? "VOID MAP" : "MAIN MAP"; }
         function handleInput(dx, dy) {
-            if(curAction === 'move') socket.emit('move', {dx, dy});
-            else if(curAction === 'shoot') { socket.emit('shoot', {dx, dy}); setAction('move'); }
-            else if(curAction === 'bomb') { socket.emit('bomb', {dx, dy}); setAction('move'); }
-            else if(curAction === 'flash') { socket.emit('use_flashlight', {dx, dy}); setAction('move'); }
+            if(curA === 'move') socket.emit('move', {dx, dy});
+            else { socket.emit(curA === 'flash' ? 'use_flashlight' : curA, {dx, dy}); curA = 'move'; }
         }
-
         socket.on('sync', d => {
             const my = d.players.find(p => p.id === socket.id); if(!my) return;
-            if(d.winner) alert("WINNER: " + d.winner);
-            
-            document.getElementById('lost-tag').style.display = my.is_lost ? "block" : "none";
             document.getElementById('inj-val').innerText = my.injuries;
             document.getElementById('bul-val').innerText = my.bul;
             document.getElementById('bom-val').innerText = my.bom;
             document.getElementById('item-list').innerHTML = my.items.map(i => `<div>• ${i}</div>`).join('');
-            document.getElementById('log-area').innerHTML = d.logs.map(l => `<div style="margin-bottom:3px;">${l}</div>`).join('');
+            document.getElementById('log-area').innerHTML = d.logs.map(l => `<div>${l}</div>`).join('');
+            document.getElementById('turn-info').innerText = (d.turn_id === socket.id) ? "תורך!" : "מחכה...";
             
-            let activePlayer = d.players.find(p => p.id === d.turn_id);
-            if (d.turn_id === socket.id) {
-                document.getElementById('turn-info').innerText = "YOUR TURN!";
-                document.getElementById('turn-info').style.color = "lime";
-            } else if (activePlayer) {
-                document.getElementById('turn-info').innerText = activePlayer.n + "'s Turn";
-                document.getElementById('turn-info').style.color = "orange";
-            } else {
-                document.getElementById('turn-info').innerText = "Wait...";
-            }
-
-            const cellW = window.innerWidth >= 600 ? 65 : 48;
-            const b = document.getElementById('board'); 
-            b.innerHTML = '';
-
-            if (my.is_lost && my.post_lost_tiles.length > 0) {
-                b.style.display = 'block';
-                b.style.position = 'relative';
-                b.style.width = '3000px';
-                b.style.height = '3000px';
-                b.style.background = '#000';
-                b.style.padding = '0';
-                b.style.margin = '0';
-
-                const startX = my.post_lost_tiles[0][0];
-                const startY = my.post_lost_tiles[0][1];
-                
-                const cellsToRender = [];
-                my.post_lost_tiles.forEach(t => cellsToRender.push({x: t[0], y: t[1], known: true}));
-                if (my.bumped_walls) {
-                    my.bumped_walls.forEach(w => {
-                        const isAdj = cellsToRender.some(c => c.known && Math.abs(c.x - w.x) <= 1 && Math.abs(c.y - w.y) <= 1);
-                        if (isAdj && !cellsToRender.some(c => c.x === w.x && c.y === w.y)) {
-                            cellsToRender.push({x: w.x, y: w.y, known: false});
-                        }
-                    });
-                }
-
-                cellsToRender.forEach(t => {
-                    const x = t.x; const y = t.y; const known = t.known;
-                    const td = d.maze[y][x];
-                    
-                    const cell = document.createElement('div');
-                    cell.className = 'cell' + (known ? ' revealed' : '');
-                    cell.style.position = 'absolute';
-                    cell.style.left = (1500 + (x - startX) * cellW) + 'px';
-                    cell.style.top = (1500 + (y - startY) * cellW) + 'px';
-                    cell.style.width = cellW + 'px';
-                    cell.style.height = cellW + 'px';
-
-                    const bumpedTop = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'top');
-                    const bumpedLeft = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'left');
-
-                    if(d.phase === 3) {
-                        if(known || bumpedTop) {
-                            if(td.walls.top) cell.classList.add('wall-top'); 
-                            else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
-                        }
-                        if(known || bumpedLeft) {
-                            if(td.walls.left) cell.classList.add('wall-left');
-                            else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
-                        }
-                        
-                        if (known) {
-                            const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
-                            const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
-                            if (crossedTop) cell.classList.add('crossed-top');
-                            if (crossedLeft) cell.classList.add('crossed-left');
-                            
-                            if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                            if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
-                        }
-                    }
-
-                    if(my.x === x && my.y === y) {
-                        const dot = document.createElement('div'); 
-                        dot.className = 'p-dot'; 
-                        dot.id = 'my-player-dot';
-                        cell.appendChild(dot);
-                    }
+            const b = document.getElementById('board'); b.innerHTML = '';
+            const cellW = window.innerWidth >= 600 ? 55 : 40;
+            
+            if(my.is_lost && !forceMain) {
+                b.style.display = 'block'; b.style.position = 'relative'; b.style.width = '2000px'; b.style.height = '2000px';
+                const sX = my.post_lost_tiles[0][0], sY = my.post_lost_tiles[0][1];
+                my.post_lost_tiles.forEach(t => {
+                    const cell = document.createElement('div'); cell.className = 'cell revealed';
+                    cell.style.cssText = `position:absolute; left:${1000+(t[0]-sX)*cellW}px; top:${1000+(t[1]-sY)*cellW}px; width:${cellW}px; height:${cellW}px;`;
+                    const td = d.maze[t[1]][t[0]];
+                    if(td.walls.top) cell.classList.add('wall-top'); if(td.walls.left) cell.classList.add('wall-left');
+                    if(td.is_birthplace) { const ic = document.createElement('span'); ic.className='birth-icon'; ic.innerText='👶'; cell.appendChild(ic); }
+                    if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                    if(my.x===t[0] && my.y===t[1]) { const dot = document.createElement('div'); dot.className='p-dot'; cell.appendChild(dot); }
                     b.appendChild(cell);
                 });
-
             } else {
-                b.style.display = 'grid';
-                b.style.position = 'static';
-                b.style.width = 'auto';
-                b.style.height = 'auto';
-                b.style.background = '#333';
-                b.style.padding = '10px';
-                b.style.margin = 'auto';
-                b.style.gridTemplateColumns = `30px repeat(10, ${cellW}px)`;
-                b.style.gridTemplateRows = `30px repeat(10, ${cellW}px)`;
-
-                b.appendChild(document.createElement('div'));
-                for(let i=1; i<=10; i++){ const h=document.createElement('div'); h.className='coord'; h.innerText=i; b.appendChild(h); }
-                
+                b.style.display = 'grid'; b.style.position = 'static'; b.style.width = 'auto'; b.style.height = 'auto';
+                b.style.gridTemplateColumns = `repeat(10, ${cellW}px)`;
                 for(let y=0; y<10; y++) {
-                    const rowL = document.createElement('div'); rowL.className='coord'; rowL.innerText=y+1; b.appendChild(rowL);
                     for(let x=0; x<10; x++) {
                         const td = d.maze[y][x]; const cell = document.createElement('div');
-                        
-                        cell.style.width = cellW + 'px';
-                        cell.style.height = cellW + 'px';
-                        
-                        let known = my.known_tiles.some(t => t[0] === x && t[1] === y) || d.phase === 2;
-                        if (my.has_spawned && my.x === x && my.y === y) known = true;
-                        
-                        const bumpedTop = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'top');
-                        const bumpedLeft = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'left');
-                        
+                        cell.style.width = cellW+'px'; cell.style.height = cellW+'px';
+                        const known = my.known_tiles.some(t => t[0]===x && t[1]===y);
                         cell.className = 'cell' + (known ? ' revealed' : '');
-                        
-                        if(d.phase === 3) {
-                            if(known || bumpedTop) {
-                                if(td.walls.top) cell.classList.add('wall-top'); 
-                                else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
-                            }
-                            if(known || bumpedLeft) {
-                                if(td.walls.left) cell.classList.add('wall-left');
-                                else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
-                            }
-
-                            if(known) {
-                                const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
-                                const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
-                                if (crossedTop) cell.classList.add('crossed-top');
-                                if (crossedLeft) cell.classList.add('crossed-left');
-                                
-                                if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                                if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
-                            }
+                        if(known) {
+                            if(td.walls.top) cell.classList.add('wall-top'); if(td.walls.left) cell.classList.add('wall-left');
+                            if(my.crossed_edges.some(e=>e.x===x && e.y===y && e.dir==='top')) cell.classList.add('crossed-top');
+                            if(my.crossed_edges.some(e=>e.x===x && e.y===y && e.dir==='left')) cell.classList.add('crossed-left');
+                            if(td.is_birthplace) { const ic = document.createElement('span'); ic.className='birth-icon'; ic.innerText='👶'; cell.appendChild(ic); }
+                            if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                         }
-
-                        const playersHere = d.players.filter(p => p.x === x && p.y === y && p.has_spawned && p.injuries < 5 && (d.phase === 3 || p.id === my.id));
-                        
-                        if(playersHere.length > 0 && (known || d.phase === 2)) {
-                            const pc = document.createElement('div');
-                            pc.style.cssText = "position:absolute; inset:0; display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:2px; padding:2px; z-index:10;";
-                            playersHere.forEach(p => {
-                                const isMe = p.id === my.id;
-                                if (d.phase === 3 && p.id !== my.id && p.is_lost) return;
-                                const dot = document.createElement('div');
-                                let size = playersHere.length > 1 ? '12px' : '60%';
-                                dot.style.cssText = `width:${size}; height:${size}; background:${isMe ? 'cyan' : 'lime'}; border-radius:50%; border:1px solid white; box-shadow:0 0 5px ${isMe ? 'cyan' : 'lime'};`;
-                                if (isMe) dot.id = 'my-player-dot';
-                                pc.appendChild(dot);
-                            });
-                            cell.appendChild(pc);
-                        }
-
-                        if(d.phase === 2 && !my.has_spawned) {
-                            cell.onclick = () => socket.emit('set_spawn', {x, y});
-                        }
+                        if(my.x===x && my.y===y) { const dot = document.createElement('div'); dot.className='p-dot'; cell.appendChild(dot); }
+                        if(d.phase===2 && !my.has_spawned) cell.onclick = () => socket.emit('set_spawn', {x,y});
                         b.appendChild(cell);
                     }
                 }
             }
-
-            setTimeout(() => {
-                const pDot = document.getElementById('my-player-dot');
-                if (pDot) pDot.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
-            }, 50);
         });
     </script>
 </body>
