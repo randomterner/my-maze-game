@@ -134,34 +134,53 @@
 
                 const startX = my.post_lost_tiles[0][0];
                 const startY = my.post_lost_tiles[0][1];
+                
+                // Build a list of cells to render (including bumped walls directly adjacent to the known void path)
+                const cellsToRender = [];
+                my.post_lost_tiles.forEach(t => cellsToRender.push({x: t[0], y: t[1], known: true}));
+                if (my.bumped_walls) {
+                    my.bumped_walls.forEach(w => {
+                        const isAdj = cellsToRender.some(c => c.known && Math.abs(c.x - w.x) <= 1 && Math.abs(c.y - w.y) <= 1);
+                        if (isAdj && !cellsToRender.some(c => c.x === w.x && c.y === w.y)) {
+                            cellsToRender.push({x: w.x, y: w.y, known: false});
+                        }
+                    });
+                }
 
-                my.post_lost_tiles.forEach(t => {
-                    const x = t[0]; const y = t[1];
+                cellsToRender.forEach(t => {
+                    const x = t.x; const y = t.y; const known = t.known;
                     const td = d.maze[y][x];
                     
                     const cell = document.createElement('div');
-                    cell.className = 'cell revealed';
+                    cell.className = 'cell' + (known ? ' revealed' : '');
                     cell.style.position = 'absolute';
                     cell.style.left = (1500 + (x - startX) * cellW) + 'px';
                     cell.style.top = (1500 + (y - startY) * cellW) + 'px';
                     cell.style.width = cellW + 'px';
                     cell.style.height = cellW + 'px';
 
+                    const bumpedTop = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'top');
+                    const bumpedLeft = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'left');
+
                     if(d.phase === 3) {
-                        if(td.walls.top) cell.classList.add('wall-top'); 
-                        else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
+                        if(known || bumpedTop) {
+                            if(td.walls.top) cell.classList.add('wall-top'); 
+                            else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
+                        }
+                        if(known || bumpedLeft) {
+                            if(td.walls.left) cell.classList.add('wall-left');
+                            else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
+                        }
                         
-                        if(td.walls.left) cell.classList.add('wall-left');
-                        else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
-                        
-                        // Check if we crossed these specific edges safely
-                        const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
-                        const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
-                        if (crossedTop) cell.classList.add('crossed-top');
-                        if (crossedLeft) cell.classList.add('crossed-left');
-                        
-                        if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                        if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
+                        if (known) {
+                            const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
+                            const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
+                            if (crossedTop) cell.classList.add('crossed-top');
+                            if (crossedLeft) cell.classList.add('crossed-left');
+                            
+                            if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                            if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
+                        }
                     }
 
                     if(my.x === x && my.y === y) {
@@ -198,22 +217,30 @@
                         let known = my.known_tiles.some(t => t[0] === x && t[1] === y) || d.phase === 2;
                         if (my.has_spawned && my.x === x && my.y === y) known = true;
                         
+                        const bumpedTop = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'top');
+                        const bumpedLeft = my.bumped_walls && my.bumped_walls.some(w => w.x === x && w.y === y && w.dir === 'left');
+                        
                         cell.className = 'cell' + (known ? ' revealed' : '');
                         
-                        if(known && d.phase === 3) {
-                            if(td.walls.top) cell.classList.add('wall-top'); 
-                            else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
-                            
-                            if(td.walls.left) cell.classList.add('wall-left');
-                            else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
+                        if(d.phase === 3) {
+                            if(known || bumpedTop) {
+                                if(td.walls.top) cell.classList.add('wall-top'); 
+                                else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
+                            }
+                            if(known || bumpedLeft) {
+                                if(td.walls.left) cell.classList.add('wall-left');
+                                else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
+                            }
 
-                            const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
-                            const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
-                            if (crossedTop) cell.classList.add('crossed-top');
-                            if (crossedLeft) cell.classList.add('crossed-left');
-                            
-                            if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                            if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
+                            if(known) {
+                                const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
+                                const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
+                                if (crossedTop) cell.classList.add('crossed-top');
+                                if (crossedLeft) cell.classList.add('crossed-left');
+                                
+                                if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
+                                if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
+                            }
                         }
 
                         const playersHere = d.players.filter(p => p.x === x && p.y === y && p.has_spawned && p.injuries < 5 && (d.phase === 3 || p.id === my.id));
