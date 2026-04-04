@@ -135,7 +135,6 @@
                 const startX = my.post_lost_tiles[0][0];
                 const startY = my.post_lost_tiles[0][1];
                 
-                // Build a list of cells to render (including bumped walls directly adjacent to the known void path)
                 const cellsToRender = [];
                 my.post_lost_tiles.forEach(t => cellsToRender.push({x: t[0], y: t[1], known: true}));
                 if (my.bumped_walls) {
