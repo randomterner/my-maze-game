@@ -8,7 +8,7 @@
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
         #welcome { position: fixed; inset: 0; background: #000; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         #main-ui { display: flex; flex-grow: 1; overflow: hidden; }
-        #bag { width: 110px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 11px; z-index: 20; }
+        #bag { width: 110px; background: #111; border-left: 2px solid #333; padding: 10px; font-size: 11px; z-index: 20; display: flex; flex-direction: column; }
         #log-area { width: 170px; background: #111; border-right: 2px solid #333; padding: 10px; font-size: 10px; overflow-y: auto; color: #ccc; z-index: 20; }
         
         #board-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; direction: ltr !important; overflow: auto; background: #000; }
@@ -18,8 +18,17 @@
         .cell { background: #111; position: relative; background-size: contain; cursor: pointer; }
         .coord { background: #222; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #777; font-weight: bold; }
         .revealed { background: #222; }
+        
+        /* Walls */
         .wall-top { box-shadow: inset 0 5px 0 0 red; }
         .wall-left { box-shadow: inset 5px 0 0 0 red; }
+        .broken-top { box-shadow: inset 0 5px 0 0 #3498db; }
+        .broken-left { box-shadow: inset 5px 0 0 0 #3498db; }
+
+        /* Crossed Edges (Dotted Lines) */
+        .crossed-top::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-top: 3px dotted rgba(255, 255, 255, 0.7); box-sizing: border-box; pointer-events: none; z-index: 5; }
+        .crossed-left::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; border-left: 3px dotted rgba(255, 255, 255, 0.7); box-sizing: border-box; pointer-events: none; z-index: 5; }
+        
         #ui { height: 160px; background: #222; display: flex; border-top: 2px solid #444; z-index: 20; }
         .dpad { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 5px; padding: 10px; }
         .btn { width: 45px; height: 45px; background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; cursor: pointer; touch-action: manipulation; }
@@ -34,13 +43,24 @@
         <button onclick="join()" style="padding:10px 20px; background:green; color:white; border:none; border-radius:5px; font-weight:bold; margin-top:10px;">START</button>
         <br><a href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit" target="_blank" style="color:cyan; font-size:12px; display:inline-block; margin-top:15px; border:1px solid cyan; padding:5px 10px; text-decoration:none; border-radius:4px;">RULES 📜</a>
     </div>
-    <div id="status" style="display:flex; justify-content: space-around; padding: 8px; background: #111; border-bottom: 2px solid #333; z-index: 20;">
-        <div id="turn-info" style="color: lime; font-weight: bold;">Wait...</div>
-        <div id="lost-tag" style="color: red; font-weight: bold; display: none;">⚠️ LOST</div>
-        <div>❤️ <span id="inj-val">0</span>/5 | 🔫 <span id="bul-val">3</span> | 💣 <span id="bom-val">3</span></div>
+    
+    <div id="status" style="display:flex; flex-direction:column; align-items:center; padding: 8px; background: #111; border-bottom: 2px solid #333; z-index: 20;">
+        <div style="display:flex; width:100%; justify-content: space-around;">
+            <div id="turn-info" style="color: lime; font-weight: bold;">Wait...</div>
+            <div id="lost-tag" style="color: red; font-weight: bold; display: none;">⚠️ LOST</div>
+            <div>❤️ <span id="inj-val">0</span>/5 | 🔫 <span id="bul-val">3</span> | 💣 <span id="bom-val">3</span></div>
+        </div>
+        <div style="font-size:10px; color:#aaa; margin-top:5px; font-weight:bold;">🟥 Red = Wall | 🟦 Blue = Broken Wall | ⬜ Dotted line = No wall at all</div>
     </div>
+    
     <div id="main-ui">
-        <div id="bag"><b>🎒 BAG:</b><div id="item-list"></div></div>
+        <div id="bag">
+            <b>🎒 BAG:</b>
+            <div id="item-list" style="flex-grow: 1;"></div>
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid #333; font-size:9px; color:#aaa; font-weight:bold; text-align:center;">
+                ⬜ Dotted line =<br>No wall at all
+            </div>
+        </div>
         <div id="board-container"><div id="board"></div></div>
         <div id="log-area"></div>
     </div>
@@ -129,7 +149,17 @@
 
                     if(d.phase === 3) {
                         if(td.walls.top) cell.classList.add('wall-top'); 
+                        else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
+                        
                         if(td.walls.left) cell.classList.add('wall-left');
+                        else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
+                        
+                        // Check if we crossed these specific edges safely
+                        const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
+                        const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
+                        if (crossedTop) cell.classList.add('crossed-top');
+                        if (crossedLeft) cell.classList.add('crossed-left');
+                        
                         if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                         if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
                     }
@@ -172,7 +202,16 @@
                         
                         if(known && d.phase === 3) {
                             if(td.walls.top) cell.classList.add('wall-top'); 
+                            else if(td.ex_walls.top.broken) cell.classList.add('broken-top');
+                            
                             if(td.walls.left) cell.classList.add('wall-left');
+                            else if(td.ex_walls.left.broken) cell.classList.add('broken-left');
+
+                            const crossedTop = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'top');
+                            const crossedLeft = my.crossed_edges && my.crossed_edges.some(e => e.x === x && e.y === y && e.dir === 'left');
+                            if (crossedTop) cell.classList.add('crossed-top');
+                            if (crossedLeft) cell.classList.add('crossed-left');
+                            
                             if(td.tile !== "empty") cell.style.backgroundImage = `url('/static/${td.tile}.png')`;
                             if(td.dropped_items.length > 0) cell.style.boxShadow = "inset 0 0 10px cyan";
                         }
@@ -195,7 +234,7 @@
                         }
 
                         if(d.phase === 2 && !my.has_spawned) {
-                            cell.onpointerdown = () => socket.emit('set_spawn', {x, y});
+                            cell.onclick = () => socket.emit('set_spawn', {x, y});
                         }
                         b.appendChild(cell);
                     }
