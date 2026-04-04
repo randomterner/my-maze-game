@@ -2,35 +2,55 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Maze Game - Manager</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maze Game - Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
+    :root {
+      --bg: #f2f3f7;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --blue: #2f6df6;
+      --blue-dark: #2357c8;
+      --border: #e6e8ef;
+      --shadow: 0 2px 10px rgba(0,0,0,0.06);
+      --radius: 12px;
+      --gap: 12px;
+      --board-size: min(92vw, 520px);
+      --cell-gap: 2px;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
-      background: #f2f3f7;
-      color: #222;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
     }
 
     .wrap {
-      max-width: 1300px;
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 16px;
+      padding: 12px;
+      padding-bottom: 110px;
     }
 
     .card {
-      background: white;
-      border-radius: 12px;
+      background: var(--card);
+      border-radius: var(--radius);
       padding: 14px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
     }
 
     .layout {
       display: grid;
-      grid-template-columns: 470px 1fr;
-      gap: 16px;
+      grid-template-columns: 360px 1fr;
+      gap: 12px;
+      align-items: start;
     }
 
     .row {
@@ -40,113 +60,64 @@
       align-items: center;
     }
 
-    input, select, button {
+    input, button {
       font: inherit;
     }
 
-    input, select {
-      padding: 8px;
-      border-radius: 8px;
+    input {
+      padding: 10px 12px;
+      border-radius: 10px;
       border: 1px solid #ccc;
+      min-width: 0;
     }
 
     button {
-      padding: 10px 12px;
+      padding: 12px 14px;
       border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      background: #2f6df6;
-      color: white;
-    }
-
-    button.secondary {
-      background: #6c757d;
-    }
-
-    button.danger {
-      background: #c93444;
-    }
-
-    .board {
-      display: grid;
-      grid-template-columns: repeat(10, 50px);
-      grid-template-rows: repeat(10, 50px);
-      gap: 2px;
-      margin-top: 10px;
-    }
-
-    .cell {
-      width: 50px;
-      height: 50px;
-      position: relative;
-      overflow: hidden;
-      border-radius: 6px;
-      background: #d2d8e2;
-      cursor: pointer;
-    }
-
-    .cell img {
-      width: 100%;
-      height: 100%;
-      display: block;
-      object-fit: cover;
-    }
-
-    .playerTag {
-      position: absolute;
-      right: 2px;
-      bottom: 2px;
-      font-size: 9px;
-      padding: 1px 4px;
       border-radius: 10px;
-      background: rgba(0,0,0,0.75);
+      cursor: pointer;
+      background: var(--blue);
       color: white;
-      max-width: 44px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
+      min-height: 44px;
     }
 
-    .topWall, .bottomWall, .leftWall, .rightWall {
-      position: absolute;
-      background: rgba(0,0,0,0.95);
+    button:hover {
+      background: var(--blue-dark);
     }
 
-    .topWall, .bottomWall {
-      left: 0;
-      right: 0;
-      height: 4px;
+    button.activeMode {
+      outline: 3px solid rgba(47,109,246,0.25);
+      background: #173f99;
     }
 
-    .topWall { top: 0; }
-    .bottomWall { bottom: 0; }
-
-    .leftWall, .rightWall {
-      top: 0;
-      bottom: 0;
-      width: 4px;
+    .small {
+      color: var(--muted);
+      font-size: 13px;
     }
 
-    .leftWall { left: 0; }
-    .rightWall { right: 0; }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
+    .turnBadge {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #111;
+      color: white;
+      font-size: 13px;
     }
 
-    th, td {
-      border: 1px solid #e8e8e8;
-      padding: 8px;
-      text-align: left;
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: #eef2ff;
+      font-size: 13px;
+      margin: 3px 4px 0 0;
     }
 
     .logs {
-      max-height: 300px;
+      max-height: 220px;
       overflow: auto;
       background: #fafafa;
-      border: 1px solid #ececec;
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 8px;
       font-size: 14px;
@@ -157,24 +128,140 @@
       border-bottom: 1px solid #efefef;
     }
 
-    .small {
-      color: #666;
-      font-size: 13px;
+    .boardWrap {
+      overflow-x: auto;
     }
 
-    .good {
-      color: #0b8a2f;
+    .board {
+      width: var(--board-size);
+      height: var(--board-size);
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: var(--cell-gap);
+      margin-top: 10px;
+      touch-action: manipulation;
+    }
+
+    .cell {
+      position: relative;
+      overflow: hidden;
+      border-radius: 6px;
+      background: #c9d0dc;
+      min-width: 0;
+      min-height: 0;
+      aspect-ratio: 1 / 1;
+      cursor: pointer;
+    }
+
+    .cell img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .unknown {
+      background: #bfc7d4;
+    }
+
+    .playerTag {
+      position: absolute;
+      right: 2px;
+      bottom: 2px;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.78);
+      color: white;
+      max-width: 44px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    .youTag {
+      background: rgba(47,109,246,0.95);
+    }
+
+    .actionBar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
+      background: rgba(255,255,255,0.98);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+      padding: 8px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    }
+
+    .modeButtons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .arrowPad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      max-width: 360px;
+      margin: 0 auto;
+    }
+
+    .arrowPad .spacer {
+      visibility: hidden;
+    }
+
+    .arrowBtn {
+      font-size: 20px;
       font-weight: bold;
+      min-height: 48px;
     }
 
-    .bad {
-      color: #b00020;
-      font-weight: bold;
-    }
-
-    @media (max-width: 1000px) {
+    @media (max-width: 920px) {
       .layout {
         grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .wrap {
+        padding: 10px;
+        padding-bottom: 130px;
+      }
+
+      .card {
+        padding: 12px;
+      }
+
+      .row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .row input,
+      .row button {
+        width: 100%;
+      }
+
+      .modeButtons {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .board {
+        width: min(96vw, 420px);
+        height: min(96vw, 420px);
+      }
+
+      .logs {
+        max-height: 180px;
       }
     }
   </style>
@@ -182,96 +269,78 @@
 <body>
 <div class="wrap">
   <div class="card">
-    <h2 style="margin-top:0;">Maze Game - Manager</h2>
+    <h2 style="margin-top:0;">Maze Game - Player</h2>
     <div class="row">
-      <button onclick="joinManager()">Join as manager</button>
-      <button onclick="startGame()">Start game</button>
-      <button class="secondary" onclick="resetGame()">Reset game</button>
-      <button class="danger" onclick="clearBoard()">Clear board</button>
+      <input id="nameInput" placeholder="Your name">
+      <button onclick="joinPlayer()">Join</button>
     </div>
-    <div class="small" id="managerStatus">Not joined yet.</div>
+    <div class="small" id="joinStatus">Not joined yet.</div>
   </div>
 
   <div class="layout">
     <div>
       <div class="card">
-        <h3 style="margin-top:0;">Board editor</h3>
-        <div class="row">
-          <select id="tileType">
-            <option value="empty">empty</option>
-            <option value="treasure">treasure</option>
-            <option value="fake_treasure">fake_treasure</option>
-            <option value="exit">exit</option>
-            <option value="river">river</option>
-            <option value="river_start">river_start</option>
-            <option value="boat">boat</option>
-            <option value="raft">raft</option>
-            <option value="clinic">clinic</option>
-            <option value="er">er</option>
-            <option value="monster">monster</option>
-            <option value="devil">devil</option>
-            <option value="black_hole">black_hole</option>
-            <option value="flashlight">flashlight</option>
-            <option value="batteries">batteries</option>
-            <option value="armory">armory</option>
-          </select>
-          <span class="small">Click a tile to set it.</span>
-        </div>
-
-        <div class="row" style="margin-top:10px;">
-          <input id="wallX" type="number" min="0" max="9" placeholder="x">
-          <input id="wallY" type="number" min="0" max="9" placeholder="y">
-          <select id="wallDirection">
-            <option value="up">up</option>
-            <option value="down">down</option>
-            <option value="left">left</option>
-            <option value="right">right</option>
-          </select>
-          <button onclick="toggleWall()">Toggle inner wall</button>
-        </div>
-        <div class="small">Exit must be on the edge. Outer walls are always present.</div>
-
-        <div id="board" class="board"></div>
+        <div><strong>Turn:</strong> <span id="turnInfo" class="turnBadge">Waiting</span></div>
+        <div class="small" id="gameStatus">Game not started.</div>
+        <div class="small" id="socketInfo"></div>
+        <div class="small" style="margin-top:6px;"><strong>Current mode:</strong> <span id="modeLabel">Move</span></div>
       </div>
 
       <div class="card">
-        <h3 style="margin-top:0;">Black hole</h3>
-        <div id="blackHoleStatus" class="small">No pending black hole.</div>
-        <div class="row" style="margin-top:8px;">
-          <input id="bhX" type="number" min="0" max="9" placeholder="x">
-          <input id="bhY" type="number" min="0" max="9" placeholder="y">
-          <button onclick="resolveBlackHole()">Place player</button>
-        </div>
+        <h3 style="margin-top:0;">Your info</h3>
+        <div id="playerInfo">No player data yet.</div>
       </div>
 
       <div class="card">
-        <h3 style="margin-top:0;">River validation</h3>
-        <div id="riverValidation">No data yet.</div>
+        <h3 style="margin-top:0;">Last message</h3>
+        <div id="lastMessage">No messages yet.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Recent log</h3>
+        <div class="logs" id="logs"></div>
       </div>
     </div>
 
     <div>
       <div class="card">
-        <div><strong>Turn:</strong> <span id="turnInfo">Waiting</span></div>
-        <div class="small" id="gameInfo">Game not started.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Players</h3>
-        <div id="playersTable">No players.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Logs</h3>
-        <div class="logs" id="logs"></div>
+        <h3 style="margin-top:0;">Your board</h3>
+        <div class="small">Before the game starts, tap a tile to choose your spawn.</div>
+        <div class="boardWrap">
+          <div class="board" id="board"></div>
+        </div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="actionBar">
+  <div class="modeButtons">
+    <button id="mode-move" class="activeMode" onclick="setMode('move')">Move</button>
+    <button id="mode-shoot" onclick="setMode('shoot')">Bullets</button>
+    <button id="mode-bomb" onclick="setMode('bomb')">Bombs</button>
+    <button id="mode-flash" onclick="setMode('flash')">Flashlight</button>
+  </div>
+
+  <div class="arrowPad">
+    <div class="spacer"></div>
+    <button class="arrowBtn" onclick="handleArrow('up')">↑</button>
+    <div class="spacer"></div>
+
+    <button class="arrowBtn" onclick="handleArrow('left')">←</button>
+    <button class="spacer"></button>
+    <button class="arrowBtn" onclick="handleArrow('right')">→</button>
+
+    <div class="spacer"></div>
+    <button class="arrowBtn" onclick="handleArrow('down')">↓</button>
+    <div class="spacer"></div>
   </div>
 </div>
 
 <script>
   const socket = io();
   let state = null;
+  let currentMode = "move";
 
   const textureMap = {
     empty: "empty.png",
@@ -290,14 +359,63 @@
     flashlight: "flashlight.png",
     batteries: "batteries.png",
     armory: "armory.png",
-
     used_treasure: "treasure.png",
     used_fake_treasure: "fake_treasure.png",
     used_boat: "boat.png",
     used_raft: "raft.png",
     used_flashlight: "flashlight.png",
-    used_batteries: "batteries.png"
+    used_batteries: "batteries.png",
+    unknown: null
   };
+
+  function joinPlayer() {
+    const name = document.getElementById("nameInput").value.trim();
+    if (!name) {
+      alert("Enter your name first.");
+      return;
+    }
+    socket.emit("join_player", { name });
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    document.getElementById("modeLabel").textContent =
+      mode === "move" ? "Move" :
+      mode === "shoot" ? "Bullets" :
+      mode === "bomb" ? "Bombs" : "Flashlight";
+
+    ["move", "shoot", "bomb", "flash"].forEach(m => {
+      const btn = document.getElementById(`mode-${m}`);
+      if (btn) btn.classList.toggle("activeMode", m === mode);
+    });
+  }
+
+  function handleArrow(direction) {
+    if (!state) return;
+
+    if (currentMode === "move") {
+      socket.emit("player_move", { direction });
+      return;
+    }
+    if (currentMode === "shoot") {
+      socket.emit("player_shoot", { direction });
+      return;
+    }
+    if (currentMode === "bomb") {
+      socket.emit("player_bomb", { direction });
+      return;
+    }
+    if (currentMode === "flash") {
+      socket.emit("player_flashlight", { direction });
+    }
+  }
+
+  function handleBoardClick(x, y) {
+    if (!state || !state.you) return;
+    if (!state.game_started) {
+      socket.emit("player_spawn", { x, y });
+    }
+  }
 
   function escapeHtml(str) {
     return String(str)
@@ -306,73 +424,64 @@
       .replaceAll(">", "&gt;");
   }
 
-  function joinManager() {
-    socket.emit("join_manager");
-  }
+  function updateInfo() {
+    if (!state || !state.you) return;
 
-  function startGame() {
-    socket.emit("manager_start_game");
-  }
+    const you = state.you;
+    const items = Object.entries(you.items)
+      .filter(([k, v]) => v)
+      .map(([k]) => `<span class="pill">${escapeHtml(k)}</span>`)
+      .join("") || "<span class='small'>No items yet.</span>";
 
-  function resetGame() {
-    socket.emit("manager_reset_game");
-  }
+    document.getElementById("playerInfo").innerHTML = `
+      <div><strong>Name:</strong> ${escapeHtml(you.name)}</div>
+      <div><strong>Alive:</strong> ${you.alive ? "Yes" : "No"}</div>
+      <div><strong>Spawned:</strong> ${you.spawned ? "Yes" : "No"}</div>
+      <div><strong>Position:</strong> ${you.x === null ? "-" : `${you.x}, ${you.y}`}</div>
+      <div><strong>Injuries:</strong> ${you.injuries}</div>
+      <div><strong>Bullets:</strong> ${you.bullets}</div>
+      <div><strong>Bombs:</strong> ${you.bombs}</div>
+      <div style="margin-top:8px;"><strong>Items:</strong></div>
+      <div>${items}</div>
+    `;
 
-  function clearBoard() {
-    socket.emit("manager_clear_board");
-  }
+    document.getElementById("lastMessage").textContent = you.last_message || "";
 
-  function setTile(x, y) {
-    const tile = document.getElementById("tileType").value;
-    socket.emit("manager_set_tile", { x, y, tile });
-  }
-
-  function toggleWall() {
-    const x = parseInt(document.getElementById("wallX").value, 10);
-    const y = parseInt(document.getElementById("wallY").value, 10);
-    const direction = document.getElementById("wallDirection").value;
-    if (Number.isNaN(x) || Number.isNaN(y)) {
-      alert("Enter valid x and y.");
-      return;
+    if (!state.game_started) {
+      document.getElementById("turnInfo").textContent = "Not started";
+      document.getElementById("gameStatus").textContent = "Waiting for manager to start the game.";
+    } else if (state.game_over) {
+      document.getElementById("turnInfo").textContent = "Game Over";
+      const winner = (state.all_players_public || []).find(p => p.sid === state.winner_sid);
+      document.getElementById("gameStatus").textContent = winner
+        ? `Winner: ${winner.name} (${state.winner_reason})`
+        : `Winner SID: ${state.winner_sid || "-"}`;
+    } else {
+      document.getElementById("turnInfo").textContent = state.current_turn_name || "Unknown";
+      document.getElementById("gameStatus").textContent = state.is_your_turn ? "It is your turn." : "Wait for your turn.";
     }
-    socket.emit("manager_toggle_inner_wall", { x, y, direction });
-  }
 
-  function resolveBlackHole() {
-    const x = parseInt(document.getElementById("bhX").value, 10);
-    const y = parseInt(document.getElementById("bhY").value, 10);
-    if (Number.isNaN(x) || Number.isNaN(y)) {
-      alert("Enter valid x and y.");
-      return;
-    }
-    socket.emit("manager_resolve_black_hole", { x, y });
-  }
-
-  function hasInnerWallBetween(a, b) {
-    if (!state || !state.inner_walls) return false;
-    return state.inner_walls.some(edge => {
-      const [p1, p2] = edge;
-      return (
-        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
-        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
-      );
-    });
+    const logs = state.logs || [];
+    document.getElementById("logs").innerHTML = logs.map(line => `<div>${escapeHtml(line)}</div>`).join("");
   }
 
   function buildBoard() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
-    if (!state) return;
+
+    if (!state || !state.you) return;
+
+    const knownTiles = state.your_known_tiles || {};
 
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
         const key = `${x},${y}`;
-        const tile = (state.board || {})[key] || "empty";
+        const tile = knownTiles[key] || "unknown";
 
         const cell = document.createElement("div");
-        cell.className = "cell";
+        cell.className = "cell" + (tile === "unknown" ? " unknown" : "");
         cell.title = `${x},${y}: ${tile}`;
-        cell.onclick = () => setTile(x, y);
+        cell.onclick = () => handleBoardClick(x, y);
 
         const texture = textureMap[tile];
         if (texture) {
@@ -382,152 +491,32 @@
           cell.appendChild(img);
         }
 
-        const playersHere = (state.players || []).filter(p => p.alive && p.x === x && p.y === y);
+        const playersHere = (state.all_players_public || []).filter(p => p.alive && p.x === x && p.y === y);
         playersHere.forEach((p, idx) => {
           const tag = document.createElement("div");
-          tag.className = "playerTag";
+          tag.className = "playerTag" + (p.sid === state.you.sid ? " youTag" : "");
           tag.style.bottom = `${2 + idx * 12}px`;
-          tag.textContent = p.name;
+          tag.textContent = p.sid === state.you.sid ? "YOU" : p.name;
           cell.appendChild(tag);
         });
-
-        if (y === 0) {
-          const w = document.createElement("div");
-          w.className = "topWall";
-          cell.appendChild(w);
-        }
-        if (y === 9) {
-          const w = document.createElement("div");
-          w.className = "bottomWall";
-          cell.appendChild(w);
-        }
-        if (x === 0) {
-          const w = document.createElement("div");
-          w.className = "leftWall";
-          cell.appendChild(w);
-        }
-        if (x === 9) {
-          const w = document.createElement("div");
-          w.className = "rightWall";
-          cell.appendChild(w);
-        }
-
-        if (y > 0 && hasInnerWallBetween([x, y], [x, y - 1])) {
-          const w = document.createElement("div");
-          w.className = "topWall";
-          cell.appendChild(w);
-        }
-        if (y < 9 && hasInnerWallBetween([x, y], [x, y + 1])) {
-          const w = document.createElement("div");
-          w.className = "bottomWall";
-          cell.appendChild(w);
-        }
-        if (x > 0 && hasInnerWallBetween([x, y], [x - 1, y])) {
-          const w = document.createElement("div");
-          w.className = "leftWall";
-          cell.appendChild(w);
-        }
-        if (x < 9 && hasInnerWallBetween([x, y], [x + 1, y])) {
-          const w = document.createElement("div");
-          w.className = "rightWall";
-          cell.appendChild(w);
-        }
 
         boardEl.appendChild(cell);
       }
     }
   }
 
-  function buildPlayersTable() {
-    const container = document.getElementById("playersTable");
-    if (!state || !state.players || state.players.length === 0) {
-      container.innerHTML = "No players.";
-      return;
-    }
-
-    const rows = state.players.map(p => `
-      <tr>
-        <td>${escapeHtml(p.name)}</td>
-        <td>${p.alive ? "Yes" : "No"}</td>
-        <td>${p.spawned ? "Yes" : "No"}</td>
-        <td>${p.x === null ? "-" : `${p.x},${p.y}`}</td>
-        <td>${p.injuries}</td>
-        <td>${p.bullets}</td>
-        <td>${p.bombs}</td>
-        <td>${Object.entries(p.items).filter(([k,v]) => v).map(([k]) => escapeHtml(k)).join(", ") || "-"}</td>
-        <td>${escapeHtml(p.last_message || "")}</td>
-      </tr>
-    `).join("");
-
-    container.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Alive</th>
-            <th>Spawned</th>
-            <th>Position</th>
-            <th>Injuries</th>
-            <th>Bullets</th>
-            <th>Bombs</th>
-            <th>Items</th>
-            <th>Last message</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `;
-  }
-
-  function updateTopInfo() {
-    if (!state) return;
-
-    if (!state.game_started) {
-      document.getElementById("turnInfo").textContent = "Not started";
-      document.getElementById("gameInfo").textContent = "Board can be edited. Waiting to start.";
-    } else if (state.game_over) {
-      const winner = (state.players || []).find(p => p.sid === state.winner_sid);
-      document.getElementById("turnInfo").textContent = "Game Over";
-      document.getElementById("gameInfo").textContent = winner
-        ? `Winner: ${winner.name} (${state.winner_reason})`
-        : `Winner SID: ${state.winner_sid || "-"}`;
-    } else {
-      const turnPlayer = (state.players || []).find(p => p.sid === state.current_turn_sid);
-      document.getElementById("turnInfo").textContent = turnPlayer ? turnPlayer.name : "Unknown";
-      document.getElementById("gameInfo").textContent = `Turn #${state.turn_number}`;
-    }
-
-    if (state.pending_black_hole) {
-      const p = (state.players || []).find(pp => pp.sid === state.pending_black_hole.player_sid);
-      document.getElementById("blackHoleStatus").textContent = p
-        ? `Pending black hole for ${p.name}. Choose an empty tile.`
-        : "Pending black hole.";
-    } else {
-      document.getElementById("blackHoleStatus").textContent = "No pending black hole.";
-    }
-
-    if (state.river_validation) {
-      document.getElementById("riverValidation").innerHTML = state.river_validation.ok
-        ? `<span class="good">${escapeHtml(state.river_validation.message)}</span>`
-        : `<span class="bad">${escapeHtml(state.river_validation.message)}</span>`;
-    }
-  }
-
-  function updateLogs() {
-    const logs = (state && state.logs) || [];
-    document.getElementById("logs").innerHTML = logs.map(line => `<div>${escapeHtml(line)}</div>`).join("");
-  }
-
-  socket.on("joined_as_manager", data => {
-    document.getElementById("managerStatus").textContent = `Joined as manager. SID: ${data.sid}`;
+  socket.on("connected", data => {
+    document.getElementById("socketInfo").textContent = `Socket ID: ${data.sid}`;
   });
 
-  socket.on("manager_state", data => {
+  socket.on("joined_as_player", data => {
+    document.getElementById("joinStatus").textContent = `Joined as ${data.name}`;
+  });
+
+  socket.on("player_state", data => {
     state = data;
+    updateInfo();
     buildBoard();
-    buildPlayersTable();
-    updateTopInfo();
-    updateLogs();
   });
 
   socket.on("error_message", data => {
