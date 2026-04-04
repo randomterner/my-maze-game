@@ -27,6 +27,13 @@ def add_log(msg):
     game_logs.insert(0, msg)
     if len(game_logs) > 60: game_logs.pop()
 
+def get_dir_name(dx, dy):
+    if dy == -1: return "up"
+    if dy == 1: return "down"
+    if dx == -1: return "left"
+    if dx == 1: return "right"
+    return "unknown"
+
 def sync_all():
     p_list = [p for p in players.values() if not p['is_man']]
     alive = [p for p in p_list if p['injuries'] < 5]
@@ -284,7 +291,8 @@ def on_shoot(data):
         return
         
     p['bul'] -= 1; dx, dy = data['dx'], data['dy']; sx, sy = p['x'], p['y']
-    add_log(f"🔫 {p['n']} fired a shot!")
+    dir_name = get_dir_name(dx, dy)
+    add_log(f"🔫 {p['n']} fired a shot {dir_name}!")
     for _ in range(10):
         if dx == 1 and (sx+1 >= 10 or maze[sy][sx+1]['walls']['left']): break
         if dx == -1 and maze[sy][sx]['walls']['left']: break
@@ -312,18 +320,21 @@ def on_bomb(data):
         return
         
     dx, dy = data['dx'], data['dy']; tx, ty = p['x'], p['y']
+    dir_name = get_dir_name(dx, dy)
     wt = 'left' if dx != 0 else 'top'
     if dx == 1: tx += 1
     if dy == 1: ty += 1
+    
+    p['bom'] -= 1 
+    
     if 0 <= tx < 10 and 0 <= ty < 10 and maze[ty][tx]['walls'][wt]:
         maze[ty][tx]['walls'][wt] = False
         maze[ty][tx]['ex_walls'][wt] = {"broken": True, "by": p['n']}
-        p['bom'] -= 1
-        add_log(f"💣 {p['n']} broke a wall.")
-        on_next()
+        add_log(f"💣 {p['n']} threw a bomb {dir_name} and broke a wall!")
     else:
-        emit('error_msg', "No wall there to break!")
-        return
+        add_log(f"💣 {p['n']} threw a bomb {dir_name}, but nothing was there!")
+        
+    on_next()
     sync_all()
 
 @socketio.on('use_flashlight')
@@ -335,7 +346,8 @@ def on_flash(data):
         return
         
     dx, dy = data['dx'], data['dy']; fx, fy = p['x'], p['y']
-    add_log(f"🔦 {p['n']} used the flashlight!")
+    dir_name = get_dir_name(dx, dy)
+    add_log(f"🔦 {p['n']} used the flashlight {dir_name}!")
     for _ in range(10):
         if dx == 1 and (fx+1 >= 10 or maze[fy][fx+1]['walls']['left']): break
         if dx == -1 and maze[fy][fx]['walls']['left']: break
