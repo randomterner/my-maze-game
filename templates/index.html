@@ -27,7 +27,7 @@
 <body>
     <div id="welcome" style="position:fixed;inset:0;background:#000;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;">
         <h2>Castle Maze 🏰</h2>
-        <input type="text" id="name-in" placeholder="הכנס שם..."><br>
+        <input type="text" id="name-in" placeholder="Name..."><br>
         <button onclick="join()" style="background:green;color:white;padding:10px;">START</button>
     </div>
     <div id="status" style="padding:8px;background:#111;border-bottom:2px solid #333;display:flex;justify-content:space-between;align-items:center;font-size:12px;">
@@ -67,9 +67,9 @@
             document.getElementById('inj-val').innerText = my.injuries;
             document.getElementById('bul-val').innerText = my.bul;
             document.getElementById('bom-val').innerText = my.bom;
-            document.getElementById('item-list').innerHTML = my.items.map(i => `<div>• ${i}</div>`).join('');
+            document.getElementById('item-list').innerHTML = my.items.map(i => `<div>• ${i.replace('_', ' ')}</div>`).join('');
             document.getElementById('log-area').innerHTML = d.logs.map(l => `<div>${l}</div>`).join('');
-            document.getElementById('turn-info').innerText = (d.turn_id === socket.id) ? "תורך!" : "מחכה...";
+            document.getElementById('turn-info').innerText = (d.turn_id === socket.id) ? "YOUR TURN!" : "Waiting...";
             
             const b = document.getElementById('board'); b.innerHTML = '';
             const cellW = window.innerWidth >= 600 ? 55 : 40;
