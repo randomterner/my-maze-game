@@ -73,37 +73,38 @@ def apply_tile(p):
     nx, ny = p['x'], p['y']
     tile = maze[ny][nx]
 
-    # 1. Birthplace Security Camera Logic
+    # --- 1. BIRTHPLACE CAMERA ---
     if tile['is_birthplace']:
         add_log(f"✨ {p['n']} found {tile['birth_owner_name']}'s birthplace!")
         owner = players.get(tile['birth_owner_id'])
         if owner and owner['id'] != p['id']:
-            # The owner gets every single tile Player B has ever touched added to their map
             for step in p['walked_path']:
-                if step not in owner['known_tiles']:
-                    owner['known_tiles'].append(step)
-            add_log(f"👁️ {owner['n']} sensed a presence and mapped the intruder's path!")
+                if step not in owner['known_tiles']: owner['known_tiles'].append(step)
+            add_log(f"👁️ {owner['n']} sensed the intruder's path through home!")
 
-    # 2. Un-lost checks (Landmarks & River Start)
-    if p['is_lost']:
-        if p['n'] in tile['visited_by'] or (tile['tile'] == "river_start" and p.get('lost_by_river')):
-            clear_lost(p)
+    # --- 2. MAP LOGIC (LOST/UNLOST) ---
+    if p['is_lost'] and (p['n'] in tile['visited_by'] or (tile['tile'] == "river_start" and p.get('lost_by_river'))):
+        clear_lost(p)
 
-    # 3. Path Tracking
     curr_c = [p['x'], p['y']]
     target_list = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
     if curr_c not in target_list: target_list.append(curr_c)
     if curr_c not in p['walked_path']: p['walked_path'].append(curr_c)
 
-    # 4. The 10x10 Boundary Rule
+    # 10x10 Rule
     if p['is_lost'] and len(p['post_lost_tiles']) > 0:
         xs = [t[0] for t in p['post_lost_tiles']]; ys = [t[1] for t in p['post_lost_tiles']]
         if (max(xs) - min(xs) >= 9) and (max(ys) - min(ys) >= 9):
-            add_log(f"🧭 {p['n']} hit the 10x10 boundary and recovered their memory!")
+            add_log(f"🧭 {p['n']} hit 10x10 limit and found their bearings!")
             clear_lost(p)
 
-    # 5. Item & Tile Effects
+    # --- 3. TILE MECHANICS ---
     item = tile['tile']
+    
+    # Reset/Set River Immunity
+    if item != "river" and item != "river_start": p['river_safe'] = False
+    elif item == "river_start": p['knows_river_start'] = True; p['river_safe'] = True
+
     if item == "river":
         if not ("boat" in p['items'] or p.get('river_safe')):
             p['x'], p['y'] = river_start_pos
@@ -111,44 +112,51 @@ def apply_tile(p):
             p['is_lost'] = not p['knows_river_start']
             p['lost_by_river'] = p['is_lost']
             p['river_safe'] = True
-            add_log(f"🌊 {p['n']} was swept back to the river start!")
-            # Record the new teleport destination properly
-            new_c = [p['x'], p['y']]
-            if new_c not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
-                (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append(new_c)
+            add_log(f"🌊 {p['n']} was swept away!")
+            if [p['x'], p['y']] not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
+                (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append([p['x'], p['y']])
             return False
+
+    elif item == "black_hole":
+        p['is_lost'] = True; p['waiting_teleport'] = True; p['post_lost_tiles'] = []
+        add_log(f"🕳️ {p['n']} fell into a Black Hole!")
+
     elif item == "monster":
         p['bul'] = min(5, p['bul']+1); p['bom'] = min(5, p['bom']+1)
         add_log(f"👾 Monster gave {p['n']} gear and an extra turn!")
         return True
-    elif item == "black_hole":
-        p['is_lost'] = True; p['waiting_teleport'] = True; p['post_lost_tiles'] = []
-        add_log(f"🕳️ {p['n']} fell into a Black Hole!")
+
     elif item == "devil":
         p['injuries'] += 1; p['bul'] = max(0, p['bul']-1); p['bom'] = max(0, p['bom']-1)
         add_log(f"😈 Devil attacked {p['n']}!")
+
+    elif item == "clinic":
+        if p['injuries'] < 4: p['injuries'] = 0; add_log(f"🏥 {p['n']} was fully healed!")
+    
+    elif item == "er":
+        if p['injuries'] == 4: p['injuries'] = 3; add_log(f"🚑 {p['n']} was saved from the brink!")
+
+    elif item == "armory":
+        p['bul'] = 3; p['bom'] = 3; add_log(f"⚔️ {p['n']} restocked at the armory!")
+
     elif item == "exit":
         if "treasure" in p['items']:
             global winner; winner = p['n']
-            add_log(f"🏆 {p['n']} escaped with the treasure and won!")
-    elif item in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries", "clinic", "er", "armory"]:
-        if item == "clinic" and p['injuries'] < 4: p['injuries'] = 0; add_log(f"✨ {p['n']} reached {item}.")
-        elif item == "er" and p['injuries'] == 4: p['injuries'] = 3; add_log(f"✨ {p['n']} reached {item}.")
-        elif item == "armory": p['bul']=3; p['bom']=3; add_log(f"✨ {p['n']} reached {item}.")
-        else:
-            if not tile['collected']:
-                p['items'].append(item); tile['collected'] = True
-                add_log(f"✨ {p['n']} collected {item}.")
-            else:
-                add_log(f"👀 {p['n']} found where {item} used to be.")
+            add_log(f"🏆 {p['n']} ESCAPED WITH THE TREASURE!")
 
+    elif item in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries"]:
+        if not tile['collected']:
+            p['items'].append(item); tile['collected'] = True
+            add_log(f"✨ {p['n']} picked up {item.replace('_', ' ')}.")
+        else:
+            add_log(f"👀 {p['n']} found an empty spot where {item} once was.")
+
+    # Visited marking
     if p['n'] not in tile['visited_by'] and item != "empty": tile['visited_by'].append(p['n'])
+    
+    # Death check
     if p['injuries'] >= 5:
         add_log(f"💀 {p['n']} has died!"); tile['dropped_items'].extend(p['items']); p['items'] = []
-    
-    # Reset river immunity if they land on solid ground
-    if item != "river" and item != "river_start": p['river_safe'] = False
-    elif item == "river_start": p['knows_river_start'] = True; p['river_safe'] = True
 
     return False
 
@@ -194,7 +202,7 @@ def on_shoot(data):
     p = players.get(request.sid)
     if not check_turn(p) or p['bul'] <= 0: return
     p['bul'] -= 1; dx, dy = data['dx'], data['dy']; sx, sy = p['x'], p['y']
-    add_log(f"🔫 {p['n']} fired a shot {get_dir_name(dx, dy)}!")
+    add_log(f"🔫 {p['n']} fired {get_dir_name(dx, dy)}!")
     for _ in range(10):
         if dx == 1 and (sx+1 >= 10 or maze[sy][sx+1]['walls']['left']): break
         if dx == -1 and maze[sy][sx]['walls']['left']: break
@@ -218,15 +226,16 @@ def on_bomb(data):
     wt = 'left' if dx != 0 else 'top'
     if 0 <= tx < 10 and 0 <= ty < 10 and maze[ty][tx]['walls'][wt]:
         maze[ty][tx]['walls'][wt] = False; add_log(f"💣 {p['n']} broke wall {get_dir_name(dx, dy)}!")
-    else: add_log(f"💣 {p['n']} bombed {get_dir_name(dx, dy)}, nothing there!")
+    else: add_log(f"💣 {p['n']} bombed {get_dir_name(dx, dy)}, but nothing was there!")
     on_next(); sync_all()
 
 @socketio.on('use_flashlight')
 def on_flash(data):
     p = players.get(request.sid)
-    if not check_turn(p) or "flashlight" not in p['items']: return
+    if not check_turn(p) or "flashlight" not in p['items'] or "batteries" not in p['items']:
+        emit('error_msg', "Need Flashlight + Batteries!"); return
     dx, dy = data['dx'], data['dy']; fx, fy = p['x'], p['y']
-    add_log(f"🔦 {p['n']} used flashlight {get_dir_name(dx, dy)}!")
+    add_log(f"🔦 {p['n']} flashed {get_dir_name(dx, dy)}!")
     for _ in range(10):
         if dx == 1 and (fx+1 >= 10 or maze[fy][fx+1]['walls']['left']): break
         if dx == -1 and maze[fy][fx]['walls']['left']: break
