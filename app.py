@@ -172,6 +172,7 @@ def on_join(data):
         "id": request.sid, "n": data.get('name', 'Player'), "is_man": is_man,
         "x": 0, "y": 0, "injuries": 0, "bul": 3, "bom": 3, "items": [], 
         "has_spawned": False, "known_tiles": [], "post_lost_tiles": [], "crossed_edges": [],
+        "bumped_walls": [], # Wall bumper memory
         "is_lost": False, "waiting_teleport": False, "knows_river_start": False
     }
     if not is_man and request.sid not in player_order: player_order.append(request.sid)
@@ -191,13 +192,19 @@ def on_move(data):
     nx, ny = p['x'] + data['dx'], p['y'] + data['dy']
     blocked = False
     wall_key = 'top' if data['dy'] != 0 else 'left'
+    bump = None
     
     if 0 <= nx < 10 and 0 <= ny < 10:
-        if data['dx'] == 1 and maze[p['y']][nx]['walls']['left']: blocked = True
-        elif data['dx'] == -1 and maze[p['y']][p['x']]['walls']['left']: blocked = True
-        elif data['dy'] == 1 and maze[ny][p['x']]['walls']['top']: blocked = True
-        elif data['dy'] == -1 and maze[p['y']][p['x']]['walls']['top']: blocked = True
-    else: blocked = True
+        if data['dx'] == 1 and maze[p['y']][nx]['walls']['left']: 
+            blocked = True; bump = {"x": nx, "y": p['y'], "dir": "left"}
+        elif data['dx'] == -1 and maze[p['y']][p['x']]['walls']['left']: 
+            blocked = True; bump = {"x": p['x'], "y": p['y'], "dir": "left"}
+        elif data['dy'] == 1 and maze[ny][p['x']]['walls']['top']: 
+            blocked = True; bump = {"x": p['x'], "y": ny, "dir": "top"}
+        elif data['dy'] == -1 and maze[p['y']][p['x']]['walls']['top']: 
+            blocked = True; bump = {"x": p['x'], "y": p['y'], "dir": "top"}
+    else: 
+        blocked = True
 
     if not blocked:
         target_w = maze[ny][nx] if (data['dx']==1 or data['dy']==1) else maze[p['y']][p['x']]
@@ -222,7 +229,11 @@ def on_move(data):
             return 
         on_next()
     else:
+        # Memorize the wall they bumped into!
+        if bump and bump not in p['bumped_walls']:
+            p['bumped_walls'].append(bump)
         emit('error_msg', "Blocked by a wall!")
+        sync_all()
         return
     sync_all()
 
