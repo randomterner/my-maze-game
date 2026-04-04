@@ -44,10 +44,25 @@ def sync_all():
 def clear_lost(p):
     if p['is_lost']:
         p['is_lost'] = False
+        p['lost_by_river'] = False
         for t in p['post_lost_tiles']:
             if t not in p['known_tiles']: p['known_tiles'].append(t)
         p['post_lost_tiles'] = []
         add_log(f"🧠 {p['n']} recognized the area and is no longer lost!")
+
+def share_visuals(p1, p2, p1_dest, p2_dest):
+    """Shares all visual tracking data between two players based on their lost/not-lost status."""
+    for t in p1[p1_dest]:
+        if t not in p2[p2_dest]: p2[p2_dest].append(t)
+    for t in p2[p2_dest]:
+        if t not in p1[p1_dest]: p1[p1_dest].append(t)
+    
+    # Share paths, safe lines, and bumped walls
+    for k in ['walked_path', 'crossed_edges', 'bumped_walls']:
+        for item in p1[k]:
+            if item not in p2[k]: p2[k].append(item)
+        for item in p2[k]:
+            if item not in p1[k]: p1[k].append(item)
 
 def on_next():
     global current_turn_idx
@@ -72,7 +87,6 @@ def check_turn(p):
 def apply_tile(p):
     nx, ny = p['x'], p['y']
     tile = maze[ny][nx]
-    curr_pos = [nx, ny]
 
     if tile['dropped_items']:
         for item in tile['dropped_items']:
@@ -80,83 +94,109 @@ def apply_tile(p):
             add_log(f"🎒 {p['n']} picked up a dropped {item}!")
         tile['dropped_items'] = []
 
-    # Map Fusion when meeting players
+    # 1. Un-Lose Check (Must happen BEFORE Map Fusion)
+    if p['is_lost']:
+        if p['n'] in tile['visited_by']:
+            clear_lost(p)
+        elif tile['tile'] == "river_start" and p.get('lost_by_river'):
+            clear_lost(p)
+
+    # 2. Realistic Map Fusion
     for other in [pl for pl in players.values() if not pl['is_man'] and pl['id'] != p['id']]:
         if other['x'] == nx and other['y'] == ny and other['has_spawned'] and other['injuries'] < 5:
-            if not p['is_lost'] and other['is_lost']: clear_lost(other)
-            elif not other['is_lost'] and p['is_lost']: clear_lost(p)
-            
-            src_p = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
-            src_other = other['post_lost_tiles'] if other['is_lost'] else other['known_tiles']
-            
-            for t in src_p:
-                if t not in src_other: src_other.append(t)
-            for t in src_other:
-                if t not in src_p: src_p.append(t)
-            add_log(f"🤝 {p['n']} and {other['n']} met and shared maps!")
+            if not p['is_lost'] and not other['is_lost']:
+                share_visuals(p, other, 'known_tiles', 'known_tiles')
+                add_log(f"🤝 {p['n']} and {other['n']} met and shared maps!")
+            elif p['is_lost'] and not other['is_lost']:
+                share_visuals(p, other, 'post_lost_tiles', 'known_tiles')
+                add_log(f"🤝 {p['n']} (Lost) copied {other['n']}'s map into their void!")
+            elif not p['is_lost'] and other['is_lost']:
+                share_visuals(p, other, 'known_tiles', 'post_lost_tiles')
+                add_log(f"🤝 {other['n']} (Lost) copied {p['n']}'s map into their void!")
+            else:
+                share_visuals(p, other, 'post_lost_tiles', 'post_lost_tiles')
+                add_log(f"🤝 {p['n']} and {other['n']} bumped into each other and merged their void maps!")
 
-    if p['n'] not in tile['visited_by'] and tile['tile'] != "empty" and tile['tile'] != "river":
+    # 3. Mark Visited
+    if p['n'] not in tile['visited_by'] and tile['tile'] not in ["empty", "river"]:
         tile['visited_by'].append(p['n'])
 
-    if p['is_lost'] and (p['n'] in tile['visited_by'] or tile['tile'] == "river_start"):
-        clear_lost(p)
-
+    # 4. Process Item/Tile Effects
     item_name = tile['tile']
     
     if item_name == "river":
-        if "boat" in p['items']:
-            add_log(f"🛶 {p['n']} crossed the river safely.")
+        # Immune if they have a boat OR if they are safely continuing from the start
+        if "boat" in p['items'] or p.get('river_safe'):
+            add_log(f"🛶 {p['n']} navigated the river safely.")
+            p['river_safe'] = True 
         else:
             p['x'], p['y'] = river_start_pos
             if "raft" not in p['items']: p['injuries'] += 1
             if not p['knows_river_start']:
-                p['is_lost'] = True; p['post_lost_tiles'] = []
-            else: clear_lost(p)
+                p['is_lost'] = True
+                p['lost_by_river'] = True
+                p['post_lost_tiles'] = []
+            else: 
+                clear_lost(p)
+                p['lost_by_river'] = False
+            p['river_safe'] = True # Grants immunity to continue path next turn
             add_log(f"🌊 {p['n']} was swept away to the start!")
             maze[river_start_pos[1]][river_start_pos[0]]['visited_by'].append(p['n'])
-    
-    elif item_name == "black_hole":
-        p['is_lost'] = True; p['waiting_teleport'] = True; p['post_lost_tiles'] = []
-        add_log(f"🕳️ {p['n']} fell into a Black Hole!")
-
-    elif item_name == "monster":
-        p['bul'] = min(5, p['bul']+1); p['bom'] = min(5, p['bom']+1)
-        add_log(f"👾 Monster gave {p['n']} gear and an extra turn!")
-        return True # Extra turn
-
-    elif item_name == "devil":
-        p['injuries'] += 1; p['bul'] = max(0, p['bul']-1); p['bom'] = max(0, p['bom']-1)
-        add_log(f"😈 Devil attacked {p['n']}!")
 
     elif item_name == "river_start":
-        p['knows_river_start'] = True; clear_lost(p)
-
-    elif item_name == "exit":
-        if "treasure" in p['items']:
-            global winner; winner = p['n']
-            add_log(f"🏆 {p['n']} escaped with the treasure and won!")
-
-    elif item_name in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries", "clinic", "er", "armory"]:
-        if item_name == "clinic" and p['injuries'] < 4: p['injuries'] = 0; add_log(f"✨ {p['n']} reached {item_name}.")
-        elif item_name == "er" and p['injuries'] == 4: p['injuries'] = 3; add_log(f"✨ {p['n']} reached {item_name}.")
-        elif item_name == "armory": p['bul']=3; p['bom']=3; add_log(f"✨ {p['n']} reached {item_name}.")
-        else:
-            if tile['collected']:
-                add_log(f"👀 {p['n']} found where {item_name} used to be.")
+        p['knows_river_start'] = True
+        p['river_safe'] = True # Starting here gives immunity to walk on the river
+    else:
+        p['river_safe'] = False # Lose river immunity if stepping on land
+        
+        if item_name == "black_hole":
+            p['is_lost'] = True; p['waiting_teleport'] = True; p['post_lost_tiles'] = []
+            p['lost_by_river'] = False
+            add_log(f"🕳️ {p['n']} fell into a Black Hole!")
+        elif item_name == "monster":
+            p['bul'] = min(5, p['bul']+1); p['bom'] = min(5, p['bom']+1)
+            add_log(f"👾 Monster gave {p['n']} gear and an extra turn!")
+            return True # Extra turn
+        elif item_name == "devil":
+            p['injuries'] += 1; p['bul'] = max(0, p['bul']-1); p['bom'] = max(0, p['bom']-1)
+            add_log(f"😈 Devil attacked {p['n']}!")
+        elif item_name == "exit":
+            if "treasure" in p['items']:
+                global winner; winner = p['n']
+                add_log(f"🏆 {p['n']} escaped with the treasure and won!")
+        elif item_name in ["treasure", "fake_treasure", "boat", "raft", "flashlight", "batteries", "clinic", "er", "armory"]:
+            if item_name == "clinic" and p['injuries'] < 4: p['injuries'] = 0; add_log(f"✨ {p['n']} reached {item_name}.")
+            elif item_name == "er" and p['injuries'] == 4: p['injuries'] = 3; add_log(f"✨ {p['n']} reached {item_name}.")
+            elif item_name == "armory": p['bul']=3; p['bom']=3; add_log(f"✨ {p['n']} reached {item_name}.")
             else:
-                p['items'].append(item_name)
-                tile['collected'] = True
-                add_log(f"✨ {p['n']} collected {item_name}.")
+                if tile['collected']:
+                    add_log(f"👀 {p['n']} found where {item_name} used to be.")
+                else:
+                    p['items'].append(item_name)
+                    tile['collected'] = True
+                    add_log(f"✨ {p['n']} collected {item_name}.")
 
     if p['injuries'] >= 5:
         add_log(f"💀 {p['n']} has died!")
         tile['dropped_items'].extend(p['items'])
         p['items'] = []
 
+    # 5. Visual Path Tracking
     curr_c = [p['x'], p['y']]
     if curr_c not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
         (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append(curr_c)
         
+    if curr_c not in p['walked_path']:
+        p['walked_path'].append(curr_c)
+
+    # 6. THE 10x10 RULE (Now checks BOTH horizontal AND vertical boundaries!)
+    if p['is_lost'] and len(p['post_lost_tiles']) > 0:
+        xs = [t[0] for t in p['post_lost_tiles']]
+        ys = [t[1] for t in p['post_lost_tiles']]
+        if (max(xs) - min(xs) >= 9) and (max(ys) - min(ys) >= 9):
+            add_log(f"🧭 {p['n']}'s map stretched 10x10. They figured out the boundaries!")
+            clear_lost(p)
+
     return False
 
 @app.route('/')
@@ -172,8 +212,8 @@ def on_join(data):
         "id": request.sid, "n": data.get('name', 'Player'), "is_man": is_man,
         "x": 0, "y": 0, "injuries": 0, "bul": 3, "bom": 3, "items": [], 
         "has_spawned": False, "known_tiles": [], "post_lost_tiles": [], "crossed_edges": [],
-        "bumped_walls": [], # Wall bumper memory
-        "is_lost": False, "waiting_teleport": False, "knows_river_start": False
+        "bumped_walls": [], "walked_path": [],
+        "is_lost": False, "lost_by_river": False, "river_safe": False, "waiting_teleport": False, "knows_river_start": False
     }
     if not is_man and request.sid not in player_order: player_order.append(request.sid)
     sync_all()
@@ -211,7 +251,6 @@ def on_move(data):
         if target_w['ex_walls'][wall_key]['broken']:
             add_log(f"🕵️ {p['n']} passed through a broken wall.")
 
-        # Track the crossed edge for the dotted line trail
         edge = None
         if data['dy'] == 1: edge = {"x": nx, "y": ny, "dir": "top"}
         elif data['dy'] == -1: edge = {"x": p['x'], "y": p['y'], "dir": "top"}
@@ -229,7 +268,6 @@ def on_move(data):
             return 
         on_next()
     else:
-        # Memorize the wall they bumped into!
         if bump and bump not in p['bumped_walls']:
             p['bumped_walls'].append(bump)
         emit('error_msg', "Blocked by a wall!")
@@ -314,6 +352,8 @@ def on_h_tele(data):
     if p_t:
         p_t['x'], p_t['y'] = data['x'], data['y']; p_t['waiting_teleport'] = False
         p_t['post_lost_tiles'].append([data['x'], data['y']])
+        if [data['x'], data['y']] not in p_t['walked_path']:
+            p_t['walked_path'].append([data['x'], data['y']])
         sync_all()
 
 @socketio.on('set_phase')
@@ -321,13 +361,10 @@ def on_ph(ph):
     global game_phase, current_turn_idx
     game_phase = int(ph.get('phase', ph) if isinstance(ph, dict) else ph)
     if game_phase == 3 and player_order:
-        # Trigger spawn tile effects!
         for pid in player_order:
             p = players.get(pid)
             if p and p['has_spawned'] and p['injuries'] < 5:
                 apply_tile(p)
-                
-        # Give turn to the first valid player
         for i in range(len(player_order)):
             p = players.get(player_order[i])
             if p and p['injuries'] < 5 and p['has_spawned']:
@@ -351,6 +388,7 @@ def on_sp(d):
     if p and game_phase == 2:
         p['x'], p['y'] = d['x'], d['y']; p['has_spawned'] = True; 
         p['known_tiles'] = [[d['x'], d['y']]]
+        p['walked_path'] = [[d['x'], d['y']]]
         sync_all()
 
 @socketio.on('next_turn')
