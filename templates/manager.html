@@ -5,7 +5,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #111; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
-        #sidebar { background: #222; padding: 10px; display: flex; gap: 5px; overflow-x: auto; border-bottom: 2px solid #444; }
+        #sidebar { background: #222; padding: 10px; display: flex; gap: 5px; overflow-x: auto; border-bottom: 2px solid #444; align-items: center; }
         
         #main-area { display: flex; flex-grow: 1; flex-direction: column; overflow: hidden; }
         @media (min-width: 768px) { #main-area { flex-direction: row; } }
@@ -18,8 +18,13 @@
 
         .cell { width: 55px; height: 55px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; touch-action: none; }
         .coord { background: #333; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+        
+        /* Host Wall Colors */
         .wall-top { border-top: 5px solid red; }
         .wall-left { border-left: 5px solid red; }
+        .broken-top { border-top: 5px solid #3498db; }
+        .broken-left { border-left: 5px solid #3498db; }
+        
         .tile-opt { padding: 5px 10px; background: #444; border: 1px solid #666; cursor: pointer; font-size: 11px; white-space: nowrap; color: #fff; touch-action: manipulation; }
         .sel { background: cyan; color: #000; }
     </style>
@@ -42,6 +47,10 @@
         <button class="tile-opt" onclick="sel('er',this)">🚑 ER</button>
         <button class="tile-opt" onclick="sel('black_hole',this)">🕳️ BlackHole</button>
         <button class="tile-opt" onclick="sel('armory',this)">⚔️ Armory</button>
+        
+        <span style="color: #aaa; font-size: 12px; display: flex; align-items: center; margin-right: 15px; margin-left: 10px; font-weight: bold; white-space: nowrap;">
+            ⬜ Dotted line = No wall at all
+        </span>
     </div>
     
     <div id="main-area">
@@ -52,7 +61,8 @@
         </div>
     </div>
 
-    <div style="padding: 15px; background: #222; display: flex; gap: 10px; justify-content: center;">
+    <div style="padding: 15px; background: #222; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap;">
+        <span style="font-size:12px; color:#aaa; margin-right:15px; font-weight:bold;">🟥 Wall | 🟦 Broken Wall | ⬜ Dotted line = No wall at all</span>
         <div id="tele-wait"></div>
         <button onclick="socket.emit('set_phase', 2)" style="touch-action: manipulation;">Phase 2: Spawn</button>
         <button onclick="socket.emit('set_phase', 3)" style="touch-action: manipulation;">Phase 3: Start</button>
@@ -80,7 +90,12 @@
                 const l=document.createElement('div'); l.className='coord'; l.innerText=y+1; g.appendChild(l);
                 for(let x=0; x<10; x++){
                     const td = d.maze[y][x]; const c = document.createElement('div'); c.className = 'cell';
-                    if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
+                    
+                    if(td.walls.top) c.classList.add('wall-top'); 
+                    else if(td.ex_walls.top.broken) c.classList.add('broken-top');
+                    
+                    if(td.walls.left) c.classList.add('wall-left');
+                    else if(td.ex_walls.left.broken) c.classList.add('broken-left');
                     
                     if(td.tile !== "empty") {
                         c.style.backgroundImage = `url('/static/${td.tile}.png')`;
