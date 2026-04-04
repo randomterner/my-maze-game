@@ -3,34 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <title>Maze Game - Player</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
+    :root {
+      --bg: #f2f3f7;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --blue: #2f6df6;
+      --blue-dark: #2357c8;
+      --border: #e6e8ef;
+      --shadow: 0 2px 10px rgba(0,0,0,0.06);
+      --radius: 12px;
+      --gap: 12px;
+      --board-size: min(92vw, 520px);
+      --cell-gap: 2px;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
-      background: #f2f3f7;
-      color: #222;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
     }
 
     .wrap {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 16px;
+      padding: 12px;
+      padding-bottom: 110px;
     }
 
     .card {
-      background: white;
-      border-radius: 12px;
+      background: var(--card);
+      border-radius: var(--radius);
       padding: 14px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
     }
 
     .layout {
       display: grid;
-      grid-template-columns: 420px 1fr;
-      gap: 16px;
+      grid-template-columns: 360px 1fr;
+      gap: 12px;
+      align-items: start;
     }
 
     .row {
@@ -45,40 +65,93 @@
     }
 
     input {
-      padding: 8px;
-      border-radius: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
       border: 1px solid #ccc;
+      min-width: 0;
     }
 
     button {
-      padding: 10px 12px;
+      padding: 12px 14px;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
-      background: #2f6df6;
+      background: var(--blue);
       color: white;
+      min-height: 44px;
     }
 
-    button:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
+    button:hover {
+      background: var(--blue-dark);
+    }
+
+    button.activeMode {
+      outline: 3px solid rgba(47,109,246,0.25);
+      background: #173f99;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .turnBadge {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #111;
+      color: white;
+      font-size: 13px;
+    }
+
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: #eef2ff;
+      font-size: 13px;
+      margin: 3px 4px 0 0;
+    }
+
+    .logs {
+      max-height: 220px;
+      overflow: auto;
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    .logs div {
+      padding: 4px 0;
+      border-bottom: 1px solid #efefef;
+    }
+
+    .boardWrap {
+      overflow-x: auto;
     }
 
     .board {
+      width: var(--board-size);
+      height: var(--board-size);
       display: grid;
-      grid-template-columns: repeat(10, 50px);
-      grid-template-rows: repeat(10, 50px);
-      gap: 2px;
+      grid-template-columns: repeat(10, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: var(--cell-gap);
       margin-top: 10px;
+      touch-action: manipulation;
     }
 
     .cell {
-      width: 50px;
-      height: 50px;
       position: relative;
       overflow: hidden;
       border-radius: 6px;
-      background: #d2d8e2;
+      background: #c9d0dc;
+      min-width: 0;
+      min-height: 0;
+      aspect-ratio: 1 / 1;
+      cursor: pointer;
     }
 
     .cell img {
@@ -86,6 +159,8 @@
       height: 100%;
       display: block;
       object-fit: cover;
+      user-select: none;
+      pointer-events: none;
     }
 
     .unknown {
@@ -99,59 +174,94 @@
       font-size: 9px;
       padding: 1px 4px;
       border-radius: 10px;
-      background: rgba(0,0,0,0.75);
+      background: rgba(0,0,0,0.78);
       color: white;
       max-width: 44px;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+      pointer-events: none;
     }
 
     .youTag {
-      background: rgba(47, 109, 246, 0.9);
+      background: rgba(47,109,246,0.95);
     }
 
-    .turnBadge {
-      display: inline-block;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #111;
-      color: white;
-      font-size: 13px;
-    }
-
-    .logs {
-      max-height: 240px;
-      overflow: auto;
-      background: #fafafa;
-      border: 1px solid #ececec;
-      border-radius: 10px;
+    .actionBar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
+      background: rgba(255,255,255,0.98);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
       padding: 8px;
-      font-size: 14px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom));
     }
 
-    .logs div {
-      padding: 4px 0;
-      border-bottom: 1px solid #efefef;
+    .modeButtons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 8px;
     }
 
-    .small {
-      color: #666;
-      font-size: 13px;
+    .arrowPad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      max-width: 360px;
+      margin: 0 auto;
     }
 
-    .pill {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 6px 10px;
-      background: #eef2ff;
-      font-size: 13px;
-      margin: 3px 4px 0 0;
+    .arrowPad .spacer {
+      visibility: hidden;
     }
 
-    @media (max-width: 980px) {
+    .arrowBtn {
+      font-size: 20px;
+      font-weight: bold;
+      min-height: 48px;
+    }
+
+    @media (max-width: 920px) {
       .layout {
         grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .wrap {
+        padding: 10px;
+        padding-bottom: 130px;
+      }
+
+      .card {
+        padding: 12px;
+      }
+
+      .row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .row input,
+      .row button {
+        width: 100%;
+      }
+
+      .modeButtons {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .board {
+        width: min(96vw, 420px);
+        height: min(96vw, 420px);
+      }
+
+      .logs {
+        max-height: 180px;
       }
     }
   </style>
@@ -163,9 +273,6 @@
     <div class="row">
       <input id="nameInput" placeholder="Your name">
       <button onclick="joinPlayer()">Join</button>
-      <input id="spawnX" type="number" min="0" max="9" placeholder="x">
-      <input id="spawnY" type="number" min="0" max="9" placeholder="y">
-      <button onclick="spawnPlayer()">Spawn</button>
     </div>
     <div class="small" id="joinStatus">Not joined yet.</div>
   </div>
@@ -176,39 +283,12 @@
         <div><strong>Turn:</strong> <span id="turnInfo" class="turnBadge">Waiting</span></div>
         <div class="small" id="gameStatus">Game not started.</div>
         <div class="small" id="socketInfo"></div>
+        <div class="small" style="margin-top:6px;"><strong>Current mode:</strong> <span id="modeLabel">Move</span></div>
       </div>
 
       <div class="card">
         <h3 style="margin-top:0;">Your info</h3>
         <div id="playerInfo">No player data yet.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Actions</h3>
-        <div class="row">
-          <button onclick="actMove('up')">Move Up</button>
-          <button onclick="actMove('down')">Move Down</button>
-          <button onclick="actMove('left')">Move Left</button>
-          <button onclick="actMove('right')">Move Right</button>
-        </div>
-        <div class="row" style="margin-top:8px;">
-          <button onclick="actShoot('up')">Shoot Up</button>
-          <button onclick="actShoot('down')">Shoot Down</button>
-          <button onclick="actShoot('left')">Shoot Left</button>
-          <button onclick="actShoot('right')">Shoot Right</button>
-        </div>
-        <div class="row" style="margin-top:8px;">
-          <button onclick="actBomb('up')">Bomb Up</button>
-          <button onclick="actBomb('down')">Bomb Down</button>
-          <button onclick="actBomb('left')">Bomb Left</button>
-          <button onclick="actBomb('right')">Bomb Right</button>
-        </div>
-        <div class="row" style="margin-top:8px;">
-          <button onclick="actFlash('up')">Flash Up</button>
-          <button onclick="actFlash('down')">Flash Down</button>
-          <button onclick="actFlash('left')">Flash Left</button>
-          <button onclick="actFlash('right')">Flash Right</button>
-        </div>
       </div>
 
       <div class="card">
@@ -225,16 +305,42 @@
     <div>
       <div class="card">
         <h3 style="margin-top:0;">Your board</h3>
-        <div class="small">Only tiles your player has discovered are shown.</div>
-        <div class="board" id="board"></div>
+        <div class="small">Before the game starts, tap a tile to choose your spawn.</div>
+        <div class="boardWrap">
+          <div class="board" id="board"></div>
+        </div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="actionBar">
+  <div class="modeButtons">
+    <button id="mode-move" class="activeMode" onclick="setMode('move')">Move</button>
+    <button id="mode-shoot" onclick="setMode('shoot')">Bullets</button>
+    <button id="mode-bomb" onclick="setMode('bomb')">Bombs</button>
+    <button id="mode-flash" onclick="setMode('flash')">Flashlight</button>
+  </div>
+
+  <div class="arrowPad">
+    <div class="spacer"></div>
+    <button class="arrowBtn" onclick="handleArrow('up')">↑</button>
+    <div class="spacer"></div>
+
+    <button class="arrowBtn" onclick="handleArrow('left')">←</button>
+    <button class="spacer"></button>
+    <button class="arrowBtn" onclick="handleArrow('right')">→</button>
+
+    <div class="spacer"></div>
+    <button class="arrowBtn" onclick="handleArrow('down')">↓</button>
+    <div class="spacer"></div>
   </div>
 </div>
 
 <script>
   const socket = io();
   let state = null;
+  let currentMode = "move";
 
   const textureMap = {
     empty: "empty.png",
@@ -253,14 +359,12 @@
     flashlight: "flashlight.png",
     batteries: "batteries.png",
     armory: "armory.png",
-
     used_treasure: "treasure.png",
     used_fake_treasure: "fake_treasure.png",
     used_boat: "boat.png",
     used_raft: "raft.png",
     used_flashlight: "flashlight.png",
     used_batteries: "batteries.png",
-
     unknown: null
   };
 
@@ -273,30 +377,44 @@
     socket.emit("join_player", { name });
   }
 
-  function spawnPlayer() {
-    const x = parseInt(document.getElementById("spawnX").value, 10);
-    const y = parseInt(document.getElementById("spawnY").value, 10);
-    if (Number.isNaN(x) || Number.isNaN(y)) {
-      alert("Enter valid x and y.");
+  function setMode(mode) {
+    currentMode = mode;
+    document.getElementById("modeLabel").textContent =
+      mode === "move" ? "Move" :
+      mode === "shoot" ? "Bullets" :
+      mode === "bomb" ? "Bombs" : "Flashlight";
+
+    ["move", "shoot", "bomb", "flash"].forEach(m => {
+      const btn = document.getElementById(`mode-${m}`);
+      if (btn) btn.classList.toggle("activeMode", m === mode);
+    });
+  }
+
+  function handleArrow(direction) {
+    if (!state) return;
+
+    if (currentMode === "move") {
+      socket.emit("player_move", { direction });
       return;
     }
-    socket.emit("player_spawn", { x, y });
+    if (currentMode === "shoot") {
+      socket.emit("player_shoot", { direction });
+      return;
+    }
+    if (currentMode === "bomb") {
+      socket.emit("player_bomb", { direction });
+      return;
+    }
+    if (currentMode === "flash") {
+      socket.emit("player_flashlight", { direction });
+    }
   }
 
-  function actMove(direction) {
-    socket.emit("player_move", { direction });
-  }
-
-  function actShoot(direction) {
-    socket.emit("player_shoot", { direction });
-  }
-
-  function actBomb(direction) {
-    socket.emit("player_bomb", { direction });
-  }
-
-  function actFlash(direction) {
-    socket.emit("player_flashlight", { direction });
+  function handleBoardClick(x, y) {
+    if (!state || !state.you) return;
+    if (!state.game_started) {
+      socket.emit("player_spawn", { x, y });
+    }
   }
 
   function escapeHtml(str) {
@@ -363,6 +481,7 @@
         const cell = document.createElement("div");
         cell.className = "cell" + (tile === "unknown" ? " unknown" : "");
         cell.title = `${x},${y}: ${tile}`;
+        cell.onclick = () => handleBoardClick(x, y);
 
         const texture = textureMap[tile];
         if (texture) {
