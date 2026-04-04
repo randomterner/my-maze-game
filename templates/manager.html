@@ -66,8 +66,11 @@
             
             document.getElementById('log-list').innerHTML = d.logs.map(l => `<div style="margin-bottom:5px;">- ${l}</div>`).join('');
             
+            let activeP = d.players.find(p => p.id === d.turn_id);
+            let activeName = activeP ? activeP.n : "None";
+            
             const waiters = d.players.filter(p => p.waiting_teleport);
-            document.getElementById('tele-wait').innerHTML = waiters.map(p => `<button onclick="teleT='${p.id}';alert('Click empty cell to teleport ${p.n}')">Teleport ${p.n}</button>`).join(' ');
+            document.getElementById('tele-wait').innerHTML = waiters.map(p => `<button onclick="teleT='${p.id}';alert('Click empty cell to teleport ${p.n}')">Teleport ${p.n}</button>`).join(' ') + ` <span style="color:yellow; font-weight:bold; margin-left:15px;">Turn: ${activeName}</span>`;
             
             const g = document.getElementById('grid'); g.innerHTML = '';
             g.appendChild(document.createElement('div'));
