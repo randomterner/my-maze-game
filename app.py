@@ -128,11 +128,26 @@ def apply_tile(p):
     if p['n'] not in tile['visited_by'] and tile['tile'] not in ["empty", "river"]:
         tile['visited_by'].append(p['n'])
 
-    # 4. Process Item/Tile Effects
+    # 4. Visual Path Tracking (MOVED UP so effects like extra turns don't skip this!)
+    curr_c = [p['x'], p['y']]
+    if curr_c not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
+        (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append(curr_c)
+        
+    if curr_c not in p['walked_path']:
+        p['walked_path'].append(curr_c)
+
+    # 5. THE 10x10 RULE (MOVED UP)
+    if p['is_lost'] and len(p['post_lost_tiles']) > 0:
+        xs = [t[0] for t in p['post_lost_tiles']]
+        ys = [t[1] for t in p['post_lost_tiles']]
+        if (max(xs) - min(xs) >= 9) and (max(ys) - min(ys) >= 9):
+            add_log(f"🧭 {p['n']}'s map stretched 10x10. They figured out the boundaries!")
+            clear_lost(p)
+
+    # 6. Process Item/Tile Effects
     item_name = tile['tile']
     
     if item_name == "river":
-        # Immune if they have a boat OR if they are safely continuing from the start
         if "boat" in p['items'] or p.get('river_safe'):
             add_log(f"🛶 {p['n']} navigated the river safely.")
             p['river_safe'] = True 
@@ -150,11 +165,18 @@ def apply_tile(p):
             add_log(f"🌊 {p['n']} was swept away to the start!")
             maze[river_start_pos[1]][river_start_pos[0]]['visited_by'].append(p['n'])
 
+            # Record the new teleport destination properly
+            new_c = [p['x'], p['y']]
+            if new_c not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
+                (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append(new_c)
+            if new_c not in p['walked_path']:
+                p['walked_path'].append(new_c)
+
     elif item_name == "river_start":
         p['knows_river_start'] = True
-        p['river_safe'] = True # Starting here gives immunity to walk on the river
+        p['river_safe'] = True 
     else:
-        p['river_safe'] = False # Lose river immunity if stepping on land
+        p['river_safe'] = False 
         
         if item_name == "black_hole":
             p['is_lost'] = True; p['waiting_teleport'] = True; p['post_lost_tiles'] = []
@@ -187,22 +209,6 @@ def apply_tile(p):
         add_log(f"💀 {p['n']} has died!")
         tile['dropped_items'].extend(p['items'])
         p['items'] = []
-
-    # 5. Visual Path Tracking
-    curr_c = [p['x'], p['y']]
-    if curr_c not in (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']):
-        (p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']).append(curr_c)
-        
-    if curr_c not in p['walked_path']:
-        p['walked_path'].append(curr_c)
-
-    # 6. THE 10x10 RULE (Now checks BOTH horizontal AND vertical boundaries!)
-    if p['is_lost'] and len(p['post_lost_tiles']) > 0:
-        xs = [t[0] for t in p['post_lost_tiles']]
-        ys = [t[1] for t in p['post_lost_tiles']]
-        if (max(xs) - min(xs) >= 9) and (max(ys) - min(ys) >= 9):
-            add_log(f"🧭 {p['n']}'s map stretched 10x10. They figured out the boundaries!")
-            clear_lost(p)
 
     return False
 
@@ -348,13 +354,29 @@ def on_flash(data):
     dx, dy = data['dx'], data['dy']; fx, fy = p['x'], p['y']
     dir_name = get_dir_name(dx, dy)
     add_log(f"🔦 {p['n']} used the flashlight {dir_name}!")
+    
     for _ in range(10):
         if dx == 1 and (fx+1 >= 10 or maze[fy][fx+1]['walls']['left']): break
         if dx == -1 and maze[fy][fx]['walls']['left']: break
         if dy == 1 and (fy+1 >= 10 or maze[fy+1][fx]['walls']['top']): break
         if dy == -1 and maze[fy][fx]['walls']['top']: break
+        
+        # Record the empty space crossed to draw the dotted lines
+        edge = None
+        if dx == 1: edge = {"x": fx + 1, "y": fy, "dir": "left"}
+        elif dx == -1: edge = {"x": fx, "y": fy, "dir": "left"}
+        elif dy == 1: edge = {"x": fx, "y": fy + 1, "dir": "top"}
+        elif dy == -1: edge = {"x": fx, "y": fy, "dir": "top"}
+        
+        if edge and edge not in p['crossed_edges']:
+            p['crossed_edges'].append(edge)
+
         fx += dx; fy += dy
-        if [fx, fy] not in p['known_tiles']: p['known_tiles'].append([fx, fy])
+        
+        target_list = p['post_lost_tiles'] if p['is_lost'] else p['known_tiles']
+        if [fx, fy] not in target_list: 
+            target_list.append([fx, fy])
+            
     on_next()
     sync_all()
 
