@@ -187,6 +187,11 @@ def add_known_tile(player, pos):
 
 def update_known_players_for_viewer(viewer):
     viewer["known_players"] = {}
+
+    # During spawning / before game start, players should not see each other
+    if not GAME["game_started"]:
+        return
+
     for other in GAME["players"].values():
         if not other["alive"] or other["x"] is None or other["y"] is None:
             continue
@@ -814,9 +819,12 @@ def player_spawn(data):
     player["x"] = x
     player["y"] = y
     player["spawned"] = True
-    reveal_current_position(player)
+
+    add_known_tile(player, (x, y))
+    player["known_players"] = {}
+
     set_player_message(player, f"You spawned on: {effective_tile_at((x, y))}")
-    log(f"{player['name']} spawned at ({x},{y}).")
+    log(f"{player['name']} chose a spawn tile.")
     emit_full_state()
 
 
@@ -837,7 +845,7 @@ def player_move(data):
 
     if wall_blocks(x, y, direction):
         set_player_message(player, "You hit a wall and stayed in place. Turn ended.")
-        log(f"{player['name']} hit a wall moving {direction}.")
+        log(f"{player['name']} hit a wall while moving {direction}.")
         emit_full_state()
         end_turn()
         return
@@ -845,7 +853,7 @@ def player_move(data):
     dx, dy = DIRECTIONS[direction]
     player["x"] = x + dx
     player["y"] = y + dy
-    log(f"{player['name']} moved {direction} to ({player['x']},{player['y']}).")
+    log(f"{player['name']} moved {direction}.")
 
     result = apply_tile_effect(player)
 
@@ -951,7 +959,7 @@ def player_bomb(data):
 
     if is_outer_wall(x, y, direction):
         set_player_message(player, "The wall did not explode.")
-        log(f"{player['name']} tried to bomb an outer wall {direction}.")
+        log(f"{player['name']} tried to bomb an outer wall.")
         emit_full_state()
         end_turn()
         return
@@ -963,10 +971,10 @@ def player_bomb(data):
     if ek in GAME["inner_walls"]:
         GAME["inner_walls"].remove(ek)
         set_player_message(player, "The wall exploded.")
-        log(f"{player['name']} destroyed an inner wall {direction}.")
+        log(f"{player['name']} destroyed an inner wall.")
     else:
         set_player_message(player, "There was no wall there.")
-        log(f"{player['name']} used a bomb {direction}, but there was no wall.")
+        log(f"{player['name']} used a bomb, but there was no wall.")
 
     emit_full_state()
     end_turn()
@@ -1036,7 +1044,7 @@ def manager_resolve_black_hole(data):
     player["y"] = y
     reveal_current_position(player)
     set_player_message(player, "The manager placed you on an empty tile after the black hole.")
-    log(f"Manager placed {player['name']} at ({x},{y}) after black hole.")
+    log(f"Manager placed {player['name']} after black hole.")
 
     GAME["pending_black_hole"] = None
     emit_full_state()
