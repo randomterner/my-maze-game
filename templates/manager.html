@@ -1,76 +1,538 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Host Monitor</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-    <style>
-        body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        #sidebar { background: #222; padding: 10px; display: flex; gap: 5px; overflow-x: auto; }
-        #grid { display: grid; grid-template-columns: repeat(10, 50px); gap: 1px; background: #444; margin: auto; }
-        .cell { width: 50px; height: 50px; background: #fff; position: relative; background-size: contain; border: 1px solid #ccc; cursor: pointer; }
-        .wall-top { border-top: 5px solid red; }
-        .wall-left { border-left: 5px solid red; }
-        .opt { padding: 5px; background: #444; color: #fff; cursor: pointer; border: 1px solid #666; font-size: 11px; white-space: nowrap; }
-        .sel { background: cyan; color: #000; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Maze Game - Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f2f3f7;
+      color: #222;
+    }
+
+    .wrap {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 470px 1fr;
+      gap: 16px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    input, select, button {
+      font: inherit;
+    }
+
+    input, select {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #2f6df6;
+      color: white;
+    }
+
+    button.secondary {
+      background: #6c757d;
+    }
+
+    button.danger {
+      background: #c93444;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(10, 50px);
+      grid-template-rows: repeat(10, 50px);
+      gap: 2px;
+      margin-top: 10px;
+    }
+
+    .cell {
+      width: 50px;
+      height: 50px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 6px;
+      background: #d2d8e2;
+      cursor: pointer;
+    }
+
+    .cell img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .playerTag {
+      position: absolute;
+      right: 2px;
+      bottom: 2px;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.75);
+      color: white;
+      max-width: 44px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .topWall, .bottomWall, .leftWall, .rightWall {
+      position: absolute;
+      background: rgba(0,0,0,0.95);
+    }
+
+    .topWall, .bottomWall {
+      left: 0;
+      right: 0;
+      height: 4px;
+    }
+
+    .topWall { top: 0; }
+    .bottomWall { bottom: 0; }
+
+    .leftWall, .rightWall {
+      top: 0;
+      bottom: 0;
+      width: 4px;
+    }
+
+    .leftWall { left: 0; }
+    .rightWall { right: 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid #e8e8e8;
+      padding: 8px;
+      text-align: left;
+    }
+
+    .logs {
+      max-height: 300px;
+      overflow: auto;
+      background: #fafafa;
+      border: 1px solid #ececec;
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    .logs div {
+      padding: 4px 0;
+      border-bottom: 1px solid #efefef;
+    }
+
+    .small {
+      color: #666;
+      font-size: 13px;
+    }
+
+    .good {
+      color: #0b8a2f;
+      font-weight: bold;
+    }
+
+    .bad {
+      color: #b00020;
+      font-weight: bold;
+    }
+
+    @media (max-width: 1000px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div id="sidebar">
-        <button class="opt sel" onclick="sel('empty',this)">Floor</button>
-        <button class="opt" onclick="sel('treasure',this)">💰 Treasure</button>
-        <button class="opt" onclick="sel('fake_treasure',this)">💎 Fake</button>
-        <button class="opt" onclick="sel('river',this)">💧 River</button>
-        <button class="opt" onclick="sel('river_start',this)">🌊 Start</button>
-        <button class="opt" onclick="sel('boat',this)">🛶 Boat</button>
-        <button class="opt" onclick="sel('raft',this)">🪵 Raft</button>
-        <button class="opt" onclick="sel('flashlight',this)">🔦 Flashlight</button>
-        <button class="opt" onclick="sel('batteries',this)">🔋 Batteries</button>
-        <button class="opt" onclick="sel('exit',this)">🚪 Exit</button>
-        <button class="opt" onclick="sel('monster',this)">👾 Monster</button>
-        <button class="opt" onclick="sel('devil',this)">😈 Devil</button>
-        <button class="opt" onclick="sel('clinic',this)">🏥 Clinic</button>
-        <button class="opt" onclick="sel('er',this)">🚑 ER</button>
-        <button class="opt" onclick="sel('black_hole',this)">🕳️ Black Hole</button>
-        <button class="opt" onclick="sel('armory',this)">⚔️ Armory</button>
+<div class="wrap">
+  <div class="card">
+    <h2 style="margin-top:0;">Maze Game - Manager</h2>
+    <div class="row">
+      <button onclick="joinManager()">Join as manager</button>
+      <button onclick="startGame()">Start game</button>
+      <button class="secondary" onclick="resetGame()">Reset game</button>
+      <button class="danger" onclick="clearBoard()">Clear board</button>
     </div>
-    <div id="grid"></div>
-    <div style="padding:10px; text-align:center;">
-        <button onclick="socket.emit('set_phase', 2)">Phase 2: Spawn</button>
-        <button onclick="socket.emit('set_phase', 3)">Phase 3: Start</button>
-        <button onclick="socket.emit('next_turn')">Force Next Turn</button>
-    </div>
-    <script>
-        const socket = io(); let curS = "empty";
-        function sel(t, e) { curS = t; document.querySelectorAll('.opt').forEach(b=>b.classList.remove('sel')); e.classList.add('sel'); }
-        socket.on('sync', d => {
-            const g = document.getElementById('grid'); g.innerHTML = '';
-            for(let y=0; y<10; y++){
-                for(let x=0; x<10; x++){
-                    const td = d.maze[y][x]; const c = document.createElement('div'); c.className = 'cell';
-                    if(td.walls.top) c.classList.add('wall-top'); if(td.walls.left) c.classList.add('wall-left');
-                    if(td.tile !== "empty") c.style.backgroundImage = `url('/static/${td.tile}.png')`;
-                    if(td.is_birthplace) { c.style.backgroundColor = '#ccf'; const lbl = document.createElement('div'); lbl.innerText = '👶 '+td.birth_owner_name; lbl.style.fontSize='8px'; lbl.style.color='#000'; c.appendChild(lbl); }
-                    
-                    const playersHere = d.players.filter(p => p.x === x && p.y === y && p.has_spawned);
-                    if(playersHere.length > 0) {
-                        const dot = document.createElement('div');
-                        dot.style.cssText = "width:10px;height:10px;background:red;border-radius:50%;margin:auto;";
-                        c.appendChild(dot);
-                    }
+    <div class="small" id="managerStatus">Not joined yet.</div>
+  </div>
 
-                    c.onpointerdown = (e) => {
-                        if(e.button === 2) {
-                            if(e.offsetY < 15) d.maze[y][x].walls.top = !d.maze[y][x].walls.top;
-                            else d.maze[y][x].walls.left = !d.maze[y][x].walls.left;
-                        } else { d.maze[y][x].tile = curS; }
-                        socket.emit('update_maze', d.maze);
-                    };
-                    c.oncontextmenu = (e) => e.preventDefault();
-                    g.appendChild(c);
-                }
-            }
+  <div class="layout">
+    <div>
+      <div class="card">
+        <h3 style="margin-top:0;">Board editor</h3>
+        <div class="row">
+          <select id="tileType">
+            <option value="empty">empty</option>
+            <option value="treasure">treasure</option>
+            <option value="fake_treasure">fake_treasure</option>
+            <option value="exit">exit</option>
+            <option value="river">river</option>
+            <option value="river_start">river_start</option>
+            <option value="boat">boat</option>
+            <option value="raft">raft</option>
+            <option value="clinic">clinic</option>
+            <option value="er">er</option>
+            <option value="monster">monster</option>
+            <option value="devil">devil</option>
+            <option value="black_hole">black_hole</option>
+            <option value="flashlight">flashlight</option>
+            <option value="batteries">batteries</option>
+            <option value="armory">armory</option>
+          </select>
+          <span class="small">Click a tile to set it.</span>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <input id="wallX" type="number" min="0" max="9" placeholder="x">
+          <input id="wallY" type="number" min="0" max="9" placeholder="y">
+          <select id="wallDirection">
+            <option value="up">up</option>
+            <option value="down">down</option>
+            <option value="left">left</option>
+            <option value="right">right</option>
+          </select>
+          <button onclick="toggleWall()">Toggle inner wall</button>
+        </div>
+        <div class="small">Exit must be on the edge. Outer walls are always present.</div>
+
+        <div id="board" class="board"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Black hole</h3>
+        <div id="blackHoleStatus" class="small">No pending black hole.</div>
+        <div class="row" style="margin-top:8px;">
+          <input id="bhX" type="number" min="0" max="9" placeholder="x">
+          <input id="bhY" type="number" min="0" max="9" placeholder="y">
+          <button onclick="resolveBlackHole()">Place player</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">River validation</h3>
+        <div id="riverValidation">No data yet.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div><strong>Turn:</strong> <span id="turnInfo">Waiting</span></div>
+        <div class="small" id="gameInfo">Game not started.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Players</h3>
+        <div id="playersTable">No players.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Logs</h3>
+        <div class="logs" id="logs"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const socket = io();
+  let state = null;
+
+  const textureMap = {
+    empty: "empty.png",
+    treasure: "treasure.png",
+    fake_treasure: "fake_treasure.png",
+    exit: "exit.png",
+    river: "river.png",
+    river_start: "river_start.png",
+    boat: "boat.png",
+    raft: "raft.png",
+    clinic: "clinic.png",
+    er: "er.png",
+    monster: "monster.png",
+    devil: "devil.png",
+    black_hole: "black_hole.png",
+    flashlight: "flashlight.png",
+    batteries: "batteries.png",
+    armory: "armory.png",
+
+    used_treasure: "treasure.png",
+    used_fake_treasure: "fake_treasure.png",
+    used_boat: "boat.png",
+    used_raft: "raft.png",
+    used_flashlight: "flashlight.png",
+    used_batteries: "batteries.png"
+  };
+
+  function escapeHtml(str) {
+    return String(str)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  function joinManager() {
+    socket.emit("join_manager");
+  }
+
+  function startGame() {
+    socket.emit("manager_start_game");
+  }
+
+  function resetGame() {
+    socket.emit("manager_reset_game");
+  }
+
+  function clearBoard() {
+    socket.emit("manager_clear_board");
+  }
+
+  function setTile(x, y) {
+    const tile = document.getElementById("tileType").value;
+    socket.emit("manager_set_tile", { x, y, tile });
+  }
+
+  function toggleWall() {
+    const x = parseInt(document.getElementById("wallX").value, 10);
+    const y = parseInt(document.getElementById("wallY").value, 10);
+    const direction = document.getElementById("wallDirection").value;
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      alert("Enter valid x and y.");
+      return;
+    }
+    socket.emit("manager_toggle_inner_wall", { x, y, direction });
+  }
+
+  function resolveBlackHole() {
+    const x = parseInt(document.getElementById("bhX").value, 10);
+    const y = parseInt(document.getElementById("bhY").value, 10);
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      alert("Enter valid x and y.");
+      return;
+    }
+    socket.emit("manager_resolve_black_hole", { x, y });
+  }
+
+  function hasInnerWallBetween(a, b) {
+    if (!state || !state.inner_walls) return false;
+    return state.inner_walls.some(edge => {
+      const [p1, p2] = edge;
+      return (
+        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
+        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
+      );
+    });
+  }
+
+  function buildBoard() {
+    const boardEl = document.getElementById("board");
+    boardEl.innerHTML = "";
+    if (!state) return;
+
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        const key = `${x},${y}`;
+        const tile = (state.board || {})[key] || "empty";
+
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.title = `${x},${y}: ${tile}`;
+        cell.onclick = () => setTile(x, y);
+
+        const texture = textureMap[tile];
+        if (texture) {
+          const img = document.createElement("img");
+          img.src = `/static/${texture}`;
+          img.alt = tile;
+          cell.appendChild(img);
+        }
+
+        const playersHere = (state.players || []).filter(p => p.alive && p.x === x && p.y === y);
+        playersHere.forEach((p, idx) => {
+          const tag = document.createElement("div");
+          tag.className = "playerTag";
+          tag.style.bottom = `${2 + idx * 12}px`;
+          tag.textContent = p.name;
+          cell.appendChild(tag);
         });
-        socket.emit('join', { name: "Host", is_man: true });
-    </script>
+
+        if (y === 0) {
+          const w = document.createElement("div");
+          w.className = "topWall";
+          cell.appendChild(w);
+        }
+        if (y === 9) {
+          const w = document.createElement("div");
+          w.className = "bottomWall";
+          cell.appendChild(w);
+        }
+        if (x === 0) {
+          const w = document.createElement("div");
+          w.className = "leftWall";
+          cell.appendChild(w);
+        }
+        if (x === 9) {
+          const w = document.createElement("div");
+          w.className = "rightWall";
+          cell.appendChild(w);
+        }
+
+        if (y > 0 && hasInnerWallBetween([x, y], [x, y - 1])) {
+          const w = document.createElement("div");
+          w.className = "topWall";
+          cell.appendChild(w);
+        }
+        if (y < 9 && hasInnerWallBetween([x, y], [x, y + 1])) {
+          const w = document.createElement("div");
+          w.className = "bottomWall";
+          cell.appendChild(w);
+        }
+        if (x > 0 && hasInnerWallBetween([x, y], [x - 1, y])) {
+          const w = document.createElement("div");
+          w.className = "leftWall";
+          cell.appendChild(w);
+        }
+        if (x < 9 && hasInnerWallBetween([x, y], [x + 1, y])) {
+          const w = document.createElement("div");
+          w.className = "rightWall";
+          cell.appendChild(w);
+        }
+
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function buildPlayersTable() {
+    const container = document.getElementById("playersTable");
+    if (!state || !state.players || state.players.length === 0) {
+      container.innerHTML = "No players.";
+      return;
+    }
+
+    const rows = state.players.map(p => `
+      <tr>
+        <td>${escapeHtml(p.name)}</td>
+        <td>${p.alive ? "Yes" : "No"}</td>
+        <td>${p.spawned ? "Yes" : "No"}</td>
+        <td>${p.x === null ? "-" : `${p.x},${p.y}`}</td>
+        <td>${p.injuries}</td>
+        <td>${p.bullets}</td>
+        <td>${p.bombs}</td>
+        <td>${Object.entries(p.items).filter(([k,v]) => v).map(([k]) => escapeHtml(k)).join(", ") || "-"}</td>
+        <td>${escapeHtml(p.last_message || "")}</td>
+      </tr>
+    `).join("");
+
+    container.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Alive</th>
+            <th>Spawned</th>
+            <th>Position</th>
+            <th>Injuries</th>
+            <th>Bullets</th>
+            <th>Bombs</th>
+            <th>Items</th>
+            <th>Last message</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function updateTopInfo() {
+    if (!state) return;
+
+    if (!state.game_started) {
+      document.getElementById("turnInfo").textContent = "Not started";
+      document.getElementById("gameInfo").textContent = "Board can be edited. Waiting to start.";
+    } else if (state.game_over) {
+      const winner = (state.players || []).find(p => p.sid === state.winner_sid);
+      document.getElementById("turnInfo").textContent = "Game Over";
+      document.getElementById("gameInfo").textContent = winner
+        ? `Winner: ${winner.name} (${state.winner_reason})`
+        : `Winner SID: ${state.winner_sid || "-"}`;
+    } else {
+      const turnPlayer = (state.players || []).find(p => p.sid === state.current_turn_sid);
+      document.getElementById("turnInfo").textContent = turnPlayer ? turnPlayer.name : "Unknown";
+      document.getElementById("gameInfo").textContent = `Turn #${state.turn_number}`;
+    }
+
+    if (state.pending_black_hole) {
+      const p = (state.players || []).find(pp => pp.sid === state.pending_black_hole.player_sid);
+      document.getElementById("blackHoleStatus").textContent = p
+        ? `Pending black hole for ${p.name}. Choose an empty tile.`
+        : "Pending black hole.";
+    } else {
+      document.getElementById("blackHoleStatus").textContent = "No pending black hole.";
+    }
+
+    if (state.river_validation) {
+      document.getElementById("riverValidation").innerHTML = state.river_validation.ok
+        ? `<span class="good">${escapeHtml(state.river_validation.message)}</span>`
+        : `<span class="bad">${escapeHtml(state.river_validation.message)}</span>`;
+    }
+  }
+
+  function updateLogs() {
+    const logs = (state && state.logs) || [];
+    document.getElementById("logs").innerHTML = logs.map(line => `<div>${escapeHtml(line)}</div>`).join("");
+  }
+
+  socket.on("joined_as_manager", data => {
+    document.getElementById("managerStatus").textContent = `Joined as manager. SID: ${data.sid}`;
+  });
+
+  socket.on("manager_state", data => {
+    state = data;
+    buildBoard();
+    buildPlayersTable();
+    updateTopInfo();
+    updateLogs();
+  });
+
+  socket.on("error_message", data => {
+    alert(data.message);
+  });
+</script>
 </body>
 </html>
