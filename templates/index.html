@@ -16,13 +16,11 @@
       --border: #e6e8ef;
       --shadow: 0 2px 10px rgba(0,0,0,0.06);
       --radius: 12px;
-      --gap: 12px;
       --board-size: min(92vw, 520px);
       --cell-gap: 2px;
     }
 
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
       font-family: Arial, sans-serif;
@@ -81,10 +79,7 @@
       min-height: 44px;
     }
 
-    button:hover {
-      background: var(--blue-dark);
-    }
-
+    button:hover { background: var(--blue-dark); }
     button.activeMode {
       outline: 3px solid rgba(47,109,246,0.25);
       background: #173f99;
@@ -126,11 +121,6 @@
     .logs div {
       padding: 4px 0;
       border-bottom: 1px solid #efefef;
-    }
-
-    .boardWrap {
-      overflow-x: auto;
-      margin-bottom: 20px;
     }
 
     .boardOuter {
@@ -179,7 +169,6 @@
       grid-template-columns: repeat(10, 1fr);
       grid-template-rows: repeat(10, 1fr);
       gap: var(--cell-gap);
-      margin-top: 0;
       touch-action: manipulation;
     }
 
@@ -188,8 +177,6 @@
       overflow: hidden;
       border-radius: 6px;
       background: #c9d0dc;
-      min-width: 0;
-      min-height: 0;
       aspect-ratio: 1 / 1;
       cursor: pointer;
     }
@@ -234,15 +221,13 @@
       z-index: 4;
     }
 
-    .edgeTop,
-    .edgeBottom {
+    .edgeTop, .edgeBottom {
       left: 12%;
       width: 76%;
       height: 0;
     }
 
-    .edgeLeft,
-    .edgeRight {
+    .edgeLeft, .edgeRight {
       top: 12%;
       height: 76%;
       width: 0;
@@ -253,33 +238,27 @@
     .edgeLeft { left: 0; }
     .edgeRight { right: 0; }
 
-    .wallEdgeTop,
-    .wallEdgeBottom {
-      border-top: 3px solid rgba(0, 0, 0, 0.95);
+    .wallEdgeTop, .wallEdgeBottom {
+      border-top: 3px solid rgba(0,0,0,0.95);
     }
 
-    .wallEdgeLeft,
-    .wallEdgeRight {
-      border-left: 3px solid rgba(0, 0, 0, 0.95);
+    .wallEdgeLeft, .wallEdgeRight {
+      border-left: 3px solid rgba(0,0,0,0.95);
     }
 
-    .openEdgeTop,
-    .openEdgeBottom {
-      border-top: 2px dotted rgba(60, 60, 60, 0.9);
+    .openEdgeTop, .openEdgeBottom {
+      border-top: 2px dotted #ffd84d;
     }
 
-    .openEdgeLeft,
-    .openEdgeRight {
-      border-left: 2px dotted rgba(60, 60, 60, 0.9);
+    .openEdgeLeft, .openEdgeRight {
+      border-left: 2px dotted #ffd84d;
     }
 
-    .brokenEdgeTop,
-    .brokenEdgeBottom {
+    .brokenEdgeTop, .brokenEdgeBottom {
       border-top: 3px solid #1e7bff;
     }
 
-    .brokenEdgeLeft,
-    .brokenEdgeRight {
+    .brokenEdgeLeft, .brokenEdgeRight {
       border-left: 3px solid #1e7bff;
     }
 
@@ -322,9 +301,7 @@
     }
 
     @media (max-width: 920px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
+      .layout { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 640px) {
@@ -333,17 +310,12 @@
         padding-bottom: 260px;
       }
 
-      .card {
-        padding: 12px;
-      }
-
       .row {
         flex-direction: column;
         align-items: stretch;
       }
 
-      .row input,
-      .row button {
+      .row input, .row button {
         width: 100%;
       }
 
@@ -403,7 +375,7 @@
       <div class="card">
         <h3 style="margin-top:0;">Line guide</h3>
         <div class="small">Black solid line = wall.</div>
-        <div class="small" style="margin-top:8px;">Dotted line = you passed there, so there is no wall.</div>
+        <div class="small" style="margin-top:8px;">Yellow dotted line = you know there is no wall there.</div>
         <div class="small" style="margin-top:8px;">Blue line = a wall was there and got broken.</div>
       </div>
 
@@ -421,15 +393,9 @@
         <div class="boardOuter">
           <div class="cornerBox"></div>
 
-          <div class="boardWrap">
-            <div class="colLabels" id="colLabels"></div>
-          </div>
-
+          <div class="colLabels" id="colLabels"></div>
           <div class="rowLabels" id="rowLabels"></div>
-
-          <div class="boardWrap">
-            <div class="board" id="board"></div>
-          </div>
+          <div class="board" id="board"></div>
         </div>
       </div>
     </div>
@@ -439,8 +405,8 @@
 <div class="actionBar">
   <div class="modeButtons">
     <button id="mode-move" class="activeMode" onclick="setMode('move')">Move</button>
-    <button id="mode-shoot" onclick="setMode('shoot')">Bullets</button>
-    <button id="mode-bomb" onclick="setMode('bomb')">Bombs</button>
+    <button id="mode-shoot" onclick="setMode('shoot')">Shoot</button>
+    <button id="mode-bomb" onclick="setMode('bomb')">Bomb</button>
     <button id="mode-flash" onclick="setMode('flash')">Flashlight</button>
   </div>
 
@@ -503,8 +469,8 @@
     currentMode = mode;
     document.getElementById("modeLabel").textContent =
       mode === "move" ? "Move" :
-      mode === "shoot" ? "Bullets" :
-      mode === "bomb" ? "Bombs" : "Flashlight";
+      mode === "shoot" ? "Shoot" :
+      mode === "bomb" ? "Bomb" : "Flashlight";
 
     ["move", "shoot", "bomb", "flash"].forEach(m => {
       const btn = document.getElementById(`mode-${m}`);
@@ -517,17 +483,11 @@
 
     if (currentMode === "move") {
       socket.emit("player_move", { direction });
-      return;
-    }
-    if (currentMode === "shoot") {
+    } else if (currentMode === "shoot") {
       socket.emit("player_shoot", { direction });
-      return;
-    }
-    if (currentMode === "bomb") {
+    } else if (currentMode === "bomb") {
       socket.emit("player_bomb", { direction });
-      return;
-    }
-    if (currentMode === "flash") {
+    } else if (currentMode === "flash") {
       socket.emit("player_flashlight", { direction });
     }
   }
@@ -543,13 +503,10 @@
     const colLabels = document.getElementById("colLabels");
     const rowLabels = document.getElementById("rowLabels");
 
-    if (!colLabels || !rowLabels) return;
-
     colLabels.innerHTML = "";
     rowLabels.innerHTML = "";
 
     const letters = ["A","B","C","D","E","F","G","H","I","J"];
-
     letters.forEach(letter => {
       const div = document.createElement("div");
       div.textContent = letter;
@@ -566,20 +523,7 @@
 
   function edgeExists(edgeList, a, b) {
     if (!edgeList) return false;
-
     return edgeList.some(edge => {
-      const [p1, p2] = edge;
-      return (
-        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
-        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
-      );
-    });
-  }
-
-  function hasInnerWallBetween(a, b) {
-    if (!state || !state.inner_walls) return false;
-
-    return state.inner_walls.some(edge => {
       const [p1, p2] = edge;
       return (
         (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
@@ -595,7 +539,7 @@
   }
 
   function escapeHtml(str) {
-    return String(str)
+    return String(str ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");
@@ -605,7 +549,7 @@
     if (!state || !state.you) return;
 
     const you = state.you;
-    const items = Object.entries(you.items)
+    const items = Object.entries(you.items || {})
       .filter(([k, v]) => v)
       .map(([k]) => `<span class="pill">${escapeHtml(k)}</span>`)
       .join("") || "<span class='small'>No items yet.</span>";
@@ -629,28 +573,28 @@
       document.getElementById("gameStatus").textContent = "Waiting for manager to start the game.";
     } else if (state.game_over) {
       document.getElementById("turnInfo").textContent = "Game Over";
-      const winner = (state.all_players_public || []).find(p => p.sid === state.winner_sid);
-      document.getElementById("gameStatus").textContent = winner
-        ? `Winner: ${winner.name} (${state.winner_reason})`
-        : `Winner SID: ${state.winner_sid || "-"}`;
+      document.getElementById("gameStatus").textContent =
+        state.winner_reason ? `Winner: ${escapeHtml(state.winner_reason)}` : "Game Over";
     } else {
       document.getElementById("turnInfo").textContent = state.current_turn_name || "Unknown";
-      document.getElementById("gameStatus").textContent = state.is_your_turn ? "It is your turn." : "Wait for your turn.";
+      document.getElementById("gameStatus").textContent =
+        state.is_your_turn ? "It is your turn." : "Wait for your turn.";
     }
 
-    const logs = state.logs || [];
-    document.getElementById("logs").innerHTML = logs.map(line => `<div>${escapeHtml(line)}</div>`).join("");
+    document.getElementById("logs").innerHTML =
+      (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
   }
 
   function buildBoard() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
-
     if (!state || !state.you) return;
 
     const knownTiles = state.your_known_tiles || {};
+    const knownPlayers = state.your_known_players || {};
     const openEdges = state.your_known_open_edges || [];
     const brokenEdges = state.your_known_broken_walls || [];
+    const knownWallEdges = state.your_known_wall_edges || [];
 
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
@@ -659,7 +603,7 @@
 
         const cell = document.createElement("div");
         cell.className = "cell" + (tile === "unknown" ? " unknown" : "");
-        cell.title = `${x},${y}: ${tile}`;
+        cell.title = `${x},${y}`;
         cell.onclick = () => handleBoardClick(x, y);
 
         const texture = textureMap[tile];
@@ -670,37 +614,42 @@
           cell.appendChild(img);
         }
 
-        if (y === 0) addEdgeMarker(cell, "Top", "wall");
-        if (y === 9) addEdgeMarker(cell, "Bottom", "wall");
-        if (x === 0) addEdgeMarker(cell, "Left", "wall");
-        if (x === 9) addEdgeMarker(cell, "Right", "wall");
+        if (state.game_started) {
+          // outer borders are known
+          if (y === 0) addEdgeMarker(cell, "Top", "wall");
+          if (y === 9) addEdgeMarker(cell, "Bottom", "wall");
+          if (x === 0) addEdgeMarker(cell, "Left", "wall");
+          if (x === 9) addEdgeMarker(cell, "Right", "wall");
 
-        if (y > 0 && hasInnerWallBetween([x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
-        if (x > 0 && hasInnerWallBetween([x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
-        if (y < 9 && hasInnerWallBetween([x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
-        if (x < 9 && hasInnerWallBetween([x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
+          // known inner walls
+          if (y > 0 && edgeExists(knownWallEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
+          if (x > 0 && edgeExists(knownWallEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
+          if (y < 9 && edgeExists(knownWallEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
+          if (x < 9 && edgeExists(knownWallEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
 
-        if (y > 0 && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
-        if (x > 0 && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
-        if (y < 9 && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
-        if (x < 9 && edgeExists(openEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "open");
+          // known open edges
+          if (y > 0 && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
+          if (x > 0 && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
+          if (y < 9 && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
+          if (x < 9 && edgeExists(openEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "open");
 
-        if (y > 0 && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
-        if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
-        if (y < 9 && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
-        if (x < 9 && edgeExists(brokenEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "broken");
+          // broken walls
+          if (y > 0 && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
+          if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
+          if (y < 9 && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
+          if (x < 9 && edgeExists(brokenEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "broken");
+        }
 
-        const playersHere = (state.all_players_public || []).filter(
-          p => state.game_started && p.alive && p.x === x && p.y === y
-        );
-
-        playersHere.forEach((p, idx) => {
-          const tag = document.createElement("div");
-          tag.className = "playerTag" + (p.sid === state.you.sid ? " youTag" : "");
-          tag.style.bottom = `${2 + idx * 12}px`;
-          tag.textContent = p.sid === state.you.sid ? "YOU" : p.name;
-          cell.appendChild(tag);
-        });
+        if (state.game_started && tile !== "unknown") {
+          const here = knownPlayers[key] || [];
+          here.forEach((p, idx) => {
+            const tag = document.createElement("div");
+            tag.className = "playerTag" + (p.sid === state.you.sid ? " youTag" : "");
+            tag.style.bottom = `${2 + idx * 12}px`;
+            tag.textContent = p.sid === state.you.sid ? "YOU" : p.name;
+            cell.appendChild(tag);
+          });
+        }
 
         boardEl.appendChild(cell);
       }
@@ -717,8 +666,8 @@
 
   socket.on("player_state", data => {
     state = data;
-    updateInfo();
     buildBoardLabels();
+    updateInfo();
     buildBoard();
   });
 
