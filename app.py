@@ -51,7 +51,7 @@ def new_game_state():
     return {
         "board": {(x, y): "empty" for y in range(BOARD_SIZE) for x in range(BOARD_SIZE)},
         "consumed_tiles": set(),
-        "inner_walls": set(),
+        "inner_walls": set(),  # edge_key((x1,y1),(x2,y2))
         "players": {},
         "player_order": [],
         "current_turn_index": 0,
@@ -101,6 +101,82 @@ def remember_broken_wall(player, a, b):
     edge = serialize_edge(a, b)
     if edge not in player["known_broken_walls"]:
         player["known_broken_walls"].append(edge)
+
+
+def remember_wall_edge(player, a, b):
+    edge = serialize_edge(a, b)
+    if edge not in player["known_wall_edges"]:
+        player["known_wall_edges"].append(edge)
+
+
+def remember_visited_tile(player, pos):
+    key = f"{pos[0]},{pos[1]}"
+    if key not in player["visited_tiles"]:
+        player["visited_tiles"].append(key)
+
+
+def merge_map_knowledge(receiver, donor):
+    for key, value in donor["known_tiles"].items():
+        if key not in receiver["known_tiles"]:
+            receiver["known_tiles"][key] = value
+
+    for edge in donor["known_open_edges"]:
+        if edge not in receiver["known_open_edges"]:
+            receiver["known_open_edges"].append(copy.deepcopy(edge))
+
+    for edge in donor["known_broken_walls"]:
+        if edge not in receiver["known_broken_walls"]:
+            receiver["known_broken_walls"].append(copy.deepcopy(edge))
+
+    for edge in donor["known_wall_edges"]:
+        if edge not in receiver["known_wall_edges"]:
+            receiver["known_wall_edges"].append(copy.deepcopy(edge))
+
+
+def activate_map_function(player):
+    if not GAME["game_started"]:
+        return
+
+    current_key = f"{player['x']},{player['y']}"
+
+    for other in GAME["players"].values():
+        if other["sid"] == player["sid"]:
+            continue
+        if other["x"] is None or other["y"] is None:
+            continue
+
+        # Same tile -> two-way share
+        if other["alive"] and other["x"] == player["x"] and other["y"] == player["y"]:
+            merge_map_knowledge(player, other)
+            merge_map_knowledge(other, player)
+            reveal_current_position(player)
+            reveal_current_position(other)
+            set_player_message(player, f"You met {other['name']} and shared maps.")
+            set_player_message(other, f"You met {player['name']} and shared maps.")
+            log(f"{player['name']} met {other['name']} and shared maps.")
+            continue
+
+        # Found a tile another player visited -> one-way share
+        if current_key in other["visited_tiles"]:
+            merge_map_knowledge(player, other)
+            reveal_current_position(player)
+            set_player_message(player, f"You found traces of {other['name']}'s path and gained map knowledge.")
+
+
+def check_birth_spot_discovery(player):
+    if player["x"] is None or player["y"] is None:
+        return
+
+    for other in GAME["players"].values():
+        if other["sid"] == player["sid"]:
+            continue
+        if other["birth_x"] is None or other["birth_y"] is None:
+            continue
+
+        if player["x"] == other["birth_x"] and player["y"] == other["birth_y"]:
+            set_player_message(player, f"You found {other['name']}'s birth spot.")
+            log(f"{player['name']} found {other['name']}'s birth spot")
+            return
 
 
 def is_outer_wall(x, y, direction):
@@ -165,6 +241,8 @@ def create_player(sid, name):
         "name": name,
         "x": None,
         "y": None,
+        "birth_x": None,
+        "birth_y": None,
         "alive": True,
         "spawned": False,
         "injuries": 0,
@@ -182,6 +260,8 @@ def create_player(sid, name):
         "known_players": {},
         "known_open_edges": [],
         "known_broken_walls": [],
+        "known_wall_edges": [],
+        "visited_tiles": [],
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
     }
@@ -213,7 +293,11 @@ def update_known_players_for_viewer(viewer):
     for other in GAME["players"].values():
         if not other["alive"] or other["x"] is None or other["y"] is None:
             continue
+
         key = f"{other['x']},{other['y']}"
+        if key not in viewer["known_tiles"]:
+            continue
+
         viewer["known_players"].setdefault(key, [])
         viewer["known_players"][key].append({
             "sid": other["sid"],
@@ -225,6 +309,7 @@ def update_known_players_for_viewer(viewer):
 
 def reveal_position(player, pos):
     add_known_tile(player, pos)
+    remember_visited_tile(player, pos)
     update_known_players_for_viewer(player)
 
 
@@ -522,7 +607,13 @@ def reveal_line(player, direction):
 
     while True:
         if wall_blocks(x, y, direction):
+            # if inner wall, remember it
+            if not is_outer_wall(x, y, direction):
+                nx, ny = x + dx, y + dy
+                if in_bounds(nx, ny):
+                    remember_wall_edge(player, (x, y), (nx, ny))
             break
+
         x += dx
         y += dy
         if not in_bounds(x, y):
@@ -562,6 +653,8 @@ def serialize_player_public(player):
         "name": player["name"],
         "x": player["x"],
         "y": player["y"],
+        "birth_x": player["birth_x"],
+        "birth_y": player["birth_y"],
         "alive": player["alive"],
         "spawned": player["spawned"],
         "injuries": player["injuries"],
@@ -570,6 +663,7 @@ def serialize_player_public(player):
         "items": copy.deepcopy(player["items"]),
         "known_open_edges": copy.deepcopy(player["known_open_edges"]),
         "known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
+        "known_wall_edges": copy.deepcopy(player["known_wall_edges"]),
         "last_message": player["last_message"],
     }
 
@@ -599,15 +693,15 @@ def serialize_player_state_for(sid):
         return {}
 
     turn_sid = current_turn_sid()
+
     return {
         "you": serialize_player_public(player),
         "your_known_tiles": copy.deepcopy(player["known_tiles"]),
         "your_known_players": copy.deepcopy(player["known_players"]),
         "your_known_open_edges": copy.deepcopy(player["known_open_edges"]),
         "your_known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
-        "all_players_public": [serialize_player_public(p) for p in GAME["players"].values()],
+        "your_known_wall_edges": copy.deepcopy(player["known_wall_edges"]),
         "board_size": BOARD_SIZE,
-        "inner_walls": [[list(a), list(b)] for (a, b) in GAME["inner_walls"]],
         "current_turn_sid": turn_sid,
         "current_turn_name": GAME["players"][turn_sid]["name"] if turn_sid in GAME["players"] else None,
         "is_your_turn": turn_sid == sid,
@@ -847,12 +941,18 @@ def player_spawn(data):
     player = GAME["players"][sid]
     player["x"] = x
     player["y"] = y
+    player["birth_x"] = x
+    player["birth_y"] = y
     player["spawned"] = True
 
-    add_known_tile(player, (x, y))
+    player["known_tiles"] = {}
     player["known_players"] = {}
+    player["known_open_edges"] = []
+    player["known_broken_walls"] = []
+    player["known_wall_edges"] = []
+    player["visited_tiles"] = [f"{x},{y}"]
 
-    set_player_message(player, f"You spawned on: {effective_tile_at((x, y))}")
+    set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
     log(f"{player['name']} chose a spawn tile.")
     emit_full_state()
 
@@ -873,6 +973,11 @@ def player_move(data):
     x, y = player["x"], player["y"]
 
     if wall_blocks(x, y, direction):
+        if not is_outer_wall(x, y, direction):
+            dx, dy = DIRECTIONS[direction]
+            nx, ny = x + dx, y + dy
+            if in_bounds(nx, ny):
+                remember_wall_edge(player, (x, y), (nx, ny))
         set_player_message(player, "You hit a wall and stayed in place. Turn ended.")
         log(f"{player['name']} hit a wall while moving {direction}.")
         emit_full_state()
@@ -900,6 +1005,9 @@ def player_move(data):
         emit_full_state()
         end_turn()
         return
+
+    activate_map_function(player)
+    check_birth_spot_discovery(player)
 
     emit_full_state()
     end_turn()
@@ -930,6 +1038,10 @@ def player_shoot(data):
 
     while True:
         if wall_blocks(x, y, direction):
+            if not is_outer_wall(x, y, direction):
+                nx, ny = x + dx, y + dy
+                if in_bounds(nx, ny):
+                    remember_wall_edge(shooter, (x, y), (nx, ny))
             break
 
         x += dx
@@ -1075,7 +1187,16 @@ def manager_resolve_black_hole(data):
     player["x"] = x
     player["y"] = y
     reveal_current_position(player)
-    set_player_message(player, "The manager placed you on an empty tile after the black hole.")
+    activate_map_function(player)
+    check_birth_spot_discovery(player)
+
+    if (
+        "shared maps" not in player["last_message"]
+        and "gained map knowledge" not in player["last_message"]
+        and "birth spot" not in player["last_message"]
+    ):
+        set_player_message(player, "The manager placed you on an empty tile after the black hole.")
+
     log(f"Manager placed {player['name']} after black hole.")
 
     GAME["pending_black_hole"] = None
