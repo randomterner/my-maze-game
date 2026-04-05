@@ -221,10 +221,66 @@
       white-space: nowrap;
       text-overflow: ellipsis;
       pointer-events: none;
+      z-index: 6;
     }
 
     .youTag {
       background: rgba(47,109,246,0.95);
+    }
+
+    .edgeLine {
+      position: absolute;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .edgeTop,
+    .edgeBottom {
+      left: 12%;
+      width: 76%;
+      height: 0;
+    }
+
+    .edgeLeft,
+    .edgeRight {
+      top: 12%;
+      height: 76%;
+      width: 0;
+    }
+
+    .edgeTop { top: 0; }
+    .edgeBottom { bottom: 0; }
+    .edgeLeft { left: 0; }
+    .edgeRight { right: 0; }
+
+    .wallEdgeTop,
+    .wallEdgeBottom {
+      border-top: 3px solid rgba(0, 0, 0, 0.95);
+    }
+
+    .wallEdgeLeft,
+    .wallEdgeRight {
+      border-left: 3px solid rgba(0, 0, 0, 0.95);
+    }
+
+    .openEdgeTop,
+    .openEdgeBottom {
+      border-top: 2px dotted rgba(60, 60, 60, 0.9);
+    }
+
+    .openEdgeLeft,
+    .openEdgeRight {
+      border-left: 2px dotted rgba(60, 60, 60, 0.9);
+    }
+
+    .brokenEdgeTop,
+    .brokenEdgeBottom {
+      border-top: 3px solid #1e7bff;
+    }
+
+    .brokenEdgeLeft,
+    .brokenEdgeRight {
+      border-left: 3px solid #1e7bff;
     }
 
     .actionBar {
@@ -342,6 +398,13 @@
       <div class="card">
         <h3 style="margin-top:0;">Last message</h3>
         <div id="lastMessage">No messages yet.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Line guide</h3>
+        <div class="small">Black solid line = wall.</div>
+        <div class="small" style="margin-top:8px;">Dotted line = you passed there, so there is no wall.</div>
+        <div class="small" style="margin-top:8px;">Blue line = a wall was there and got broken.</div>
       </div>
 
       <div class="card">
@@ -501,6 +564,36 @@
     }
   }
 
+  function edgeExists(edgeList, a, b) {
+    if (!edgeList) return false;
+
+    return edgeList.some(edge => {
+      const [p1, p2] = edge;
+      return (
+        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
+        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
+      );
+    });
+  }
+
+  function hasInnerWallBetween(a, b) {
+    if (!state || !state.inner_walls) return false;
+
+    return state.inner_walls.some(edge => {
+      const [p1, p2] = edge;
+      return (
+        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
+        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
+      );
+    });
+  }
+
+  function addEdgeMarker(cell, side, kind) {
+    const div = document.createElement("div");
+    div.className = `edgeLine edge${side} ${kind}Edge${side}`;
+    cell.appendChild(div);
+  }
+
   function escapeHtml(str) {
     return String(str)
       .replaceAll("&", "&amp;")
@@ -556,6 +649,8 @@
     if (!state || !state.you) return;
 
     const knownTiles = state.your_known_tiles || {};
+    const openEdges = state.your_known_open_edges || [];
+    const brokenEdges = state.your_known_broken_walls || [];
 
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
@@ -574,6 +669,26 @@
           img.alt = tile;
           cell.appendChild(img);
         }
+
+        if (y === 0) addEdgeMarker(cell, "Top", "wall");
+        if (y === 9) addEdgeMarker(cell, "Bottom", "wall");
+        if (x === 0) addEdgeMarker(cell, "Left", "wall");
+        if (x === 9) addEdgeMarker(cell, "Right", "wall");
+
+        if (y > 0 && hasInnerWallBetween([x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
+        if (x > 0 && hasInnerWallBetween([x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
+        if (y < 9 && hasInnerWallBetween([x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
+        if (x < 9 && hasInnerWallBetween([x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
+
+        if (y > 0 && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
+        if (x > 0 && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
+        if (y < 9 && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
+        if (x < 9 && edgeExists(openEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "open");
+
+        if (y > 0 && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
+        if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
+        if (y < 9 && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
+        if (x < 9 && edgeExists(brokenEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "broken");
 
         const playersHere = (state.all_players_public || []).filter(
           p => state.game_started && p.alive && p.x === x && p.y === y
