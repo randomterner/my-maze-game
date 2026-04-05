@@ -77,25 +77,14 @@
       min-height: 44px;
     }
 
-    button:hover {
-      background: var(--blue-dark);
-    }
+    button:hover { background: var(--blue-dark); }
 
-    button.secondary {
-      background: #6c757d;
-    }
-
-    button.danger {
-      background: #c93444;
-    }
+    button.secondary { background: #6c757d; }
+    button.danger { background: #c93444; }
 
     button.activeMode {
       outline: 3px solid rgba(47,109,246,0.25);
       background: #173f99;
-    }
-
-    .boardWrap {
-      overflow-x: auto;
     }
 
     .boardOuter {
@@ -144,7 +133,6 @@
       grid-template-columns: repeat(10, 1fr);
       grid-template-rows: repeat(10, 1fr);
       gap: 2px;
-      margin-top: 0;
     }
 
     .cell {
@@ -207,13 +195,8 @@
     .leftWall { left: 0; }
     .rightWall { right: 0; }
 
-    .brokenEdgeTop,
-    .brokenEdgeBottom {
-      background: #1e7bff !important;
-    }
-
-    .brokenEdgeLeft,
-    .brokenEdgeRight {
+    .brokenEdgeTop, .brokenEdgeBottom,
+    .brokenEdgeLeft, .brokenEdgeRight {
       background: #1e7bff !important;
     }
 
@@ -268,24 +251,16 @@
     }
 
     @media (max-width: 920px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
+      .layout { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 640px) {
-      .wrap {
-        padding: 10px;
-      }
-
       .row {
         flex-direction: column;
         align-items: stretch;
       }
 
-      .row button,
-      .row input,
-      .row select {
+      .row button, .row input, .row select {
         width: 100%;
       }
 
@@ -304,18 +279,6 @@
 
       .rowLabels {
         height: min(96vw, 420px);
-      }
-
-      .logs {
-        max-height: 180px;
-      }
-
-      table {
-        font-size: 12px;
-      }
-
-      th, td {
-        padding: 6px;
       }
     }
   </style>
@@ -360,8 +323,8 @@
         </div>
 
         <div class="toolGrid">
-          <button id="tileModeBtn" class="activeMode" onclick="setToolMode('tile')">Tile placing mode</button>
-          <button id="wallModeBtn" onclick="setToolMode('wall')">Wall placing mode</button>
+          <button id="tileModeBtn" class="activeMode" onclick="setToolMode('tile')">Tile mode</button>
+          <button id="wallModeBtn" onclick="setToolMode('wall')">Wall mode</button>
         </div>
 
         <div class="row" style="margin-top:8px;">
@@ -374,23 +337,16 @@
         </div>
 
         <div class="small" style="margin-top:8px;">
-          In tile mode: tap a board cell to place the selected tile.<br>
-          In wall mode: tap a board cell to toggle the wall in the selected direction.<br>
-          Exit must be on the edge. Outer walls are always present.
+          In tile mode: tap a cell to place the selected tile.<br>
+          In wall mode: tap a cell to toggle the selected wall side.<br>
+          Exit must be on the edge.
         </div>
 
         <div class="boardOuter">
           <div class="cornerBox"></div>
-
-          <div class="boardWrap">
-            <div class="colLabels" id="colLabels"></div>
-          </div>
-
+          <div class="colLabels" id="colLabels"></div>
           <div class="rowLabels" id="rowLabels"></div>
-
-          <div class="boardWrap">
-            <div id="board" class="board"></div>
-          </div>
+          <div class="board" id="board"></div>
         </div>
       </div>
 
@@ -398,7 +354,7 @@
         <h3 style="margin-top:0;">Black hole</h3>
         <div id="blackHoleStatus" class="small">No pending black hole.</div>
         <div class="small" style="margin-top:8px;">
-          While a black hole is pending, tap any empty tile on the board to place that player.
+          While a black hole is pending, tap an empty tile to place that player.
         </div>
       </div>
 
@@ -418,7 +374,7 @@
       <div class="card">
         <div><strong>Turn:</strong> <span id="turnInfo">Waiting</span></div>
         <div class="small" id="gameInfo">Game not started.</div>
-        <div class="small"><strong>Current tool:</strong> <span id="toolModeLabel">Tile placing</span></div>
+        <div class="small"><strong>Current tool:</strong> <span id="toolModeLabel">Tile</span></div>
       </div>
 
       <div class="card">
@@ -465,7 +421,7 @@
   };
 
   function escapeHtml(str) {
-    return String(str)
+    return String(str ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");
@@ -489,7 +445,7 @@
 
   function setToolMode(mode) {
     toolMode = mode;
-    document.getElementById("toolModeLabel").textContent = mode === "tile" ? "Tile placing" : "Wall placing";
+    document.getElementById("toolModeLabel").textContent = mode === "tile" ? "Tile" : "Wall";
     document.getElementById("tileModeBtn").classList.toggle("activeMode", mode === "tile");
     document.getElementById("wallModeBtn").classList.toggle("activeMode", mode === "wall");
   }
@@ -511,11 +467,10 @@
     if (toolMode === "tile") {
       const tile = document.getElementById("tileType").value;
       socket.emit("manager_set_tile", { x, y, tile });
-      return;
+    } else {
+      const direction = document.getElementById("wallDirection").value;
+      socket.emit("manager_toggle_inner_wall", { x, y, direction });
     }
-
-    const direction = document.getElementById("wallDirection").value;
-    socket.emit("manager_toggle_inner_wall", { x, y, direction });
   }
 
   function hasInnerWallBetween(a, b) {
@@ -529,34 +484,8 @@
     });
   }
 
-  function buildBoardLabels() {
-    const colLabels = document.getElementById("colLabels");
-    const rowLabels = document.getElementById("rowLabels");
-
-    if (!colLabels || !rowLabels) return;
-
-    colLabels.innerHTML = "";
-    rowLabels.innerHTML = "";
-
-    const letters = ["A","B","C","D","E","F","G","H","I","J"];
-
-    letters.forEach(letter => {
-      const div = document.createElement("div");
-      div.textContent = letter;
-      colLabels.appendChild(div);
-    });
-
-    for (let i = 1; i <= 10; i++) {
-      const div = document.createElement("div");
-      div.className = "rowLabel";
-      div.textContent = i;
-      rowLabels.appendChild(div);
-    }
-  }
-
   function edgeExists(edgeList, a, b) {
     if (!edgeList) return false;
-
     return edgeList.some(edge => {
       const [p1, p2] = edge;
       return (
@@ -568,9 +497,7 @@
 
   function getAllBrokenEdges() {
     if (!state || !state.players) return [];
-
     const all = [];
-
     (state.players || []).forEach(player => {
       const edges = player.known_broken_walls || [];
       edges.forEach(edge => {
@@ -585,8 +512,29 @@
         if (!exists) all.push(edge);
       });
     });
-
     return all;
+  }
+
+  function buildBoardLabels() {
+    const colLabels = document.getElementById("colLabels");
+    const rowLabels = document.getElementById("rowLabels");
+
+    colLabels.innerHTML = "";
+    rowLabels.innerHTML = "";
+
+    const letters = ["A","B","C","D","E","F","G","H","I","J"];
+    letters.forEach(letter => {
+      const div = document.createElement("div");
+      div.textContent = letter;
+      colLabels.appendChild(div);
+    });
+
+    for (let i = 1; i <= 10; i++) {
+      const div = document.createElement("div");
+      div.className = "rowLabel";
+      div.textContent = i;
+      rowLabels.appendChild(div);
+    }
   }
 
   function buildBoard() {
@@ -743,7 +691,7 @@
       document.getElementById("turnInfo").textContent = "Game Over";
       document.getElementById("gameInfo").textContent = winner
         ? `Winner: ${winner.name} (${state.winner_reason})`
-        : `Winner SID: ${state.winner_sid || "-"}`;
+        : `Winner: ${state.winner_reason || "-"}`;
     } else {
       const turnPlayer = (state.players || []).find(p => p.sid === state.current_turn_sid);
       document.getElementById("turnInfo").textContent = turnPlayer ? turnPlayer.name : "Unknown";
@@ -767,8 +715,8 @@
   }
 
   function updateLogs() {
-    const logs = (state && state.logs) || [];
-    document.getElementById("logs").innerHTML = logs.map(line => `<div>${escapeHtml(line)}</div>`).join("");
+    document.getElementById("logs").innerHTML =
+      (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
   }
 
   socket.on("joined_as_manager", data => {
