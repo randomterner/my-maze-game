@@ -86,6 +86,23 @@ def edge_key(a, b):
     return tuple(sorted([a, b]))
 
 
+def serialize_edge(a, b):
+    e = edge_key(a, b)
+    return [list(e[0]), list(e[1])]
+
+
+def remember_open_edge(player, a, b):
+    edge = serialize_edge(a, b)
+    if edge not in player["known_open_edges"]:
+        player["known_open_edges"].append(edge)
+
+
+def remember_broken_wall(player, a, b):
+    edge = serialize_edge(a, b)
+    if edge not in player["known_broken_walls"]:
+        player["known_broken_walls"].append(edge)
+
+
 def is_outer_wall(x, y, direction):
     if direction == "up":
         return y == 0
@@ -163,6 +180,8 @@ def create_player(sid, name):
         },
         "known_tiles": {},
         "known_players": {},
+        "known_open_edges": [],
+        "known_broken_walls": [],
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
     }
@@ -188,7 +207,6 @@ def add_known_tile(player, pos):
 def update_known_players_for_viewer(viewer):
     viewer["known_players"] = {}
 
-    # During spawning / before game start, players should not see each other
     if not GAME["game_started"]:
         return
 
@@ -474,6 +492,7 @@ def apply_tile_effect(player):
 
         if player["items"]["raft"]:
             if river_start is not None:
+                remember_open_edge(player, pos, river_start)
                 player["x"], player["y"] = river_start
                 reveal_current_position(player)
             set_player_message(player, "You used the raft. No injury, but you drifted to the river start.")
@@ -484,6 +503,7 @@ def apply_tile_effect(player):
             return "dead"
 
         if river_start is not None:
+            remember_open_edge(player, pos, river_start)
             player["x"], player["y"] = river_start
             reveal_current_position(player)
 
@@ -498,6 +518,7 @@ def reveal_line(player, direction):
     dx, dy = DIRECTIONS[direction]
     x, y = player["x"], player["y"]
     revealed = []
+    prev = (x, y)
 
     while True:
         if wall_blocks(x, y, direction):
@@ -506,8 +527,12 @@ def reveal_line(player, direction):
         y += dy
         if not in_bounds(x, y):
             break
-        reveal_position(player, (x, y))
-        revealed.append((x, y))
+
+        current = (x, y)
+        remember_open_edge(player, prev, current)
+        reveal_position(player, current)
+        revealed.append(current)
+        prev = current
 
     return revealed
 
@@ -543,6 +568,8 @@ def serialize_player_public(player):
         "bullets": player["bullets"],
         "bombs": player["bombs"],
         "items": copy.deepcopy(player["items"]),
+        "known_open_edges": copy.deepcopy(player["known_open_edges"]),
+        "known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
         "last_message": player["last_message"],
     }
 
@@ -576,6 +603,8 @@ def serialize_player_state_for(sid):
         "you": serialize_player_public(player),
         "your_known_tiles": copy.deepcopy(player["known_tiles"]),
         "your_known_players": copy.deepcopy(player["known_players"]),
+        "your_known_open_edges": copy.deepcopy(player["known_open_edges"]),
+        "your_known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
         "all_players_public": [serialize_player_public(p) for p in GAME["players"].values()],
         "board_size": BOARD_SIZE,
         "inner_walls": [[list(a), list(b)] for (a, b) in GAME["inner_walls"]],
@@ -851,8 +880,10 @@ def player_move(data):
         return
 
     dx, dy = DIRECTIONS[direction]
-    player["x"] = x + dx
-    player["y"] = y + dy
+    new_pos = (x + dx, y + dy)
+    remember_open_edge(player, (x, y), new_pos)
+    player["x"] = new_pos[0]
+    player["y"] = new_pos[1]
     log(f"{player['name']} moved {direction}.")
 
     result = apply_tile_effect(player)
@@ -970,6 +1001,7 @@ def player_bomb(data):
 
     if ek in GAME["inner_walls"]:
         GAME["inner_walls"].remove(ek)
+        remember_broken_wall(player, (x, y), (nx, ny))
         set_player_message(player, "The wall exploded.")
         log(f"{player['name']} destroyed an inner wall.")
     else:
