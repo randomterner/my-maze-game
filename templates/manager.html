@@ -78,7 +78,6 @@
     }
 
     button:hover { background: var(--blue-dark); }
-
     button.secondary { background: #6c757d; }
     button.danger { background: #c93444; }
 
@@ -273,13 +272,8 @@
         height: min(96vw, 420px);
       }
 
-      .colLabels {
-        width: min(96vw, 420px);
-      }
-
-      .rowLabels {
-        height: min(96vw, 420px);
-      }
+      .colLabels { width: min(96vw, 420px); }
+      .rowLabels { height: min(96vw, 420px); }
     }
   </style>
 </head>
@@ -504,6 +498,7 @@
   function getAllBrokenEdges() {
     if (!state || !state.players) return [];
     const all = [];
+
     (state.players || []).forEach(player => {
       const edges = player.known_broken_walls || [];
       edges.forEach(edge => {
@@ -518,6 +513,7 @@
         if (!exists) all.push(edge);
       });
     });
+
     return all;
   }
 
@@ -657,6 +653,7 @@
         <td>${escapeHtml(p.name)}</td>
         <td>${p.alive ? "Yes" : "No"}</td>
         <td>${p.spawned ? "Yes" : "No"}</td>
+        <td>${p.lost ? "Yes" : "No"}</td>
         <td>${p.x === null ? "-" : `${p.x},${p.y}`}</td>
         <td>${p.injuries}</td>
         <td>${p.bullets}</td>
@@ -673,6 +670,7 @@
             <th>Name</th>
             <th>Alive</th>
             <th>Spawned</th>
+            <th>Lost</th>
             <th>Position</th>
             <th>Injuries</th>
             <th>Bullets</th>
