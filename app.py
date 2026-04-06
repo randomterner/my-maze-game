@@ -218,6 +218,7 @@ def activate_map_fusion(player):
     current_key = f"{player['x']},{player['y']}"
 
     # Same tile meeting always triggers map fusion, even on empty/river.
+    same_tile_players = []
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
             continue
@@ -225,34 +226,58 @@ def activate_map_fusion(player):
             continue
         if not other["alive"]:
             continue
-
         if other["x"] == player["x"] and other["y"] == player["y"]:
-            player["is_lost"] = False
-            other["is_lost"] = False
-            merge_map_knowledge(player, other)
-            merge_map_knowledge(other, player)
-            reveal_current_position(player)
-            reveal_current_position(other)
-            set_relative_player_visibility(player, other)
-            set_player_message(player, f"You met {other['name']} → MAP FUSION!")
+            same_tile_players.append(other)
+
+    if same_tile_players:
+        participants = [player] + same_tile_players
+        for p in participants:
+            p["is_lost"] = False
+            reveal_current_position(p)
+
+        # Full two-way fusion between everyone on the tile.
+        for a in participants:
+            for b in participants:
+                if a["sid"] == b["sid"]:
+                    continue
+                merge_map_knowledge(a, b)
+                set_relative_player_visibility(a, b)
+
+        names = ", ".join(p["name"] for p in same_tile_players)
+        set_player_message(player, f"You met {names} → MAP FUSION!")
+        for other in same_tile_players:
             set_player_message(other, f"You met {player['name']} → MAP FUSION!")
             log(f"{player['name']} met {other['name']} → MAP FUSION")
-            return
+        return
 
     # Trace/birth/tile fusion does not happen on empty or river, but does on river_start and birth spots.
     if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
         return
 
+    fusion_targets = []
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
             continue
         if current_key in other["visited_tiles"]:
-            player["is_lost"] = False
-            merge_map_knowledge(player, other)
-            reveal_current_position(player)
-            set_relative_player_visibility(player, other)
-            set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
-            return
+            fusion_targets.append(other)
+
+    if not fusion_targets:
+        return
+
+    player["is_lost"] = False
+    reveal_current_position(player)
+
+    # The active player gets map knowledge from every matching player.
+    # Everyone involved in the fusion keeps tracking each other afterward.
+    for other in fusion_targets:
+        merge_map_knowledge(player, other)
+        set_relative_player_visibility(player, other)
+
+    if len(fusion_targets) == 1:
+        set_player_message(player, f"You found traces of {fusion_targets[0]['name']} → MAP FUSION")
+    else:
+        names = ", ".join(p["name"] for p in fusion_targets)
+        set_player_message(player, f"You found traces of {names} → MAP FUSION")
 
 
 def check_birth_spot_discovery(player):
