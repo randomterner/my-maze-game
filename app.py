@@ -149,9 +149,7 @@ def set_relative_player_visibility(p1, p2):
     if p1["x"] is None or p1["y"] is None or p2["x"] is None or p2["y"] is None:
         return
 
-    key1 = f"{p1['x']},{p1['y']}"
     key2 = f"{p2['x']},{p2['y']}"
-
     p1["known_players"].setdefault(key2, [])
     if not any(pp["sid"] == p2["sid"] for pp in p1["known_players"][key2]):
         p1["known_players"][key2].append({
@@ -161,15 +159,6 @@ def set_relative_player_visibility(p1, p2):
             "y": p2["y"],
         })
 
-    p2["known_players"].setdefault(key1, [])
-    if not any(pp["sid"] == p1["sid"] for pp in p2["known_players"][key1]):
-        p2["known_players"][key1].append({
-            "sid": p1["sid"],
-            "name": p1["name"],
-            "x": p1["x"],
-            "y": p1["y"],
-        })
-
 
 def clear_relative_player_visibility(player):
     player["known_players"] = {}
@@ -177,9 +166,6 @@ def clear_relative_player_visibility(player):
 
 def refresh_known_player_positions():
     for viewer in GAME["players"].values():
-        if viewer.get("is_lost", False):
-            viewer["known_players"] = {}
-            continue
         updated = {}
 
         tracked_sids = set()
@@ -217,67 +203,56 @@ def activate_map_fusion(player):
     current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
 
-    # Same tile meeting always triggers map fusion, even on empty/river.
+    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
+        return
+
     same_tile_players = []
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
             continue
         if other["x"] is None or other["y"] is None:
             continue
-        if not other["alive"]:
-            continue
-        if other["x"] == player["x"] and other["y"] == player["y"]:
+        if other["alive"] and other["x"] == player["x"] and other["y"] == player["y"]:
             same_tile_players.append(other)
 
     if same_tile_players:
-        participants = [player] + same_tile_players
-        for p in participants:
-            p["is_lost"] = False
-            reveal_current_position(p)
+        involved = [player] + same_tile_players
 
-        # Full two-way fusion between everyone on the tile.
-        for a in participants:
-            for b in participants:
+        for a in involved:
+            for b in involved:
                 if a["sid"] == b["sid"]:
                     continue
                 merge_map_knowledge(a, b)
                 set_relative_player_visibility(a, b)
 
-        names = ", ".join(p["name"] for p in same_tile_players)
-        set_player_message(player, f"You met {names} → MAP FUSION!")
+        for p in involved:
+            p["lost"] = False
+            reveal_current_position(p)
+
+        other_names = ", ".join([p["name"] for p in same_tile_players])
+        set_player_message(player, f"You met {other_names} → MAP FUSION!")
         for other in same_tile_players:
             set_player_message(other, f"You met {player['name']} → MAP FUSION!")
-            log(f"{player['name']} met {other['name']} → MAP FUSION")
+
+        if len(involved) == 2:
+            log(f"{player['name']} met {same_tile_players[0]['name']} → MAP FUSION")
+        else:
+            log("MAP FUSION happened between players on the same tile.")
         return
 
-    # Trace/birth/tile fusion does not happen on empty or river, but does on river_start and birth spots.
-    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
-        return
-
-    fusion_targets = []
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
             continue
+        if other["x"] is None or other["y"] is None:
+            continue
+
         if current_key in other["visited_tiles"]:
-            fusion_targets.append(other)
-
-    if not fusion_targets:
-        return
-
-    player["is_lost"] = False
-    reveal_current_position(player)
-
-    # The active player gets map knowledge from every matching player.
-    # Everyone involved in the fusion keeps tracking each other afterward.
-    for other in fusion_targets:
-        merge_map_knowledge(player, other)
-        set_relative_player_visibility(player, other)
-
-    if len(fusion_targets) == 1:
-        set_player_message(player, f"You found traces of {fusion_targets[0]['name']} → MAP FUSION")
-    else:
-        names = ", ".join(p["name"] for p in fusion_targets)
-        set_player_message(player, f"You found traces of {names} → MAP FUSION")
+            merge_map_knowledge(player, other)
+            set_relative_player_visibility(player, other)
+            player["lost"] = False
+            reveal_current_position(player)
+            set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
+            return
 
 
 def check_birth_spot_discovery(player):
@@ -379,9 +354,9 @@ def create_player(sid, name):
         "known_broken_walls": [],
         "known_wall_edges": [],
         "visited_tiles": [],
-        "is_lost": False,
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
+        "lost": False,
     }
 
 
@@ -403,7 +378,7 @@ def add_known_tile(player, pos):
 
 
 def update_known_players_for_viewer(viewer):
-    if not GAME["game_started"] or viewer.get("is_lost", False):
+    if not GAME["game_started"]:
         viewer["known_players"] = {}
         return
 
@@ -417,6 +392,8 @@ def update_known_players_for_viewer(viewer):
         if not other["alive"] or other["x"] is None or other["y"] is None:
             continue
         if other["sid"] not in preserved_sids:
+            continue
+        if viewer["lost"] and other["sid"] == viewer["sid"]:
             continue
 
         key = f"{other['x']},{other['y']}"
@@ -432,10 +409,11 @@ def update_known_players_for_viewer(viewer):
 
 
 def reveal_position(player, pos):
+    if player["lost"]:
+        return
+    add_known_tile(player, pos)
     remember_visited_tile(player, pos)
-    if not player.get("is_lost", False):
-        add_known_tile(player, pos)
-        update_known_players_for_viewer(player)
+    update_known_players_for_viewer(player)
 
 
 def reveal_current_position(player):
@@ -532,33 +510,20 @@ def river_validation():
 
     river_start = river_starts[0]
 
-    # Rule 2: river cannot connect diagonally at all.
-    for (x, y) in river_positions:
-        diagonal_neighbors = [
-            (x - 1, y - 1), (x + 1, y - 1),
-            (x - 1, y + 1), (x + 1, y + 1),
-        ]
-        for pos in diagonal_neighbors:
-            if pos in river_positions:
-                return {"ok": False, "message": "River tiles cannot connect diagonally."}
-
-    # Build orthogonal neighbor graph.
     orth_neighbors = {}
     for (x, y) in river_positions:
         neighbors = []
         for dx, dy in DIRECTIONS.values():
             nxt = (x + dx, y + dy)
             if nxt in river_positions:
-                neighbors.append(nxt)
+                if not has_inner_wall_between((x, y), nxt):
+                    neighbors.append(nxt)
         orth_neighbors[(x, y)] = neighbors
 
-    # Rule 4: river cannot split at any point.
-    # No river tile may have more than 2 orthogonal neighbors.
     for pos, neighbors in orth_neighbors.items():
         if len(neighbors) > 2:
             return {"ok": False, "message": "River cannot split at any point."}
 
-    # river_start should be the start of the river, not a middle point.
     if len(river_positions) == 1:
         if len(orth_neighbors[river_start]) != 0:
             return {"ok": False, "message": "Single-tile river_start cannot connect to other river tiles."}
@@ -566,7 +531,6 @@ def river_validation():
         if len(orth_neighbors[river_start]) != 1:
             return {"ok": False, "message": "river_start must connect to exactly one river tile."}
 
-    # Rule 1: all river tiles must be connected.
     stack = [river_start]
     seen = set()
 
@@ -579,10 +543,19 @@ def river_validation():
             if nxt not in seen:
                 stack.append(nxt)
 
-    if seen != river_positions:
-        return {"ok": False, "message": "All river tiles must be connected."}
+    if seen == river_positions:
+        return {"ok": True, "message": "River is valid."}
 
-    return {"ok": True, "message": "River is valid."}
+    for (x, y) in river_positions:
+        diagonal_neighbors = [
+            (x - 1, y - 1), (x + 1, y - 1),
+            (x - 1, y + 1), (x + 1, y + 1),
+        ]
+        for pos in diagonal_neighbors:
+            if pos in river_positions:
+                return {"ok": False, "message": "River tiles cannot connect diagonally."}
+
+    return {"ok": False, "message": "All river tiles must be connected."}
 
 
 def handle_pickup(player, pos, tile):
@@ -639,7 +612,8 @@ def apply_tile_effect(player):
     pos = (player["x"], player["y"])
     raw_tile = GAME["board"][pos]
 
-    reveal_current_position(player)
+    if not player["lost"]:
+        reveal_current_position(player)
 
     if raw_tile in PICKUP_TILES:
         set_player_message(player, handle_pickup(player, pos, raw_tile))
@@ -727,9 +701,11 @@ def apply_tile_effect(player):
 
         if player["items"]["raft"]:
             if river_start is not None:
-                remember_open_edge(player, pos, river_start)
+                if not player["lost"]:
+                    remember_open_edge(player, pos, river_start)
                 player["x"], player["y"] = river_start
-                reveal_current_position(player)
+                if not player["lost"]:
+                    reveal_current_position(player)
             set_player_message(player, "You used the raft. No injury, but you drifted to the river start.")
             return "continue"
 
@@ -738,9 +714,11 @@ def apply_tile_effect(player):
             return "dead"
 
         if river_start is not None:
-            remember_open_edge(player, pos, river_start)
+            if not player["lost"]:
+                remember_open_edge(player, pos, river_start)
             player["x"], player["y"] = river_start
-            reveal_current_position(player)
+            if not player["lost"]:
+                reveal_current_position(player)
 
         set_player_message(player, "The river injured you and dragged you to the river start.")
         return "continue"
@@ -750,6 +728,9 @@ def apply_tile_effect(player):
 
 
 def reveal_line(player, direction):
+    if player["lost"]:
+        return []
+
     dx, dy = DIRECTIONS[direction]
     x, y = player["x"], player["y"]
     revealed = []
@@ -813,18 +794,9 @@ def serialize_player_public(player):
         "known_open_edges": copy.deepcopy(player["known_open_edges"]),
         "known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
         "known_wall_edges": copy.deepcopy(player["known_wall_edges"]),
-        "is_lost": player.get("is_lost", False),
         "last_message": player["last_message"],
+        "lost": player["lost"],
     }
-
-
-def serialize_player_for_self(player):
-    data = serialize_player_public(player)
-    data["is_lost"] = player.get("is_lost", False)
-    if player.get("is_lost", False):
-        data["x"] = None
-        data["y"] = None
-    return data
 
 
 def serialize_manager_state():
@@ -854,7 +826,7 @@ def serialize_player_state_for(sid):
     turn_sid = current_turn_sid()
 
     return {
-        "you": serialize_player_for_self(player),
+        "you": serialize_player_public(player),
         "your_known_tiles": copy.deepcopy(player["known_tiles"]),
         "your_known_players": copy.deepcopy(player["known_players"]),
         "your_known_open_edges": copy.deepcopy(player["known_open_edges"]),
@@ -1064,23 +1036,25 @@ def manager_start_game():
     GAME["pending_black_hole"] = None
 
     for player in GAME["players"].values():
-        player["is_lost"] = False
+        player["lost"] = False
         reveal_current_position(player)
+        start_tile = GAME["board"][(player["x"], player["y"])]
+        if start_tile != "empty":
+            result = apply_tile_effect(player)
+            if result == "pending_black_hole":
+                pass
+            elif result == "game_over":
+                emit_full_state()
+                return
+        else:
+            set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
 
-        spawn_tile = GAME["board"][(player["x"], player["y"])]
-        result = apply_tile_effect(player)
+    for player in GAME["players"].values():
         activate_map_fusion(player)
         check_birth_spot_discovery(player)
 
-        # keep a simple start message only for empty tiles;
-        # non-empty spawn tiles should use their real effect immediately
-        if spawn_tile == "empty":
-            set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
-
-        if result == "game_over":
-            break
-
     refresh_known_player_positions()
+
     log("Game started.")
     turn_sid = current_turn_sid()
     if turn_sid in GAME["players"]:
@@ -1117,6 +1091,7 @@ def player_spawn(data):
     player["birth_x"] = x
     player["birth_y"] = y
     player["spawned"] = True
+    player["lost"] = False
 
     player["known_tiles"] = {}
     player["known_players"] = {}
@@ -1124,7 +1099,6 @@ def player_spawn(data):
     player["known_broken_walls"] = []
     player["known_wall_edges"] = []
     player["visited_tiles"] = [f"{x},{y}"]
-    player["is_lost"] = False
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
     log(f"{player['name']} chose a spawn tile.")
@@ -1147,7 +1121,7 @@ def player_move(data):
     x, y = player["x"], player["y"]
 
     if wall_blocks(x, y, direction):
-        if not is_outer_wall(x, y, direction):
+        if not player["lost"] and not is_outer_wall(x, y, direction):
             dx, dy = DIRECTIONS[direction]
             nx, ny = x + dx, y + dy
             if in_bounds(nx, ny):
@@ -1160,9 +1134,13 @@ def player_move(data):
 
     dx, dy = DIRECTIONS[direction]
     new_pos = (x + dx, y + dy)
-    remember_open_edge(player, (x, y), new_pos)
+
+    if not player["lost"]:
+        remember_open_edge(player, (x, y), new_pos)
+
     player["x"] = new_pos[0]
     player["y"] = new_pos[1]
+    remember_visited_tile(player, new_pos)
     log(f"{player['name']} moved {direction}.")
 
     result = apply_tile_effect(player)
@@ -1213,7 +1191,7 @@ def player_shoot(data):
 
     while True:
         if wall_blocks(x, y, direction):
-            if not is_outer_wall(x, y, direction):
+            if not shooter["lost"] and not is_outer_wall(x, y, direction):
                 nx, ny = x + dx, y + dy
                 if in_bounds(nx, ny):
                     remember_wall_edge(shooter, (x, y), (nx, ny))
@@ -1288,7 +1266,8 @@ def player_bomb(data):
 
     if ek in GAME["inner_walls"]:
         GAME["inner_walls"].remove(ek)
-        remember_broken_wall(player, (x, y), (nx, ny))
+        if not player["lost"]:
+            remember_broken_wall(player, (x, y), (nx, ny))
         set_player_message(player, "The wall exploded.")
         log(f"{player['name']} destroyed an inner wall.")
     else:
@@ -1360,11 +1339,11 @@ def manager_resolve_black_hole(data):
 
     player = GAME["players"][player_sid]
     clear_relative_player_visibility(player)
-
+    player["lost"] = True
     player["x"] = x
     player["y"] = y
-    player["is_lost"] = True
     remember_visited_tile(player, (x, y))
+
     activate_map_fusion(player)
     check_birth_spot_discovery(player)
     refresh_known_player_positions()
@@ -1376,7 +1355,6 @@ def manager_resolve_black_hole(data):
         set_player_message(player, "You are lost after the black hole.")
 
     log(f"Manager placed {player['name']} after black hole.")
-
     GAME["pending_black_hole"] = None
     emit_full_state()
     end_turn()
