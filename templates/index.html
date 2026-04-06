@@ -545,6 +545,12 @@
       .replaceAll(">", "&gt;");
   }
 
+  function scrollLogsToBottom() {
+    const el = document.getElementById("logs");
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }
+
   function updateInfo() {
     if (!state || !state.you) return;
 
@@ -558,7 +564,7 @@
       <div><strong>Name:</strong> ${escapeHtml(you.name)}</div>
       <div><strong>Alive:</strong> ${you.alive ? "Yes" : "No"}</div>
       <div><strong>Spawned:</strong> ${you.spawned ? "Yes" : "No"}</div>
-      <div><strong>Position:</strong> ${you.x === null ? "-" : `${you.x}, ${you.y}`}</div>
+      <div><strong>Position:</strong> ${you.is_lost ? "Lost" : (you.x === null ? "-" : `${you.x}, ${you.y}`)}</div>
       <div><strong>Injuries:</strong> ${you.injuries}</div>
       <div><strong>Bullets:</strong> ${you.bullets}</div>
       <div><strong>Bombs:</strong> ${you.bombs}</div>
@@ -641,7 +647,12 @@
         }
 
         if (state.game_started && tile !== "unknown") {
-          const here = knownPlayers[key] || [];
+          const here = [...(knownPlayers[key] || [])];
+
+          if (!state.you.is_lost && state.you.x === x && state.you.y === y && !here.some(p => p.sid === state.you.sid)) {
+            here.unshift({ sid: state.you.sid, name: state.you.name, x, y });
+          }
+
           here.forEach((p, idx) => {
             const tag = document.createElement("div");
             tag.className = "playerTag" + (p.sid === state.you.sid ? " youTag" : "");
@@ -669,6 +680,7 @@
     buildBoardLabels();
     updateInfo();
     buildBoard();
+    scrollLogsToBottom();
   });
 
   socket.on("error_message", data => {
