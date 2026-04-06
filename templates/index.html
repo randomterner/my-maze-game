@@ -58,9 +58,7 @@
       align-items: center;
     }
 
-    input, button {
-      font: inherit;
-    }
+    input, button, a.rulesBtn { font: inherit; }
 
     input {
       padding: 10px 12px;
@@ -69,7 +67,7 @@
       min-width: 0;
     }
 
-    button {
+    button, a.rulesBtn {
       padding: 12px 14px;
       border: none;
       border-radius: 10px;
@@ -77,9 +75,14 @@
       background: var(--blue);
       color: white;
       min-height: 44px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    button:hover { background: var(--blue-dark); }
+    button:hover, a.rulesBtn:hover { background: var(--blue-dark); }
+
     button.activeMode {
       outline: 3px solid rgba(47,109,246,0.25);
       background: #173f99;
@@ -290,9 +293,7 @@
       margin: 0 auto;
     }
 
-    .arrowPad .spacer {
-      visibility: hidden;
-    }
+    .arrowPad .spacer { visibility: hidden; }
 
     .arrowBtn {
       font-size: 20px;
@@ -315,7 +316,7 @@
         align-items: stretch;
       }
 
-      .row input, .row button {
+      .row input, .row button, .row a.rulesBtn {
         width: 100%;
       }
 
@@ -328,17 +329,9 @@
         height: min(96vw, 420px);
       }
 
-      .colLabels {
-        width: min(96vw, 420px);
-      }
-
-      .rowLabels {
-        height: min(96vw, 420px);
-      }
-
-      .logs {
-        max-height: 180px;
-      }
+      .colLabels { width: min(96vw, 420px); }
+      .rowLabels { height: min(96vw, 420px); }
+      .logs { max-height: 180px; }
     }
   </style>
 </head>
@@ -349,6 +342,12 @@
     <div class="row">
       <input id="nameInput" placeholder="Your name">
       <button onclick="joinPlayer()">Join</button>
+      <a
+        class="rulesBtn"
+        href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?tab=t.0"
+        target="_blank"
+        rel="noopener noreferrer"
+      >Rules</a>
     </div>
     <div class="small" id="joinStatus">Not joined yet.</div>
   </div>
@@ -392,7 +391,6 @@
 
         <div class="boardOuter">
           <div class="cornerBox"></div>
-
           <div class="colLabels" id="colLabels"></div>
           <div class="rowLabels" id="rowLabels"></div>
           <div class="board" id="board"></div>
@@ -564,7 +562,8 @@
       <div><strong>Name:</strong> ${escapeHtml(you.name)}</div>
       <div><strong>Alive:</strong> ${you.alive ? "Yes" : "No"}</div>
       <div><strong>Spawned:</strong> ${you.spawned ? "Yes" : "No"}</div>
-      <div><strong>Position:</strong> ${you.is_lost ? "Lost" : (you.x === null ? "-" : `${you.x}, ${you.y}`)}</div>
+      <div><strong>Lost:</strong> ${you.lost ? "Yes" : "No"}</div>
+      <div><strong>Position:</strong> ${you.x === null ? "-" : `${you.x}, ${you.y}`}</div>
       <div><strong>Injuries:</strong> ${you.injuries}</div>
       <div><strong>Bullets:</strong> ${you.bullets}</div>
       <div><strong>Bombs:</strong> ${you.bombs}</div>
@@ -621,25 +620,21 @@
         }
 
         if (state.game_started) {
-          // outer borders are known
           if (y === 0) addEdgeMarker(cell, "Top", "wall");
           if (y === 9) addEdgeMarker(cell, "Bottom", "wall");
           if (x === 0) addEdgeMarker(cell, "Left", "wall");
           if (x === 9) addEdgeMarker(cell, "Right", "wall");
 
-          // known inner walls
           if (y > 0 && edgeExists(knownWallEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
           if (x > 0 && edgeExists(knownWallEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
           if (y < 9 && edgeExists(knownWallEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
           if (x < 9 && edgeExists(knownWallEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
 
-          // known open edges
           if (y > 0 && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
           if (x > 0 && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
           if (y < 9 && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
           if (x < 9 && edgeExists(openEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "open");
 
-          // broken walls
           if (y > 0 && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
           if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
           if (y < 9 && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
@@ -647,12 +642,7 @@
         }
 
         if (state.game_started && tile !== "unknown") {
-          const here = [...(knownPlayers[key] || [])];
-
-          if (!state.you.is_lost && state.you.x === x && state.you.y === y && !here.some(p => p.sid === state.you.sid)) {
-            here.unshift({ sid: state.you.sid, name: state.you.name, x, y });
-          }
-
+          const here = knownPlayers[key] || [];
           here.forEach((p, idx) => {
             const tag = document.createElement("div");
             tag.className = "playerTag" + (p.sid === state.you.sid ? " youTag" : "");
