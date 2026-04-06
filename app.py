@@ -51,7 +51,7 @@ def new_game_state():
     return {
         "board": {(x, y): "empty" for y in range(BOARD_SIZE) for x in range(BOARD_SIZE)},
         "consumed_tiles": set(),
-        "inner_walls": set(),  # edge_key((x1,y1),(x2,y2))
+        "inner_walls": set(),
         "players": {},
         "player_order": [],
         "current_turn_index": 0,
@@ -133,11 +133,89 @@ def merge_map_knowledge(receiver, donor):
             receiver["known_wall_edges"].append(copy.deepcopy(edge))
 
 
-def activate_map_function(player):
+def is_birth_spot(pos):
+    for p in GAME["players"].values():
+        if p["birth_x"] == pos[0] and p["birth_y"] == pos[1]:
+            return True
+    return False
+
+
+def tile_allows_map_fusion(pos):
+    tile = GAME["board"].get(pos, "empty")
+    return tile not in {"empty", "river"}
+
+
+def set_relative_player_visibility(p1, p2):
+    if p1["x"] is None or p1["y"] is None or p2["x"] is None or p2["y"] is None:
+        return
+
+    key1 = f"{p1['x']},{p1['y']}"
+    key2 = f"{p2['x']},{p2['y']}"
+
+    p1["known_players"].setdefault(key2, [])
+    if not any(pp["sid"] == p2["sid"] for pp in p1["known_players"][key2]):
+        p1["known_players"][key2].append({
+            "sid": p2["sid"],
+            "name": p2["name"],
+            "x": p2["x"],
+            "y": p2["y"],
+        })
+
+    p2["known_players"].setdefault(key1, [])
+    if not any(pp["sid"] == p1["sid"] for pp in p2["known_players"][key1]):
+        p2["known_players"][key1].append({
+            "sid": p1["sid"],
+            "name": p1["name"],
+            "x": p1["x"],
+            "y": p1["y"],
+        })
+
+
+def clear_relative_player_visibility(player):
+    player["known_players"] = {}
+
+
+def refresh_known_player_positions():
+    for viewer in GAME["players"].values():
+        updated = {}
+
+        tracked_sids = set()
+        for arr in viewer["known_players"].values():
+            for pp in arr:
+                tracked_sids.add(pp["sid"])
+
+        for other in GAME["players"].values():
+            if other["sid"] == viewer["sid"]:
+                continue
+            if other["sid"] not in tracked_sids:
+                continue
+            if other["x"] is None or other["y"] is None or not other["alive"]:
+                continue
+
+            key = f"{other['x']},{other['y']}"
+            updated.setdefault(key, [])
+            updated[key].append({
+                "sid": other["sid"],
+                "name": other["name"],
+                "x": other["x"],
+                "y": other["y"],
+            })
+
+        viewer["known_players"] = updated
+
+
+def activate_map_fusion(player):
     if not GAME["game_started"]:
         return
 
+    if player["x"] is None or player["y"] is None:
+        return
+
+    current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
+
+    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
+        return
 
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
@@ -145,22 +223,23 @@ def activate_map_function(player):
         if other["x"] is None or other["y"] is None:
             continue
 
-        # Same tile -> two-way share
+        # Same tile => two-way map fusion
         if other["alive"] and other["x"] == player["x"] and other["y"] == player["y"]:
             merge_map_knowledge(player, other)
             merge_map_knowledge(other, player)
             reveal_current_position(player)
             reveal_current_position(other)
-            set_player_message(player, f"You met {other['name']} and shared maps.")
-            set_player_message(other, f"You met {player['name']} and shared maps.")
-            log(f"{player['name']} met {other['name']} and shared maps.")
+            set_relative_player_visibility(player, other)
+            set_player_message(player, f"You met {other['name']} → MAP FUSION!")
+            set_player_message(other, f"You met {player['name']} → MAP FUSION!")
+            log(f"{player['name']} met {other['name']} → MAP FUSION")
             continue
 
-        # Found a tile another player visited -> one-way share
+        # Visited tile => one-way map fusion
         if current_key in other["visited_tiles"]:
             merge_map_knowledge(player, other)
             reveal_current_position(player)
-            set_player_message(player, f"You found traces of {other['name']}'s path and gained map knowledge.")
+            set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
 
 
 def check_birth_spot_discovery(player):
@@ -285,26 +364,32 @@ def add_known_tile(player, pos):
 
 
 def update_known_players_for_viewer(viewer):
-    viewer["known_players"] = {}
-
     if not GAME["game_started"]:
+        viewer["known_players"] = {}
         return
 
+    preserved_sids = set()
+    for arr in viewer["known_players"].values():
+        for pp in arr:
+            preserved_sids.add(pp["sid"])
+
+    new_map = {}
     for other in GAME["players"].values():
         if not other["alive"] or other["x"] is None or other["y"] is None:
             continue
-
-        key = f"{other['x']},{other['y']}"
-        if key not in viewer["known_tiles"]:
+        if other["sid"] not in preserved_sids:
             continue
 
-        viewer["known_players"].setdefault(key, [])
-        viewer["known_players"][key].append({
+        key = f"{other['x']},{other['y']}"
+        new_map.setdefault(key, [])
+        new_map[key].append({
             "sid": other["sid"],
             "name": other["name"],
             "x": other["x"],
             "y": other["y"],
         })
+
+    viewer["known_players"] = new_map
 
 
 def reveal_position(player, pos):
@@ -406,13 +491,13 @@ def river_validation():
         return {"ok": False, "message": "River must contain exactly one river_start tile."}
 
     for (x, y) in river_positions:
-        diagonal_neighbors = [
-            (x - 1, y - 1), (x + 1, y - 1),
-            (x - 1, y + 1), (x + 1, y + 1),
-        ]
-        for pos in diagonal_neighbors:
-            if pos in river_positions:
-                return {"ok": False, "message": "River tiles may not touch diagonally."}
+      diagonal_neighbors = [
+          (x - 1, y - 1), (x + 1, y - 1),
+          (x - 1, y + 1), (x + 1, y + 1),
+      ]
+      for pos in diagonal_neighbors:
+          if pos in river_positions:
+              return {"ok": False, "message": "River tiles may not touch diagonally."}
 
     start = next(iter(river_positions))
     stack = [start]
@@ -607,7 +692,6 @@ def reveal_line(player, direction):
 
     while True:
         if wall_blocks(x, y, direction):
-            # if inner wall, remember it
             if not is_outer_wall(x, y, direction):
                 nx, ny = x + dx, y + dy
                 if in_bounds(nx, ny):
@@ -1006,8 +1090,9 @@ def player_move(data):
         end_turn()
         return
 
-    activate_map_function(player)
+    activate_map_fusion(player)
     check_birth_spot_discovery(player)
+    refresh_known_player_positions()
 
     emit_full_state()
     end_turn()
@@ -1184,15 +1269,17 @@ def manager_resolve_black_hole(data):
         return
 
     player = GAME["players"][player_sid]
+    clear_relative_player_visibility(player)
+
     player["x"] = x
     player["y"] = y
     reveal_current_position(player)
-    activate_map_function(player)
+    activate_map_fusion(player)
     check_birth_spot_discovery(player)
+    refresh_known_player_positions()
 
     if (
-        "shared maps" not in player["last_message"]
-        and "gained map knowledge" not in player["last_message"]
+        "MAP FUSION" not in player["last_message"]
         and "birth spot" not in player["last_message"]
     ):
         set_player_message(player, "The manager placed you on an empty tile after the black hole.")
