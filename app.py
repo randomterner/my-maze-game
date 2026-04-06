@@ -1016,8 +1016,21 @@ def manager_start_game():
     for player in GAME["players"].values():
         player["is_lost"] = False
         reveal_current_position(player)
-        set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
 
+        spawn_tile = GAME["board"][(player["x"], player["y"])]
+        result = apply_tile_effect(player)
+        activate_map_fusion(player)
+        check_birth_spot_discovery(player)
+
+        # keep a simple start message only for empty tiles;
+        # non-empty spawn tiles should use their real effect immediately
+        if spawn_tile == "empty":
+            set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
+
+        if result == "game_over":
+            break
+
+    refresh_known_player_positions()
     log("Game started.")
     turn_sid = current_turn_sid()
     if turn_sid in GAME["players"]:
