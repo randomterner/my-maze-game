@@ -524,23 +524,50 @@ def river_validation():
         return {"ok": True, "message": "No river on board."}
 
     if len(river_positions) > 20:
-        return {"ok": False, "message": "River may use at most 20 tiles."}
+        return {"ok": False, "message": "River may use at most 20 tiles including river_start."}
 
     river_starts = [pos for pos, tile in GAME["board"].items() if tile == "river_start"]
     if len(river_starts) != 1:
         return {"ok": False, "message": "River must contain exactly one river_start tile."}
 
-    for (x, y) in river_positions:
-      diagonal_neighbors = [
-          (x - 1, y - 1), (x + 1, y - 1),
-          (x - 1, y + 1), (x + 1, y + 1),
-      ]
-      for pos in diagonal_neighbors:
-          if pos in river_positions:
-              return {"ok": False, "message": "River tiles may not touch diagonally."}
+    river_start = river_starts[0]
 
-    start = next(iter(river_positions))
-    stack = [start]
+    # Rule 2: river cannot connect diagonally at all.
+    for (x, y) in river_positions:
+        diagonal_neighbors = [
+            (x - 1, y - 1), (x + 1, y - 1),
+            (x - 1, y + 1), (x + 1, y + 1),
+        ]
+        for pos in diagonal_neighbors:
+            if pos in river_positions:
+                return {"ok": False, "message": "River tiles cannot connect diagonally."}
+
+    # Build orthogonal neighbor graph.
+    orth_neighbors = {}
+    for (x, y) in river_positions:
+        neighbors = []
+        for dx, dy in DIRECTIONS.values():
+            nxt = (x + dx, y + dy)
+            if nxt in river_positions:
+                neighbors.append(nxt)
+        orth_neighbors[(x, y)] = neighbors
+
+    # Rule 4: river cannot split at any point.
+    # No river tile may have more than 2 orthogonal neighbors.
+    for pos, neighbors in orth_neighbors.items():
+        if len(neighbors) > 2:
+            return {"ok": False, "message": "River cannot split at any point."}
+
+    # river_start should be the start of the river, not a middle point.
+    if len(river_positions) == 1:
+        if len(orth_neighbors[river_start]) != 0:
+            return {"ok": False, "message": "Single-tile river_start cannot connect to other river tiles."}
+    else:
+        if len(orth_neighbors[river_start]) != 1:
+            return {"ok": False, "message": "river_start must connect to exactly one river tile."}
+
+    # Rule 1: all river tiles must be connected.
+    stack = [river_start]
     seen = set()
 
     while stack:
@@ -548,10 +575,8 @@ def river_validation():
         if pos in seen:
             continue
         seen.add(pos)
-        x, y = pos
-        for dx, dy in DIRECTIONS.values():
-            nxt = (x + dx, y + dy)
-            if nxt in river_positions and nxt not in seen:
+        for nxt in orth_neighbors[pos]:
+            if nxt not in seen:
                 stack.append(nxt)
 
     if seen != river_positions:
