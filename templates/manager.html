@@ -427,6 +427,12 @@
       .replaceAll(">", "&gt;");
   }
 
+  function scrollLogsToBottom() {
+    const el = document.getElementById("logs");
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }
+
   function joinManager() {
     socket.emit("join_manager");
   }
@@ -730,6 +736,7 @@
     buildPlayersTable();
     updateTopInfo();
     updateLogs();
+    scrollLogsToBottom();
   });
 
   socket.on("error_message", data => {
