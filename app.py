@@ -177,6 +177,9 @@ def clear_relative_player_visibility(player):
 
 def refresh_known_player_positions():
     for viewer in GAME["players"].values():
+        if viewer.get("is_lost", False):
+            viewer["known_players"] = {}
+            continue
         updated = {}
 
         tracked_sids = set()
@@ -214,17 +217,18 @@ def activate_map_fusion(player):
     current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
 
-    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
-        return
-
+    # Same tile meeting always triggers map fusion, even on empty/river.
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
             continue
         if other["x"] is None or other["y"] is None:
             continue
+        if not other["alive"]:
+            continue
 
-        # Same tile => two-way map fusion
-        if other["alive"] and other["x"] == player["x"] and other["y"] == player["y"]:
+        if other["x"] == player["x"] and other["y"] == player["y"]:
+            player["is_lost"] = False
+            other["is_lost"] = False
             merge_map_knowledge(player, other)
             merge_map_knowledge(other, player)
             reveal_current_position(player)
@@ -233,13 +237,22 @@ def activate_map_fusion(player):
             set_player_message(player, f"You met {other['name']} → MAP FUSION!")
             set_player_message(other, f"You met {player['name']} → MAP FUSION!")
             log(f"{player['name']} met {other['name']} → MAP FUSION")
-            continue
+            return
 
-        # Visited tile => one-way map fusion
+    # Trace/birth/tile fusion does not happen on empty or river, but does on river_start and birth spots.
+    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
+        return
+
+    for other in GAME["players"].values():
+        if other["sid"] == player["sid"]:
+            continue
         if current_key in other["visited_tiles"]:
+            player["is_lost"] = False
             merge_map_knowledge(player, other)
             reveal_current_position(player)
+            set_relative_player_visibility(player, other)
             set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
+            return
 
 
 def check_birth_spot_discovery(player):
@@ -341,6 +354,7 @@ def create_player(sid, name):
         "known_broken_walls": [],
         "known_wall_edges": [],
         "visited_tiles": [],
+        "is_lost": False,
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
     }
@@ -364,7 +378,7 @@ def add_known_tile(player, pos):
 
 
 def update_known_players_for_viewer(viewer):
-    if not GAME["game_started"]:
+    if not GAME["game_started"] or viewer.get("is_lost", False):
         viewer["known_players"] = {}
         return
 
@@ -393,9 +407,10 @@ def update_known_players_for_viewer(viewer):
 
 
 def reveal_position(player, pos):
-    add_known_tile(player, pos)
     remember_visited_tile(player, pos)
-    update_known_players_for_viewer(player)
+    if not player.get("is_lost", False):
+        add_known_tile(player, pos)
+        update_known_players_for_viewer(player)
 
 
 def reveal_current_position(player):
@@ -748,8 +763,18 @@ def serialize_player_public(player):
         "known_open_edges": copy.deepcopy(player["known_open_edges"]),
         "known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
         "known_wall_edges": copy.deepcopy(player["known_wall_edges"]),
+        "is_lost": player.get("is_lost", False),
         "last_message": player["last_message"],
     }
+
+
+def serialize_player_for_self(player):
+    data = serialize_player_public(player)
+    data["is_lost"] = player.get("is_lost", False)
+    if player.get("is_lost", False):
+        data["x"] = None
+        data["y"] = None
+    return data
 
 
 def serialize_manager_state():
@@ -779,7 +804,7 @@ def serialize_player_state_for(sid):
     turn_sid = current_turn_sid()
 
     return {
-        "you": serialize_player_public(player),
+        "you": serialize_player_for_self(player),
         "your_known_tiles": copy.deepcopy(player["known_tiles"]),
         "your_known_players": copy.deepcopy(player["known_players"]),
         "your_known_open_edges": copy.deepcopy(player["known_open_edges"]),
@@ -989,6 +1014,7 @@ def manager_start_game():
     GAME["pending_black_hole"] = None
 
     for player in GAME["players"].values():
+        player["is_lost"] = False
         reveal_current_position(player)
         set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
 
@@ -1035,6 +1061,7 @@ def player_spawn(data):
     player["known_broken_walls"] = []
     player["known_wall_edges"] = []
     player["visited_tiles"] = [f"{x},{y}"]
+    player["is_lost"] = False
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
     log(f"{player['name']} chose a spawn tile.")
@@ -1273,7 +1300,8 @@ def manager_resolve_black_hole(data):
 
     player["x"] = x
     player["y"] = y
-    reveal_current_position(player)
+    player["is_lost"] = True
+    remember_visited_tile(player, (x, y))
     activate_map_fusion(player)
     check_birth_spot_discovery(player)
     refresh_known_player_positions()
@@ -1282,7 +1310,7 @@ def manager_resolve_black_hole(data):
         "MAP FUSION" not in player["last_message"]
         and "birth spot" not in player["last_message"]
     ):
-        set_player_message(player, "The manager placed you on an empty tile after the black hole.")
+        set_player_message(player, "You are lost after the black hole.")
 
     log(f"Manager placed {player['name']} after black hole.")
 
