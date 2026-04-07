@@ -563,7 +563,7 @@
       <div><strong>Alive:</strong> ${you.alive ? "Yes" : "No"}</div>
       <div><strong>Spawned:</strong> ${you.spawned ? "Yes" : "No"}</div>
       <div><strong>Lost:</strong> ${you.lost ? "Yes" : "No"}</div>
-      <div><strong>Position:</strong> ${you.x === null ? "-" : `${you.x}, ${you.y}`}</div>
+      <div><strong>Position:</strong> ${you.lost ? "Unknown" : (you.x === null ? "-" : `${you.x}, ${you.y}`)}</div>
       <div><strong>Injuries:</strong> ${you.injuries}</div>
       <div><strong>Bullets:</strong> ${you.bullets}</div>
       <div><strong>Bombs:</strong> ${you.bombs}</div>
