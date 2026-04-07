@@ -203,9 +203,7 @@ def activate_map_fusion(player):
     current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
 
-    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
-        return
-
+    # Same-tile fusion always works, even on empty tiles
     same_tile_players = []
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
@@ -238,6 +236,9 @@ def activate_map_fusion(player):
             log(f"{player['name']} met {same_tile_players[0]['name']} → MAP FUSION")
         else:
             log("MAP FUSION happened between players on the same tile.")
+        return
+
+    if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
         return
 
     for other in GAME["players"].values():
