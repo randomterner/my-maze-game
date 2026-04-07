@@ -238,6 +238,10 @@ def activate_map_fusion(player):
             log("MAP FUSION happened between players on the same tile.")
         return
 
+    # Lost players do NOT get trace/tile fusion
+    if player["lost"]:
+        return
+
     if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
         return
 
@@ -250,7 +254,6 @@ def activate_map_fusion(player):
         if current_key in other["visited_tiles"]:
             merge_map_knowledge(player, other)
             set_relative_player_visibility(player, other)
-            player["lost"] = False
             reveal_current_position(player)
             set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
             return
@@ -529,9 +532,8 @@ def river_validation():
         neighbors = []
         for dx, dy in DIRECTIONS.values():
             nxt = (x + dx, y + dy)
-            if nxt in river_positions:
-                if not has_inner_wall_between((x, y), nxt):
-                    neighbors.append(nxt)
+            if nxt in river_positions and not has_inner_wall_between((x, y), nxt):
+                neighbors.append(nxt)
         orth_neighbors[(x, y)] = neighbors
 
     for pos, neighbors in orth_neighbors.items():
@@ -1185,8 +1187,8 @@ def player_move(data):
         end_turn()
         return
 
-    activate_map_fusion(player)
     check_birth_spot_discovery(player)
+    activate_map_fusion(player)
     refresh_known_player_positions()
 
     emit_full_state()
