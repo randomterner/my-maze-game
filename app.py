@@ -259,6 +259,19 @@ def check_birth_spot_discovery(player):
     if player["x"] is None or player["y"] is None:
         return
 
+    if (
+        player["birth_x"] is not None
+        and player["birth_y"] is not None
+        and player["x"] == player["birth_x"]
+        and player["y"] == player["birth_y"]
+    ):
+        if player["lost"]:
+            player["lost"] = False
+            reveal_current_position(player)
+            set_player_message(player, "You found your birth spot and are no longer lost.")
+            log(f"{player['name']} found their birth spot and is no longer lost.")
+            return
+
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
             continue
@@ -1351,6 +1364,7 @@ def manager_resolve_black_hole(data):
     if (
         "MAP FUSION" not in player["last_message"]
         and "birth spot" not in player["last_message"]
+        and "no longer lost" not in player["last_message"]
     ):
         set_player_message(player, "You are lost after the black hole.")
 
