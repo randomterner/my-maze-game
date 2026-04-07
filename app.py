@@ -838,13 +838,26 @@ def serialize_player_state_for(sid):
 
     turn_sid = current_turn_sid()
 
+    if player["lost"]:
+        known_tiles = {}
+        known_players = {}
+        known_open_edges = []
+        known_broken_walls = []
+        known_wall_edges = []
+    else:
+        known_tiles = copy.deepcopy(player["known_tiles"])
+        known_players = copy.deepcopy(player["known_players"])
+        known_open_edges = copy.deepcopy(player["known_open_edges"])
+        known_broken_walls = copy.deepcopy(player["known_broken_walls"])
+        known_wall_edges = copy.deepcopy(player["known_wall_edges"])
+
     return {
         "you": serialize_player_public(player),
-        "your_known_tiles": copy.deepcopy(player["known_tiles"]),
-        "your_known_players": copy.deepcopy(player["known_players"]),
-        "your_known_open_edges": copy.deepcopy(player["known_open_edges"]),
-        "your_known_broken_walls": copy.deepcopy(player["known_broken_walls"]),
-        "your_known_wall_edges": copy.deepcopy(player["known_wall_edges"]),
+        "your_known_tiles": known_tiles,
+        "your_known_players": known_players,
+        "your_known_open_edges": known_open_edges,
+        "your_known_broken_walls": known_broken_walls,
+        "your_known_wall_edges": known_wall_edges,
         "board_size": BOARD_SIZE,
         "current_turn_sid": turn_sid,
         "current_turn_name": GAME["players"][turn_sid]["name"] if turn_sid in GAME["players"] else None,
@@ -1357,18 +1370,9 @@ def manager_resolve_black_hole(data):
     player["y"] = y
     remember_visited_tile(player, (x, y))
 
-    activate_map_fusion(player)
-    check_birth_spot_discovery(player)
-    refresh_known_player_positions()
-
-    if (
-        "MAP FUSION" not in player["last_message"]
-        and "birth spot" not in player["last_message"]
-        and "no longer lost" not in player["last_message"]
-    ):
-        set_player_message(player, "You are lost after the black hole.")
-
+    set_player_message(player, "You are lost after the black hole.")
     log(f"Manager placed {player['name']} after black hole.")
+
     GAME["pending_black_hole"] = None
     emit_full_state()
     end_turn()
