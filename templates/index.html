@@ -642,13 +642,32 @@
         }
 
         if (state.game_started && tile !== "unknown") {
+          let markerIndex = 0;
+
+          if (
+            state.you &&
+            !state.you.lost &&
+            state.you.x === x &&
+            state.you.y === y
+          ) {
+            const selfTag = document.createElement("div");
+            selfTag.className = "playerTag youTag";
+            selfTag.style.bottom = `${2 + markerIndex * 12}px`;
+            selfTag.textContent = "YOU";
+            cell.appendChild(selfTag);
+            markerIndex++;
+          }
+
           const here = knownPlayers[key] || [];
-          here.forEach((p, idx) => {
+          here.forEach((p) => {
+            if (p.sid === state.you.sid) return;
+
             const tag = document.createElement("div");
-            tag.className = "playerTag" + (p.sid === state.you.sid ? " youTag" : "");
-            tag.style.bottom = `${2 + idx * 12}px`;
-            tag.textContent = p.sid === state.you.sid ? "YOU" : p.name;
+            tag.className = "playerTag";
+            tag.style.bottom = `${2 + markerIndex * 12}px`;
+            tag.textContent = p.name;
             cell.appendChild(tag);
+            markerIndex++;
           });
         }
 
