@@ -145,6 +145,14 @@ def tile_allows_map_fusion(pos):
     return tile not in {"empty", "river"}
 
 
+def player_is_on_your_map(viewer, other_sid):
+    for arr in viewer["known_players"].values():
+        for pp in arr:
+            if pp["sid"] == other_sid:
+                return True
+    return False
+
+
 def set_relative_player_visibility(p1, p2):
     if p1["x"] is None or p1["y"] is None or p2["x"] is None or p2["y"] is None:
         return
@@ -193,6 +201,28 @@ def refresh_known_player_positions():
         viewer["known_players"] = updated
 
 
+def enter_lost_state(player):
+    if not player["lost"]:
+        player["known_tiles_before_lost"] = copy.deepcopy(player["known_tiles"])
+    player["lost"] = True
+    clear_relative_player_visibility(player)
+
+
+def previously_known_tile_ends_lost(player):
+    if player["x"] is None or player["y"] is None:
+        return False
+    key = f"{player['x']},{player['y']}"
+    return key in player.get("known_tiles_before_lost", {})
+
+
+def recover_from_lost(player, message):
+    player["lost"] = False
+    reveal_current_position(player)
+    player["known_tiles_before_lost"] = {}
+    set_player_message(player, message)
+    log(f"{player['name']} is no longer lost.")
+
+
 def activate_map_fusion(player):
     if not GAME["game_started"]:
         return
@@ -203,7 +233,6 @@ def activate_map_fusion(player):
     current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
 
-    # Same-tile fusion always works, even on empty tiles
     same_tile_players = []
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
@@ -223,23 +252,25 @@ def activate_map_fusion(player):
                 merge_map_knowledge(a, b)
                 set_relative_player_visibility(a, b)
 
-        for p in involved:
-            p["lost"] = False
-            reveal_current_position(p)
+        if player["lost"]:
+            if any(player_is_on_your_map(player, other["sid"]) for other in same_tile_players):
+                recover_from_lost(player, f"You met {', '.join([p['name'] for p in same_tile_players])} → MAP FUSION!")
+        else:
+            reveal_current_position(player)
+            set_player_message(player, f"You met {', '.join([p['name'] for p in same_tile_players])} → MAP FUSION!")
 
-        other_names = ", ".join([p["name"] for p in same_tile_players])
-        set_player_message(player, f"You met {other_names} → MAP FUSION!")
         for other in same_tile_players:
-            set_player_message(other, f"You met {player['name']} → MAP FUSION!")
+            if other["lost"]:
+                if player_is_on_your_map(other, player["sid"]):
+                    recover_from_lost(other, f"You met {player['name']} → MAP FUSION!")
+            else:
+                reveal_current_position(other)
+                set_player_message(other, f"You met {player['name']} → MAP FUSION!")
 
         if len(involved) == 2:
             log(f"{player['name']} met {same_tile_players[0]['name']} → MAP FUSION")
         else:
             log("MAP FUSION happened between players on the same tile.")
-        return
-
-    # Lost players do NOT get trace/tile fusion
-    if player["lost"]:
         return
 
     if not tile_allows_map_fusion(current_pos) and not is_birth_spot(current_pos):
@@ -254,14 +285,21 @@ def activate_map_fusion(player):
         if current_key in other["visited_tiles"]:
             merge_map_knowledge(player, other)
             set_relative_player_visibility(player, other)
-            reveal_current_position(player)
-            set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
+
+            if player["lost"]:
+                if player_is_on_your_map(player, other["sid"]):
+                    recover_from_lost(player, f"You found traces of {other['name']} → MAP FUSION")
+                else:
+                    set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
+            else:
+                reveal_current_position(player)
+                set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
             return
 
 
 def check_birth_spot_discovery(player):
     if player["x"] is None or player["y"] is None:
-        return
+        return False
 
     if (
         player["birth_x"] is not None
@@ -270,11 +308,9 @@ def check_birth_spot_discovery(player):
         and player["y"] == player["birth_y"]
     ):
         if player["lost"]:
-            player["lost"] = False
-            reveal_current_position(player)
-            set_player_message(player, "You found your birth spot and are no longer lost.")
-            log(f"{player['name']} found their birth spot and is no longer lost.")
-            return
+            recover_from_lost(player, "You found your birth spot and are no longer lost.")
+            return True
+        return False
 
     for other in GAME["players"].values():
         if other["sid"] == player["sid"]:
@@ -285,7 +321,16 @@ def check_birth_spot_discovery(player):
         if player["x"] == other["birth_x"] and player["y"] == other["birth_y"]:
             set_player_message(player, f"You found {other['name']}'s birth spot.")
             log(f"{player['name']} found {other['name']}'s birth spot")
-            return
+            return False
+
+    return False
+
+
+def check_previously_known_recovery(player):
+    if player["lost"] and previously_known_tile_ends_lost(player):
+        recover_from_lost(player, "You reached a familiar tile and are no longer lost.")
+        return True
+    return False
 
 
 def is_outer_wall(x, y, direction):
@@ -366,6 +411,7 @@ def create_player(sid, name):
             "batteries": False,
         },
         "known_tiles": {},
+        "known_tiles_before_lost": {},
         "known_players": {},
         "known_open_edges": [],
         "known_broken_walls": [],
@@ -426,8 +472,6 @@ def update_known_players_for_viewer(viewer):
 
 
 def reveal_position(player, pos):
-    if player["lost"]:
-        return
     add_known_tile(player, pos)
     remember_visited_tile(player, pos)
     update_known_players_for_viewer(player)
@@ -628,8 +672,7 @@ def apply_tile_effect(player):
     pos = (player["x"], player["y"])
     raw_tile = GAME["board"][pos]
 
-    if not player["lost"]:
-        reveal_current_position(player)
+    reveal_current_position(player)
 
     if raw_tile in PICKUP_TILES:
         set_player_message(player, handle_pickup(player, pos, raw_tile))
@@ -717,26 +760,35 @@ def apply_tile_effect(player):
 
         if player["items"]["raft"]:
             if river_start is not None:
-                if not player["lost"]:
-                    remember_open_edge(player, pos, river_start)
+                river_start_key = f"{river_start[0]},{river_start[1]}"
+                player_knows_river_start = river_start_key in player["known_tiles"]
+
                 player["x"], player["y"] = river_start
-                if not player["lost"]:
-                    reveal_current_position(player)
-            set_player_message(player, "You used the raft. No injury, but you drifted to the river start.")
+                remember_visited_tile(player, river_start)
+                reveal_current_position(player)
+
+                if player_knows_river_start:
+                    remember_open_edge(player, pos, river_start)
+                    set_player_message(player, "You used the raft. No injury, and you drifted to the known river start.")
+                else:
+                    enter_lost_state(player)
+                    set_player_message(player, "You used the raft. No injury, but you were dragged to an unknown river start and became lost.")
+            else:
+                set_player_message(player, "You used the raft.")
             return "continue"
 
         player["injuries"] += 1
         if check_death(player, "Killed by river injury."):
             return "dead"
 
-        if river_start is not None:
-            if not player["lost"]:
-                remember_open_edge(player, pos, river_start)
-            player["x"], player["y"] = river_start
-            if not player["lost"]:
-                reveal_current_position(player)
+        enter_lost_state(player)
 
-        set_player_message(player, "The river injured you and dragged you to the river start.")
+        if river_start is not None:
+            player["x"], player["y"] = river_start
+            remember_visited_tile(player, river_start)
+            reveal_current_position(player)
+
+        set_player_message(player, "The river injured you, dragged you to the river start, and you are now lost.")
         return "continue"
 
     set_player_message(player, f"You stepped on: {raw_tile}")
@@ -744,9 +796,6 @@ def apply_tile_effect(player):
 
 
 def reveal_line(player, direction):
-    if player["lost"]:
-        return []
-
     dx, dy = DIRECTIONS[direction]
     x, y = player["x"], player["y"]
     revealed = []
@@ -1066,6 +1115,7 @@ def manager_start_game():
 
     for player in GAME["players"].values():
         player["lost"] = False
+        player["known_tiles_before_lost"] = {}
         reveal_current_position(player)
         start_tile = GAME["board"][(player["x"], player["y"])]
         if start_tile != "empty":
@@ -1079,8 +1129,9 @@ def manager_start_game():
             set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
 
     for player in GAME["players"].values():
-        activate_map_fusion(player)
         check_birth_spot_discovery(player)
+        check_previously_known_recovery(player)
+        activate_map_fusion(player)
 
     refresh_known_player_positions()
 
@@ -1121,8 +1172,8 @@ def player_spawn(data):
     player["birth_y"] = y
     player["spawned"] = True
     player["lost"] = False
-
     player["known_tiles"] = {}
+    player["known_tiles_before_lost"] = {}
     player["known_players"] = {}
     player["known_open_edges"] = []
     player["known_broken_walls"] = []
@@ -1150,7 +1201,7 @@ def player_move(data):
     x, y = player["x"], player["y"]
 
     if wall_blocks(x, y, direction):
-        if not player["lost"] and not is_outer_wall(x, y, direction):
+        if not is_outer_wall(x, y, direction):
             dx, dy = DIRECTIONS[direction]
             nx, ny = x + dx, y + dy
             if in_bounds(nx, ny):
@@ -1164,9 +1215,7 @@ def player_move(data):
     dx, dy = DIRECTIONS[direction]
     new_pos = (x + dx, y + dy)
 
-    if not player["lost"]:
-        remember_open_edge(player, (x, y), new_pos)
-
+    remember_open_edge(player, (x, y), new_pos)
     player["x"] = new_pos[0]
     player["y"] = new_pos[1]
     remember_visited_tile(player, new_pos)
@@ -1188,6 +1237,7 @@ def player_move(data):
         return
 
     check_birth_spot_discovery(player)
+    check_previously_known_recovery(player)
     activate_map_fusion(player)
     refresh_known_player_positions()
 
@@ -1220,7 +1270,7 @@ def player_shoot(data):
 
     while True:
         if wall_blocks(x, y, direction):
-            if not shooter["lost"] and not is_outer_wall(x, y, direction):
+            if not is_outer_wall(x, y, direction):
                 nx, ny = x + dx, y + dy
                 if in_bounds(nx, ny):
                     remember_wall_edge(shooter, (x, y), (nx, ny))
@@ -1295,8 +1345,7 @@ def player_bomb(data):
 
     if ek in GAME["inner_walls"]:
         GAME["inner_walls"].remove(ek)
-        if not player["lost"]:
-            remember_broken_wall(player, (x, y), (nx, ny))
+        remember_broken_wall(player, (x, y), (nx, ny))
         set_player_message(player, "The wall exploded.")
         log(f"{player['name']} destroyed an inner wall.")
     else:
@@ -1367,11 +1416,11 @@ def manager_resolve_black_hole(data):
         return
 
     player = GAME["players"][player_sid]
-    clear_relative_player_visibility(player)
-    player["lost"] = True
+    enter_lost_state(player)
     player["x"] = x
     player["y"] = y
     remember_visited_tile(player, (x, y))
+    reveal_current_position(player)
 
     set_player_message(player, "You are lost after the black hole.")
     log(f"Manager placed {player['name']} after black hole.")
