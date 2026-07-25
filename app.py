@@ -506,6 +506,11 @@ def check_last_player_win():
         GAME["winner_sid"] = winner["sid"]
         GAME["winner_reason"] = "last_player_alive"
         log(f"{winner['name']} wins as the last player alive.")
+    elif len(alive) == 0 and len(GAME["players"]) >= 2:
+        GAME["game_over"] = True
+        GAME["winner_sid"] = None
+        GAME["winner_reason"] = "all_players_dead"
+        log("All players died. The game ended with no winner.")
 
 
 def end_turn():
@@ -571,6 +576,16 @@ def river_validation():
 
     river_start = river_starts[0]
 
+    # River tiles must form a single orthogonal path.  Reject diagonal
+    # neighbours even when the rest of the river happens to be connected.
+    for (x, y) in river_positions:
+        diagonal_neighbors = [
+            (x - 1, y - 1), (x + 1, y - 1),
+            (x - 1, y + 1), (x + 1, y + 1),
+        ]
+        if any(pos in river_positions for pos in diagonal_neighbors):
+            return {"ok": False, "message": "River tiles cannot be diagonal to one another."}
+
     orth_neighbors = {}
     for (x, y) in river_positions:
         neighbors = []
@@ -605,15 +620,6 @@ def river_validation():
 
     if seen == river_positions:
         return {"ok": True, "message": "River is valid."}
-
-    for (x, y) in river_positions:
-        diagonal_neighbors = [
-            (x - 1, y - 1), (x + 1, y - 1),
-            (x - 1, y + 1), (x + 1, y + 1),
-        ]
-        for pos in diagonal_neighbors:
-            if pos in river_positions:
-                return {"ok": False, "message": "River tiles cannot connect diagonally."}
 
     return {"ok": False, "message": "All river tiles must be connected."}
 
@@ -694,7 +700,7 @@ def apply_tile_effect(player):
         return "continue"
 
     if raw_tile == "clinic":
-        if player["injuries"] >= 3:
+        if player["injuries"] == 4:
             player["injuries"] = 0
             set_player_message(player, "Clinic healed you to 0 injuries.")
         else:
@@ -976,6 +982,14 @@ def join_player(data):
         emit("error_message", {"message": "Name is required."})
         return
 
+    if GAME["game_started"] and sid not in GAME["players"]:
+        emit("error_message", {"message": "A game is already in progress. Join the next game after a reset."})
+        return
+
+    if any(p_sid != sid and p["name"].casefold() == name.casefold() for p_sid, p in GAME["players"].items()):
+        emit("error_message", {"message": "That player name is already in use."})
+        return
+
     if sid not in GAME["players"]:
         GAME["players"][sid] = create_player(sid, name)
         log(f"{name} joined the game.")
@@ -1000,6 +1014,10 @@ def join_manager():
 def manager_set_tile(data):
     if request.sid != MANAGER_SID:
         emit("error_message", {"message": "Only the manager can edit the board."})
+        return
+
+    if GAME["game_started"]:
+        emit("error_message", {"message": "The board is locked while a game is in progress. Reset the game to edit it."})
         return
 
     try:
@@ -1031,6 +1049,10 @@ def manager_set_tile(data):
 def manager_toggle_inner_wall(data):
     if request.sid != MANAGER_SID:
         emit("error_message", {"message": "Only the manager can edit walls."})
+        return
+
+    if GAME["game_started"]:
+        emit("error_message", {"message": "The board is locked while a game is in progress. Reset the game to edit it."})
         return
 
     try:
@@ -1074,6 +1096,10 @@ def manager_clear_board():
         emit("error_message", {"message": "Only the manager can clear the board."})
         return
 
+    if GAME["game_started"]:
+        emit("error_message", {"message": "The board is locked while a game is in progress. Reset the game to edit it."})
+        return
+
     for pos in GAME["board"]:
         GAME["board"][pos] = "empty"
     GAME["consumed_tiles"].clear()
@@ -1101,6 +1127,20 @@ def manager_start_game():
 
     if not all_spawned():
         emit("error_message", {"message": "Need at least 2 spawned players."})
+        return
+
+    validation = river_validation()
+    if not validation["ok"]:
+        emit("error_message", {"message": f"Cannot start: {validation['message']}"})
+        return
+
+    treasure_count = sum(tile == "treasure" for tile in GAME["board"].values())
+    exit_count = sum(tile == "exit" for tile in GAME["board"].values())
+    if treasure_count != 1:
+        emit("error_message", {"message": "The board needs exactly one real treasure."})
+        return
+    if exit_count != 1:
+        emit("error_message", {"message": "The board needs exactly one exit."})
         return
 
     GAME["player_order"] = list(GAME["players"].keys())
@@ -1409,6 +1449,13 @@ def manager_resolve_black_hole(data):
         emit("error_message", {"message": "Black hole destination must be an empty tile."})
         return
 
+    if any(
+        other["alive"] and other["x"] == x and other["y"] == y
+        for other in GAME["players"].values()
+    ):
+        emit("error_message", {"message": "Black hole destination must not contain another player."})
+        return
+
     player_sid = GAME["pending_black_hole"]["player_sid"]
     if player_sid not in GAME["players"]:
         GAME["pending_black_hole"] = None
@@ -1426,6 +1473,10 @@ def manager_resolve_black_hole(data):
     log(f"Manager placed {player['name']} after black hole.")
 
     GAME["pending_black_hole"] = None
+    check_birth_spot_discovery(player)
+    check_previously_known_recovery(player)
+    activate_map_fusion(player)
+    refresh_known_player_positions()
     emit_full_state()
     end_turn()
 
