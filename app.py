@@ -173,32 +173,43 @@ def clear_relative_player_visibility(player):
 
 
 def refresh_known_player_positions():
-    for viewer in GAME["players"].values():
-        updated = {}
+    """Only show players who are currently sharing the viewer's tile.
 
-        tracked_sids = set()
-        for arr in viewer["known_players"].values():
-            for pp in arr:
-                tracked_sids.add(pp["sid"])
+    Players have separate maps. Seeing somebody must not reveal their past
+    discoveries or let a player track them after they walk away.
+    """
+    for viewer in GAME["players"].values():
+        viewer["known_players"] = {}
+        if not viewer["alive"] or viewer["x"] is None or viewer["y"] is None:
+            continue
 
         for other in GAME["players"].values():
-            if other["sid"] == viewer["sid"]:
-                continue
-            if other["sid"] not in tracked_sids:
-                continue
-            if other["x"] is None or other["y"] is None or not other["alive"]:
-                continue
+            if (
+                other["sid"] != viewer["sid"]
+                and other["alive"]
+                and other["x"] == viewer["x"]
+                and other["y"] == viewer["y"]
+            ):
+                set_relative_player_visibility(viewer, other)
 
-            key = f"{other['x']},{other['y']}"
-            updated.setdefault(key, [])
-            updated[key].append({
-                "sid": other["sid"],
-                "name": other["name"],
-                "x": other["x"],
-                "y": other["y"],
-            })
 
-        viewer["known_players"] = updated
+def announce_players_on_tile(player):
+    """Notify all players when they discover one another on the same tile."""
+    companions = [
+        other for other in GAME["players"].values()
+        if other["sid"] != player["sid"]
+        and other["alive"]
+        and other["x"] == player["x"]
+        and other["y"] == player["y"]
+    ]
+    if not companions:
+        return
+
+    names = ", ".join(other["name"] for other in companions)
+    set_player_message(player, f"You found {names}.")
+    for other in companions:
+        set_player_message(other, f"{player['name']} found you.")
+    log(f"{player['name']} found {names}.")
 
 
 def enter_lost_state(player):
@@ -896,18 +907,13 @@ def serialize_player_state_for(sid):
 
     turn_sid = current_turn_sid()
 
-    if player["lost"]:
-        known_tiles = {}
-        known_players = {}
-        known_open_edges = []
-        known_broken_walls = []
-        known_wall_edges = []
-    else:
-        known_tiles = copy.deepcopy(player["known_tiles"])
-        known_players = copy.deepcopy(player["known_players"])
-        known_open_edges = copy.deepcopy(player["known_open_edges"])
-        known_broken_walls = copy.deepcopy(player["known_broken_walls"])
-        known_wall_edges = copy.deepcopy(player["known_wall_edges"])
+    # A river or black hole hides the player's current position, not the map
+    # they already made.  Each player always keeps their own discoveries.
+    known_tiles = copy.deepcopy(player["known_tiles"])
+    known_players = copy.deepcopy(player["known_players"])
+    known_open_edges = copy.deepcopy(player["known_open_edges"])
+    known_broken_walls = copy.deepcopy(player["known_broken_walls"])
+    known_wall_edges = copy.deepcopy(player["known_wall_edges"])
 
     return {
         "you": serialize_player_public(player),
@@ -1156,17 +1162,13 @@ def manager_start_game():
     for player in GAME["players"].values():
         player["lost"] = False
         player["known_tiles_before_lost"] = {}
+        # A starting square is revealed, but its effect is not triggered until
+        # the player enters that square during a turn.
         reveal_current_position(player)
-        start_tile = GAME["board"][(player["x"], player["y"])]
-        if start_tile != "empty":
-            result = apply_tile_effect(player)
-            if result == "pending_black_hole":
-                pass
-            elif result == "game_over":
-                emit_full_state()
-                return
-        else:
-            set_player_message(player, f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}")
+        set_player_message(
+            player,
+            f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}",
+        )
 
     for player in GAME["players"].values():
         check_birth_spot_discovery(player)
@@ -1278,7 +1280,7 @@ def player_move(data):
 
     check_birth_spot_discovery(player)
     check_previously_known_recovery(player)
-    activate_map_fusion(player)
+    announce_players_on_tile(player)
     refresh_known_player_positions()
 
     emit_full_state()
@@ -1449,13 +1451,6 @@ def manager_resolve_black_hole(data):
         emit("error_message", {"message": "Black hole destination must be an empty tile."})
         return
 
-    if any(
-        other["alive"] and other["x"] == x and other["y"] == y
-        for other in GAME["players"].values()
-    ):
-        emit("error_message", {"message": "Black hole destination must not contain another player."})
-        return
-
     player_sid = GAME["pending_black_hole"]["player_sid"]
     if player_sid not in GAME["players"]:
         GAME["pending_black_hole"] = None
@@ -1475,7 +1470,7 @@ def manager_resolve_black_hole(data):
     GAME["pending_black_hole"] = None
     check_birth_spot_discovery(player)
     check_previously_known_recovery(player)
-    activate_map_fusion(player)
+    announce_players_on_tile(player)
     refresh_known_player_positions()
     emit_full_state()
     end_turn()
