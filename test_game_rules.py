@@ -64,6 +64,48 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertTrue(app.GAME["game_over"])
         self.assertEqual(app.GAME["winner_reason"], "all_players_dead")
 
+    def test_monster_caps_resources_and_grants_an_extra_turn(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(0, 0)] = "monster"
+        player["bullets"] = 5
+        player["bombs"] = 4
+
+        app.apply_tile_effect(player)
+
+        self.assertEqual(player["bullets"], 5)
+        self.assertEqual(player["bombs"], 5)
+        self.assertTrue(player["extra_turn"])
+
+    def test_river_boat_and_raft_follow_their_rules(self):
+        player = self.add_player("one", "One", 1, 0)
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 0)] = "river"
+
+        player["items"]["boat"] = True
+        app.apply_tile_effect(player)
+        self.assertEqual((player["x"], player["y"]), (1, 0))
+        self.assertEqual(player["injuries"], 0)
+
+        player["items"]["boat"] = False
+        player["items"]["raft"] = True
+        app.apply_tile_effect(player)
+        self.assertEqual((player["x"], player["y"]), (0, 0))
+        self.assertEqual(player["injuries"], 0)
+
+    def test_players_keep_separate_maps_when_they_meet(self):
+        one = self.add_player("one", "One", 3, 3)
+        two = self.add_player("two", "Two", 3, 3)
+        one["known_tiles"] = {"0,0": "treasure"}
+        two["known_tiles"] = {"9,9": "exit"}
+
+        app.announce_players_on_tile(one)
+        app.refresh_known_player_positions()
+
+        self.assertEqual(one["known_tiles"], {"0,0": "treasure"})
+        self.assertEqual(two["known_tiles"], {"9,9": "exit"})
+        self.assertIn("3,3", one["known_players"])
+        self.assertIn("3,3", two["known_players"])
+
 class MazeGameSocketTests(unittest.TestCase):
     def setUp(self):
         app.GAME = app.new_game_state()
@@ -115,7 +157,7 @@ class MazeGameSocketTests(unittest.TestCase):
         self.assertTrue(any(event["name"] == "error_message" for event in messages))
         late_player.disconnect()
 
-    def test_black_hole_cannot_place_player_on_another_player(self):
+    def test_black_hole_can_place_player_on_an_empty_tile_with_a_player(self):
         self.prepare_startable_game()
         one_sid, two_sid = app.GAME["player_order"][:2]
         one_player = app.GAME["players"][one_sid]
@@ -125,12 +167,24 @@ class MazeGameSocketTests(unittest.TestCase):
         app.GAME["pending_black_hole"] = {"player_sid": one_sid}
 
         self.manager.emit("manager_resolve_black_hole", {"x": 5, "y": 5})
-        self.assertEqual((one_player["x"], one_player["y"]), (4, 4))
-        self.assertIsNotNone(app.GAME["pending_black_hole"])
-
-        self.manager.emit("manager_resolve_black_hole", {"x": 6, "y": 6})
-        self.assertEqual((one_player["x"], one_player["y"]), (6, 6))
+        self.assertEqual((one_player["x"], one_player["y"]), (5, 5))
         self.assertIsNone(app.GAME["pending_black_hole"])
+
+    def test_starting_tile_is_revealed_but_not_activated(self):
+        self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
+        self.manager.emit("manager_set_tile", {"x": 1, "y": 0, "tile": "treasure"})
+        self.manager.emit("manager_set_tile", {"x": 0, "y": 9, "tile": "exit"})
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        self.two.emit("player_spawn", {"x": 1, "y": 0})
+
+        self.manager.emit("manager_start_game")
+
+        players = list(app.GAME["players"].values())
+        devil_player = next(player for player in players if (player["x"], player["y"]) == (0, 0))
+        treasure_player = next(player for player in players if (player["x"], player["y"]) == (1, 0))
+        self.assertEqual(devil_player["injuries"], 0)
+        self.assertFalse(treasure_player["items"]["treasure"])
+        self.assertNotIn((1, 0), app.GAME["consumed_tiles"])
 
 
 if __name__ == "__main__":
