@@ -45,6 +45,15 @@ DIRECTIONS = {
 }
 
 MANAGER_SID = None
+DEFAULT_PLAYER_COLOR = "#55e4ff"
+
+
+def normalize_player_color(value):
+    if isinstance(value, str) and len(value) == 7 and value.startswith("#"):
+        hex_digits = value[1:]
+        if all(char in "0123456789abcdefABCDEF" for char in hex_digits):
+            return f"#{hex_digits.lower()}"
+    return DEFAULT_PLAYER_COLOR
 
 
 def new_game_state():
@@ -400,10 +409,11 @@ def all_spawned():
     return all(p["spawned"] for p in GAME["players"].values())
 
 
-def create_player(sid, name):
+def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
     return {
         "sid": sid,
         "name": name,
+        "color": normalize_player_color(color),
         "x": None,
         "y": None,
         "birth_x": None,
@@ -555,7 +565,9 @@ def reset_game():
     old_players = GAME["players"]
     new_state = new_game_state()
     for sid, old_player in old_players.items():
-        new_state["players"][sid] = create_player(sid, old_player["name"])
+        new_state["players"][sid] = create_player(
+            sid, old_player["name"], old_player.get("color")
+        )
     GAME = new_state
     log("Game reset. Connected players were kept.")
     emit_full_state()
@@ -587,15 +599,23 @@ def river_validation():
 
     river_start = river_starts[0]
 
-    # River tiles must form a single orthogonal path.  Reject diagonal
-    # neighbours even when the rest of the river happens to be connected.
+    # A river may turn a corner. A diagonal pair is invalid only when it is
+    # not joined by a river tile on either side of that diagonal.
     for (x, y) in river_positions:
         diagonal_neighbors = [
             (x - 1, y - 1), (x + 1, y - 1),
             (x - 1, y + 1), (x + 1, y + 1),
         ]
-        if any(pos in river_positions for pos in diagonal_neighbors):
-            return {"ok": False, "message": "River tiles cannot be diagonal to one another."}
+        for diagonal in diagonal_neighbors:
+            if diagonal not in river_positions:
+                continue
+            dx, dy = diagonal[0] - x, diagonal[1] - y
+            connecting_tiles = [(x + dx, y), (x, y + dy)]
+            if not any(pos in river_positions for pos in connecting_tiles):
+                return {
+                    "ok": False,
+                    "message": "Diagonal river tiles must connect through a river tile.",
+                }
 
     orth_neighbors = {}
     for (x, y) in river_positions:
@@ -863,6 +883,7 @@ def serialize_player_public(player):
     return {
         "sid": player["sid"],
         "name": player["name"],
+        "color": player.get("color", DEFAULT_PLAYER_COLOR),
         "x": player["x"],
         "y": player["y"],
         "birth_x": player["birth_x"],
@@ -983,6 +1004,7 @@ def on_disconnect():
 def join_player(data):
     sid = request.sid
     name = (data.get("name") or "").strip()
+    color = normalize_player_color(data.get("color"))
 
     if not name:
         emit("error_message", {"message": "Name is required."})
@@ -997,10 +1019,11 @@ def join_player(data):
         return
 
     if sid not in GAME["players"]:
-        GAME["players"][sid] = create_player(sid, name)
+        GAME["players"][sid] = create_player(sid, name, color)
         log(f"{name} joined the game.")
     else:
         GAME["players"][sid]["name"] = name
+        GAME["players"][sid]["color"] = color
 
     socketio.server.enter_room(sid, sid)
     emit("joined_as_player", {"sid": sid, "name": name})
