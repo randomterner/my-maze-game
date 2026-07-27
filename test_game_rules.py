@@ -23,14 +23,19 @@ class MazeGameRuleTests(unittest.TestCase):
         app.apply_tile_effect(player)
         self.assertEqual(player["injuries"], 0)
 
-    def test_river_rejects_diagonal_tiles(self):
+    def test_river_rejects_unconnected_diagonal_tiles(self):
         app.GAME["board"][(0, 0)] = "river_start"
-        app.GAME["board"][(1, 0)] = "river"
         app.GAME["board"][(1, 1)] = "river"
-        app.GAME["board"][(0, 1)] = "river"
         result = app.river_validation()
         self.assertFalse(result["ok"])
         self.assertIn("diagonal", result["message"].lower())
+
+    def test_river_allows_a_connected_diagonal_corner(self):
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 0)] = "river"
+        app.GAME["board"][(1, 1)] = "river"
+
+        self.assertTrue(app.river_validation()["ok"])
 
     def test_river_requires_one_connected_start(self):
         app.GAME["board"][(0, 0)] = "river_start"
@@ -105,6 +110,12 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertEqual(two["known_tiles"], {"9,9": "exit"})
         self.assertIn("3,3", one["known_players"])
         self.assertIn("3,3", two["known_players"])
+
+    def test_player_color_is_preserved_and_validated(self):
+        player = app.create_player("one", "One", "#A1b2C3")
+        self.assertEqual(player["color"], "#a1b2c3")
+        self.assertEqual(app.serialize_player_public(player)["color"], "#a1b2c3")
+        self.assertEqual(app.create_player("two", "Two", "not-a-color")["color"], "#55e4ff")
 
 class MazeGameSocketTests(unittest.TestCase):
     def setUp(self):
