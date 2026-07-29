@@ -455,8 +455,8 @@
 
     <div>
       <div class="card">
-        <h3 style="margin-top:0;">Your board</h3>
-        <div class="small">Before the game starts, tap a tile to choose your spawn.</div>
+        <h3 id="boardTitle" style="margin-top:0;">Your board</h3>
+        <div class="small" id="boardHint">Before the game starts, tap a tile to choose your spawn.</div>
 
         <div class="boardOuter">
           <div class="cornerBox"></div>
@@ -567,24 +567,47 @@
     }
   }
 
+  function parseCoordinate(key) {
+    return key.split(",").map(Number);
+  }
+
+  function getMapWindow() {
+    if (!state?.you?.lost) return { startX: 0, startY: 0 };
+
+    const coordinates = [
+      ...Object.keys(state.your_known_tiles || {}),
+      ...Object.keys(state.your_known_players || {}),
+    ].map(parseCoordinate);
+    const current = state.lost_relative_position || { x: 0, y: 0 };
+    coordinates.push([current.x, current.y]);
+
+    return {
+      startX: Math.min(...coordinates.map(([x]) => x)),
+      startY: Math.min(...coordinates.map(([, y]) => y)),
+    };
+  }
+
   function buildBoardLabels() {
     const colLabels = document.getElementById("colLabels");
     const rowLabels = document.getElementById("rowLabels");
+    const window = getMapWindow();
 
     colLabels.innerHTML = "";
     rowLabels.innerHTML = "";
 
-    const letters = ["A","B","C","D","E","F","G","H","I","J"];
-    letters.forEach(letter => {
+    const columns = state?.you?.lost
+      ? Array.from({ length: 10 }, (_, index) => window.startX + index)
+      : ["A","B","C","D","E","F","G","H","I","J"];
+    columns.forEach(label => {
       const div = document.createElement("div");
-      div.textContent = letter;
+      div.textContent = label;
       colLabels.appendChild(div);
     });
 
-    for (let i = 1; i <= 10; i++) {
+    for (let index = 0; index < 10; index++) {
       const div = document.createElement("div");
       div.className = "rowLabel";
-      div.textContent = i;
+      div.textContent = state?.you?.lost ? window.startY + index : index + 1;
       rowLabels.appendChild(div);
     }
   }
@@ -627,18 +650,24 @@
       .filter(([k, v]) => v)
       .map(([k]) => `<span class="pill">${escapeHtml(k)}</span>`)
       .join("") || "<span class='small'>No items yet.</span>";
+    const publicPositions = state.public_revealed_players || [];
+    const publicPositionList = publicPositions.length
+      ? publicPositions.map(player => `${escapeHtml(player.name)}: ${player.x}, ${player.y}`).join(" · ")
+      : "<span class='small'>None.</span>";
 
     document.getElementById("playerInfo").innerHTML = `
       <div><strong>Name:</strong> ${escapeHtml(you.name)}</div>
       <div><strong>Alive:</strong> ${you.alive ? "Yes" : "No"}</div>
       <div><strong>Spawned:</strong> ${you.spawned ? "Yes" : "No"}</div>
       <div><strong>Lost:</strong> ${you.lost ? "Yes" : "No"}</div>
-      <div><strong>Position:</strong> ${you.lost ? "Unknown" : (you.x === null ? "-" : `${you.x}, ${you.y}`)}</div>
+      <div><strong>Position:</strong> ${you.lost ? "Hidden (use your relative map)" : (you.x === null ? "-" : `${you.x}, ${you.y}`)}</div>
       <div><strong>Injuries:</strong> ${you.injuries}</div>
       <div><strong>Bullets:</strong> ${you.bullets}</div>
       <div><strong>Bombs:</strong> ${you.bombs}</div>
       <div style="margin-top:8px;"><strong>Items:</strong></div>
       <div>${items}</div>
+      <div style="margin-top:8px;"><strong>Public positions:</strong></div>
+      <div>${publicPositionList}</div>
     `;
 
     document.getElementById("lastMessage").textContent = you.last_message || "";
@@ -658,6 +687,20 @@
 
     document.getElementById("logs").innerHTML =
       (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
+
+    if (you.lost) {
+      const tiles = Object.keys(state.your_known_tiles || {}).map(parseCoordinate);
+      const columns = new Set(tiles.map(([x]) => x)).size;
+      const rows = new Set(tiles.map(([, y]) => y)).size;
+      document.getElementById("boardTitle").textContent = "Lost-path map";
+      document.getElementById("boardHint").textContent =
+        `Relative coordinates only — mapped columns: ${columns}/10, rows: ${rows}/10. Map all 10 of each to recover.`;
+    } else {
+      document.getElementById("boardTitle").textContent = "Your board";
+      document.getElementById("boardHint").textContent = state.game_started
+        ? "Your discovered map."
+        : "Before the game starts, tap a tile to choose your spawn.";
+    }
   }
 
   function buildBoard() {
@@ -670,15 +713,21 @@
     const openEdges = state.your_known_open_edges || [];
     const brokenEdges = state.your_known_broken_walls || [];
     const knownWallEdges = state.your_known_wall_edges || [];
+    const window = getMapWindow();
+    const lostMap = Boolean(state.you.lost);
+    const relativePosition = state.lost_relative_position || { x: 0, y: 0 };
+    const publicPositions = state.public_revealed_players || [];
 
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
+    for (let displayY = 0; displayY < 10; displayY++) {
+      for (let displayX = 0; displayX < 10; displayX++) {
+        const x = window.startX + displayX;
+        const y = window.startY + displayY;
         const key = `${x},${y}`;
         const tile = knownTiles[key] || "unknown";
 
         const cell = document.createElement("div");
         cell.className = "cell" + (tile === "unknown" ? " unknown" : "");
-        cell.title = `${x},${y}`;
+        cell.title = lostMap ? `relative ${x},${y}` : `${x},${y}`;
         cell.onclick = () => handleBoardClick(x, y);
 
         const texture = textureMap[tile];
@@ -690,35 +739,40 @@
         }
 
         if (state.game_started) {
-          if (y === 0) addEdgeMarker(cell, "Top", "wall");
-          if (y === 9) addEdgeMarker(cell, "Bottom", "wall");
-          if (x === 0) addEdgeMarker(cell, "Left", "wall");
-          if (x === 9) addEdgeMarker(cell, "Right", "wall");
+          if (!lostMap && y === 0) addEdgeMarker(cell, "Top", "wall");
+          if (!lostMap && y === 9) addEdgeMarker(cell, "Bottom", "wall");
+          if (!lostMap && x === 0) addEdgeMarker(cell, "Left", "wall");
+          if (!lostMap && x === 9) addEdgeMarker(cell, "Right", "wall");
 
-          if (y > 0 && edgeExists(knownWallEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
-          if (x > 0 && edgeExists(knownWallEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
-          if (y < 9 && edgeExists(knownWallEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
-          if (x < 9 && edgeExists(knownWallEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
+          if ((lostMap || displayY > 0) && edgeExists(knownWallEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
+          if ((lostMap || displayX > 0) && edgeExists(knownWallEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
+          if ((lostMap || displayY < 9) && edgeExists(knownWallEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
+          if ((lostMap || displayX < 9) && edgeExists(knownWallEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
 
-          if (y > 0 && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
-          if (x > 0 && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
-          if (y < 9 && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
-          if (x < 9 && edgeExists(openEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "open");
+          if ((lostMap || displayY > 0) && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
+          if ((lostMap || displayX > 0) && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
+          if ((lostMap || displayY < 9) && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
+          if ((lostMap || displayX < 9) && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Right", "open");
 
-          if (y > 0 && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
-          if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
-          if (y < 9 && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
-          if (x < 9 && edgeExists(brokenEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "broken");
+          if ((lostMap || displayY > 0) && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
+          if ((lostMap || displayX > 0) && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
+          if ((lostMap || displayY < 9) && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
+          if ((lostMap || displayX < 9) && edgeExists(brokenEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "broken");
         }
 
-        if (state.game_started && tile !== "unknown") {
+        const publicHere = lostMap
+          ? []
+          : publicPositions.filter(player => player.x === x && player.y === y);
+
+        if (state.game_started && (tile !== "unknown" || publicHere.length > 0)) {
           let markerIndex = 0;
+          const displayedSids = new Set();
 
           if (
             state.you &&
-            !state.you.lost &&
-            state.you.x === x &&
-            state.you.y === y
+            (lostMap
+              ? relativePosition.x === x && relativePosition.y === y
+              : state.you.x === x && state.you.y === y)
           ) {
             const selfTag = document.createElement("div");
             selfTag.className = "playerTag youTag";
@@ -726,12 +780,12 @@
             selfTag.style.setProperty("--player-color", state.you.color || "#55e4ff");
             selfTag.textContent = state.you.name || "YOU";
             cell.appendChild(selfTag);
+            displayedSids.add(state.you.sid);
             markerIndex++;
           }
 
-          const here = knownPlayers[key] || [];
-          here.forEach((p) => {
-            if (p.sid === state.you.sid) return;
+          [...(knownPlayers[key] || []), ...publicHere].forEach((p) => {
+            if (displayedSids.has(p.sid)) return;
 
             const tag = document.createElement("div");
             tag.className = "playerTag";
@@ -739,6 +793,7 @@
             tag.style.setProperty("--player-color", p.color || "#ffcc55");
             tag.textContent = p.name;
             cell.appendChild(tag);
+            displayedSids.add(p.sid);
             markerIndex++;
           });
         }
