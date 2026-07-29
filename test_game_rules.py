@@ -248,6 +248,33 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertTrue(app.check_lost_map_completion(player))
         self.assertFalse(player["lost"])
 
+    def test_flashlight_counts_as_a_lost_visit_and_recovers_a_familiar_tile(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(1, 0)] = "monster"
+        player["known_tiles"] = {"1,0": "monster"}
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        revealed = app.reveal_line(player, "right")
+
+        self.assertEqual(revealed, [(1, 0)])
+        self.assertIn("1,0", player["visited_tiles"])
+        self.assertFalse(player["lost"])
+        self.assertIn("flashlight revealed a familiar tile", player["last_message"].lower())
+
+    def test_flashlight_visit_counts_for_lost_special_tile_information(self):
+        observer = self.add_player("one", "One", 0, 0)
+        lost_player = self.add_player("two", "Two", 1, 0)
+        app.GAME["board"][(1, 0)] = "river_start"
+
+        app.reveal_line(observer, "right")
+        self.assertIn("1,0", observer["visited_tiles"])
+
+        app.enter_lost_state(lost_player, "river")
+        app.start_lost_relative_map(lost_player)
+        state = app.serialize_player_state_for("two")
+        self.assertEqual(state["your_known_players"]["-1,0"][0]["sid"], "one")
+
     def test_last_survivor_wins_and_all_dead_ends_game(self):
         one = self.add_player("one", "One", 0, 0)
         two = self.add_player("two", "Two", 1, 0)
@@ -398,11 +425,12 @@ class MazeGameSocketTests(unittest.TestCase):
 
     def test_lost_outer_wall_bombs_mark_the_map_and_recover_after_two_axes(self):
         self.prepare_startable_game()
-        one_sid = app.GAME["player_order"][0]
+        one_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
         player = app.GAME["players"][one_sid]
         player["x"], player["y"] = 0, 0
         app.enter_lost_state(player, "black_hole")
         app.start_lost_relative_map(player)
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(one_sid)
 
         self.one.emit("player_bomb", {"direction": "up"})
         self.assertTrue(player["lost"])
@@ -410,13 +438,29 @@ class MazeGameSocketTests(unittest.TestCase):
         self.assertTrue(player["lost_known_wall_edges"])
         self.assertIn("north outer edge", player["last_message"])
 
-        app.GAME["current_turn_index"] = 0
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(one_sid)
         self.one.emit("player_bomb", {"direction": "left"})
         self.assertFalse(player["lost"])
         self.assertEqual(
             app.serialize_player_state_for(app.GAME["player_order"][1])["public_revealed_players"][0]["sid"],
             one_sid,
         )
+
+    def test_flashlight_socket_action_recovers_from_a_familiar_lost_tile(self):
+        self.prepare_startable_game()
+        one_sid = app.GAME["player_order"][0]
+        player = app.GAME["players"][one_sid]
+        player["items"]["flashlight"] = True
+        player["items"]["batteries"] = True
+        player["known_tiles"] = {"1,0": "empty"}
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        self.one.emit("player_flashlight", {"direction": "right"})
+
+        self.assertFalse(player["lost"])
+        self.assertIn("1,0", player["visited_tiles"])
+        self.assertIn("flashlight revealed a familiar tile", player["last_message"].lower())
 
     def test_starting_tile_is_revealed_but_not_activated(self):
         self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
