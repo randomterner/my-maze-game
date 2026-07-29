@@ -610,7 +610,7 @@
         playersHere.forEach((p, idx) => {
           const tag = document.createElement("div");
           tag.className = "playerTag";
-          tag.style.bottom = `${2 + idx * 12}px`;
+          tag.style.bottom = `${20 + idx * 12}px`;
           tag.style.setProperty("--player-color", p.color || "#ffcc55");
           tag.textContent = p.name;
           cell.appendChild(tag);
