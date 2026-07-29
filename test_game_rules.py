@@ -218,6 +218,36 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertTrue(app.wall_blocks(0, 0, "up"))
         self.assertEqual(player["bombs"], 3)
 
+    def test_outer_wall_bomb_clues_can_complete_a_lost_map(self):
+        player = self.add_player("one", "One", 0, 0)
+        self.add_player("two", "Two", 9, 9)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        app.remember_lost_outer_wall_bomb(player, "up")
+        self.assertTrue(player["lost"])
+        self.assertFalse(app.check_lost_map_completion(player))
+
+        app.remember_lost_outer_wall_bomb(player, "left")
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertFalse(player["lost"])
+        self.assertEqual(
+            app.serialize_player_state_for("two")["public_revealed_players"][0]["sid"],
+            "one",
+        )
+
+    def test_outer_wall_clue_and_ten_columns_can_complete_a_lost_map(self):
+        player = self.add_player("one", "One", 4, 0)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        app.remember_lost_outer_wall_bomb(player, "up")
+        player["lost_known_tiles"] = {
+            f"{x},0": "empty" for x in range(10)
+        }
+
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertFalse(player["lost"])
+
     def test_last_survivor_wins_and_all_dead_ends_game(self):
         one = self.add_player("one", "One", 0, 0)
         two = self.add_player("two", "Two", 1, 0)
@@ -365,6 +395,28 @@ class MazeGameSocketTests(unittest.TestCase):
         self.manager.emit("manager_resolve_black_hole", {"x": 5, "y": 5})
         self.assertEqual((one_player["x"], one_player["y"]), (5, 5))
         self.assertIsNone(app.GAME["pending_black_hole"])
+
+    def test_lost_outer_wall_bombs_mark_the_map_and_recover_after_two_axes(self):
+        self.prepare_startable_game()
+        one_sid = app.GAME["player_order"][0]
+        player = app.GAME["players"][one_sid]
+        player["x"], player["y"] = 0, 0
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        self.one.emit("player_bomb", {"direction": "up"})
+        self.assertTrue(player["lost"])
+        self.assertEqual(player["bombs"], 2)
+        self.assertTrue(player["lost_known_wall_edges"])
+        self.assertIn("north outer edge", player["last_message"])
+
+        app.GAME["current_turn_index"] = 0
+        self.one.emit("player_bomb", {"direction": "left"})
+        self.assertFalse(player["lost"])
+        self.assertEqual(
+            app.serialize_player_state_for(app.GAME["player_order"][1])["public_revealed_players"][0]["sid"],
+            one_sid,
+        )
 
     def test_starting_tile_is_revealed_but_not_activated(self):
         self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
