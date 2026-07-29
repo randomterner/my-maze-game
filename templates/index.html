@@ -581,16 +581,11 @@
   function getMapWindow() {
     if (!state?.you?.lost) return { startX: 0, startY: 0 };
 
-    const coordinates = [
-      ...Object.keys(state.your_known_tiles || {}),
-      ...Object.keys(state.your_known_players || {}),
-    ].map(parseCoordinate);
     const current = state.lost_relative_position || { x: 0, y: 0 };
-    coordinates.push([current.x, current.y]);
-
+    const boardSize = state.board_size || 10;
     return {
-      startX: Math.min(...coordinates.map(([x]) => x)),
-      startY: Math.min(...coordinates.map(([, y]) => y)),
+      startX: current.x - Math.floor(boardSize / 2),
+      startY: current.y - Math.floor(boardSize / 2),
     };
   }
 
