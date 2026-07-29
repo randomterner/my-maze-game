@@ -28,6 +28,11 @@ TILE_TYPES = {
     "armory",
 }
 
+# All of these tiles are required exactly once before a game can begin.
+# Empty tiles and the river are the only repeatable board tiles.  A river_start
+# is part of the river, but has its own one-start rule in river_validation().
+REQUIRED_SINGLE_TILES = TILE_TYPES - {"empty", "river", "river_start"}
+
 PICKUP_TILES = {
     "treasure",
     "fake_treasure",
@@ -71,6 +76,13 @@ def new_game_state():
         "turn_number": 1,
         "logs": [],
         "pending_black_hole": None,
+        "river_lost_map": {
+            "tiles": {},
+            "open_edges": [],
+            "broken_walls": [],
+            "wall_edges": [],
+        },
+        "public_revealed_positions": {},
     }
 
 
@@ -122,6 +134,214 @@ def remember_visited_tile(player, pos):
     key = f"{pos[0]},{pos[1]}"
     if key not in player["visited_tiles"]:
         player["visited_tiles"].append(key)
+
+
+def lost_relative_position_for(player, actual_pos):
+    """Convert a server-only board position into the lost map's coordinates."""
+    return (
+        player["lost_relative_x"] + actual_pos[0] - player["x"],
+        player["lost_relative_y"] + actual_pos[1] - player["y"],
+    )
+
+
+def remember_lost_edge(player, field, actual_a, actual_b):
+    relative_a = lost_relative_position_for(player, actual_a)
+    relative_b = lost_relative_position_for(player, actual_b)
+    edge = serialize_edge(relative_a, relative_b)
+    if edge not in player[field]:
+        player[field].append(edge)
+    if player.get("lost_kind") == "river":
+        river_field = {
+            "lost_known_open_edges": "open_edges",
+            "lost_known_broken_walls": "broken_walls",
+            "lost_known_wall_edges": "wall_edges",
+        }.get(field)
+        if river_field and edge not in GAME["river_lost_map"][river_field]:
+            GAME["river_lost_map"][river_field].append(copy.deepcopy(edge))
+
+
+def reveal_players_at_lost_special_tile(player, pos):
+    """Show players who previously found this special tile, in relative space."""
+    tile_key = f"{pos[0]},{pos[1]}"
+    for other in GAME["players"].values():
+        if (
+            other["sid"] == player["sid"]
+            or not other["alive"]
+            or other["lost"]
+            or other["x"] is None
+            or other["y"] is None
+            or tile_key not in other["visited_tiles"]
+        ):
+            continue
+
+        relative_other = lost_relative_position_for(player, (other["x"], other["y"]))
+        relative_key = f"{relative_other[0]},{relative_other[1]}"
+        player["lost_known_players"].setdefault(relative_key, [])
+        if not any(item["sid"] == other["sid"] for item in player["lost_known_players"][relative_key]):
+            player["lost_known_players"][relative_key].append({
+                "sid": other["sid"],
+                "name": other["name"],
+                "color": other.get("color", DEFAULT_PLAYER_COLOR),
+            })
+
+
+def check_lost_map_completion(player):
+    tiles = player["lost_known_tiles"] if player["lost"] else player["known_tiles"]
+    coordinates = [
+        tuple(int(value) for value in key.split(","))
+        for key in tiles
+    ]
+    if not coordinates:
+        return False
+
+    known_x = {x for x, _ in coordinates}
+    known_y = {y for _, y in coordinates}
+    if len(known_x) >= BOARD_SIZE and len(known_y) >= BOARD_SIZE:
+        if player["lost"]:
+            share_lost_section_with_everyone(player)
+            recover_from_lost(
+                player,
+                "You mapped all 10 relative rows and columns and are no longer lost.",
+                reveal_position_to_everyone=True,
+            )
+        else:
+            share_current_section_with_everyone(player)
+            reveal_player_position_to_everyone(player)
+        return True
+    return False
+
+
+def remember_lost_tile(player, pos):
+    relative_pos = lost_relative_position_for(player, pos)
+    key = f"{relative_pos[0]},{relative_pos[1]}"
+    is_new = key not in player["lost_known_tiles"]
+    player["lost_known_tiles"][key] = effective_tile_at(pos)
+
+    if player.get("lost_kind") == "river":
+        GAME["river_lost_map"]["tiles"][key] = effective_tile_at(pos)
+
+    if is_new and tile_allows_map_fusion(pos):
+        reveal_players_at_lost_special_tile(player, pos)
+
+    check_lost_map_completion(player)
+    return is_new
+
+
+def start_lost_relative_map(player):
+    """Start at 0,0; river loss also restores the persistent shared river map."""
+    player["lost_relative_x"] = 0
+    player["lost_relative_y"] = 0
+    if player.get("lost_kind") == "river":
+        player["lost_known_tiles"] = copy.deepcopy(GAME["river_lost_map"]["tiles"])
+        player["lost_known_open_edges"] = copy.deepcopy(GAME["river_lost_map"]["open_edges"])
+        player["lost_known_broken_walls"] = copy.deepcopy(GAME["river_lost_map"]["broken_walls"])
+        player["lost_known_wall_edges"] = copy.deepcopy(GAME["river_lost_map"]["wall_edges"])
+    else:
+        player["lost_known_tiles"] = {}
+        player["lost_known_open_edges"] = []
+        player["lost_known_broken_walls"] = []
+        player["lost_known_wall_edges"] = []
+    player["lost_known_players"] = {}
+    player["lost_river_players"] = {}
+    if player["x"] is not None and player["y"] is not None:
+        remember_lost_tile(player, (player["x"], player["y"]))
+
+
+def reveal_player_position_to_everyone(player):
+    """Publish a current location until that player becomes lost again."""
+    was_already_public = player["sid"] in GAME["public_revealed_positions"]
+    GAME["public_revealed_positions"][player["sid"]] = {
+        "sid": player["sid"],
+        "name": player["name"],
+        "color": player.get("color", DEFAULT_PLAYER_COLOR),
+        "x": player["x"],
+        "y": player["y"],
+    }
+    return not was_already_public
+
+
+def append_unique_edge(target, edge):
+    if edge not in target:
+        target.append(copy.deepcopy(edge))
+
+
+def share_map_with_everyone(tiles, open_edges, broken_walls, wall_edges):
+    """Add a completed section of map knowledge to every player's normal map."""
+    for recipient in GAME["players"].values():
+        for key, tile in tiles.items():
+            recipient["known_tiles"][key] = tile
+        for edge in open_edges:
+            append_unique_edge(recipient["known_open_edges"], edge)
+        for edge in broken_walls:
+            append_unique_edge(recipient["known_broken_walls"], edge)
+        for edge in wall_edges:
+            append_unique_edge(recipient["known_wall_edges"], edge)
+
+
+def share_current_section_with_everyone(player):
+    """Share only discoveries made after this player's most recent lost state."""
+    previous_tiles = player.get("last_lost_known_tiles", {})
+    tiles = {
+        key: value for key, value in player["known_tiles"].items()
+        if key not in previous_tiles
+    }
+    share_map_with_everyone(
+        tiles,
+        player["known_open_edges"],
+        player["known_broken_walls"],
+        player["known_wall_edges"],
+    )
+
+
+def share_lost_section_with_everyone(player):
+    """Share the new section, plus the old section too when the two overlap."""
+    previous_tiles = player.get("known_tiles_before_lost", {})
+    tiles = {}
+    overlaps_previous_section = False
+
+    def actual_position(relative_position):
+        return (
+            player["x"] + relative_position[0] - player["lost_relative_x"],
+            player["y"] + relative_position[1] - player["lost_relative_y"],
+        )
+
+    for relative_key, tile in player["lost_known_tiles"].items():
+        relative = tuple(int(value) for value in relative_key.split(","))
+        actual = actual_position(relative)
+        actual_key = f"{actual[0]},{actual[1]}"
+        if in_bounds(*actual) and actual_key in previous_tiles:
+            overlaps_previous_section = True
+        if in_bounds(*actual):
+            tiles[actual_key] = tile
+
+    def translate_edges(relative_edges):
+        translated = []
+        for edge in relative_edges:
+            actual_a = actual_position(tuple(edge[0]))
+            actual_b = actual_position(tuple(edge[1]))
+            key_a = f"{actual_a[0]},{actual_a[1]}"
+            key_b = f"{actual_b[0]},{actual_b[1]}"
+            if (
+                in_bounds(*actual_a)
+                and in_bounds(*actual_b)
+                and key_a not in previous_tiles
+                and key_b not in previous_tiles
+            ):
+                append_unique_edge(translated, serialize_edge(actual_a, actual_b))
+        return translated
+
+    new_open_edges = translate_edges(player["lost_known_open_edges"])
+    new_broken_walls = translate_edges(player["lost_known_broken_walls"])
+    new_wall_edges = translate_edges(player["lost_known_wall_edges"])
+
+    if overlaps_previous_section:
+        tiles = {**previous_tiles, **tiles}
+        new_open_edges = [*player.get("known_open_edges_before_lost", []), *new_open_edges]
+        new_broken_walls = [*player.get("known_broken_walls_before_lost", []), *new_broken_walls]
+        new_wall_edges = [*player.get("known_wall_edges_before_lost", []), *new_wall_edges]
+
+    share_map_with_everyone(tiles, new_open_edges, new_broken_walls, new_wall_edges)
+    return overlaps_previous_section
 
 
 def merge_map_knowledge(receiver, donor):
@@ -193,13 +413,42 @@ def refresh_known_player_positions():
             continue
 
         for other in GAME["players"].values():
+            current_key = f"{other['x']},{other['y']}"
+            exited_lost_here = (
+                other.get("lost_exit_visible_position") == (other["x"], other["y"])
+                and current_key in viewer["visited_tiles"]
+            )
             if (
                 other["sid"] != viewer["sid"]
                 and other["alive"]
                 and other["x"] == viewer["x"]
                 and other["y"] == viewer["y"]
+            ) or (
+                other["sid"] != viewer["sid"]
+                and other["alive"]
+                and exited_lost_here
             ):
                 set_relative_player_visibility(viewer, other)
+
+
+def refresh_lost_river_player_positions():
+    """River-lost players share the river-start-relative map with each other."""
+    river_lost_players = [
+        player for player in GAME["players"].values()
+        if player["alive"] and player["lost"] and player.get("lost_kind") == "river"
+    ]
+
+    for viewer in river_lost_players:
+        viewer["lost_river_players"] = {}
+        for other in river_lost_players:
+            if other["sid"] == viewer["sid"]:
+                continue
+            key = f"{other['lost_relative_x']},{other['lost_relative_y']}"
+            viewer["lost_river_players"].setdefault(key, []).append({
+                "sid": other["sid"],
+                "name": other["name"],
+                "color": other.get("color", DEFAULT_PLAYER_COLOR),
+            })
 
 
 def announce_players_on_tile(player):
@@ -221,10 +470,16 @@ def announce_players_on_tile(player):
     log(f"{player['name']} found {names}.")
 
 
-def enter_lost_state(player):
+def enter_lost_state(player, lost_kind):
     if not player["lost"]:
         player["known_tiles_before_lost"] = copy.deepcopy(player["known_tiles"])
+        player["known_open_edges_before_lost"] = copy.deepcopy(player["known_open_edges"])
+        player["known_broken_walls_before_lost"] = copy.deepcopy(player["known_broken_walls"])
+        player["known_wall_edges_before_lost"] = copy.deepcopy(player["known_wall_edges"])
+        player["last_lost_known_tiles"] = copy.deepcopy(player["known_tiles"])
     player["lost"] = True
+    player["lost_kind"] = lost_kind
+    GAME["public_revealed_positions"].pop(player["sid"], None)
     clear_relative_player_visibility(player)
 
 
@@ -235,10 +490,14 @@ def previously_known_tile_ends_lost(player):
     return key in player.get("known_tiles_before_lost", {})
 
 
-def recover_from_lost(player, message):
+def recover_from_lost(player, message, reveal_position_to_everyone=False):
     player["lost"] = False
+    player["lost_kind"] = None
+    player["lost_exit_visible_position"] = (player["x"], player["y"])
     reveal_current_position(player)
     player["known_tiles_before_lost"] = {}
+    if reveal_position_to_everyone:
+        reveal_player_position_to_everyone(player)
     set_player_message(player, message)
     log(f"{player['name']} is no longer lost.")
 
@@ -433,11 +692,25 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         },
         "known_tiles": {},
         "known_tiles_before_lost": {},
+        "known_open_edges_before_lost": [],
+        "known_broken_walls_before_lost": [],
+        "known_wall_edges_before_lost": [],
+        "last_lost_known_tiles": {},
         "known_players": {},
         "known_open_edges": [],
         "known_broken_walls": [],
         "known_wall_edges": [],
         "visited_tiles": [],
+        "lost_relative_x": 0,
+        "lost_relative_y": 0,
+        "lost_known_tiles": {},
+        "lost_known_players": {},
+        "lost_known_open_edges": [],
+        "lost_known_broken_walls": [],
+        "lost_known_wall_edges": [],
+        "lost_river_players": {},
+        "lost_kind": None,
+        "lost_exit_visible_position": None,
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
         "lost": False,
@@ -496,6 +769,8 @@ def reveal_position(player, pos):
     add_known_tile(player, pos)
     remember_visited_tile(player, pos)
     update_known_players_for_viewer(player)
+    if not player["lost"]:
+        check_lost_map_completion(player)
 
 
 def reveal_current_position(player):
@@ -588,7 +863,10 @@ def river_validation():
     river_positions = get_river_positions()
 
     if not river_positions:
-        return {"ok": True, "message": "No river on board."}
+        return {
+            "ok": False,
+            "message": "The board needs at least one river tile (river_start counts).",
+        }
 
     if len(river_positions) > 20:
         return {"ok": False, "message": "River may use at most 20 tiles including river_start."}
@@ -653,6 +931,28 @@ def river_validation():
         return {"ok": True, "message": "River is valid."}
 
     return {"ok": False, "message": "All river tiles must be connected."}
+
+
+def required_tile_validation():
+    """Check the one-of-each-tile rule used when starting a game."""
+    counts = {
+        tile: sum(board_tile == tile for board_tile in GAME["board"].values())
+        for tile in REQUIRED_SINGLE_TILES
+    }
+    missing = sorted(tile for tile, count in counts.items() if count == 0)
+    duplicates = sorted(tile for tile, count in counts.items() if count > 1)
+
+    if missing:
+        return {
+            "ok": False,
+            "message": f"The board is missing: {', '.join(missing)}.",
+        }
+    if duplicates:
+        return {
+            "ok": False,
+            "message": f"Only one of each is allowed: {', '.join(duplicates)}.",
+        }
+    return {"ok": True, "message": "All required tile types are placed exactly once."}
 
 
 def handle_pickup(player, pos, tile):
@@ -801,14 +1101,15 @@ def apply_tile_effect(player):
                 player_knows_river_start = river_start_key in player["known_tiles"]
 
                 player["x"], player["y"] = river_start
-                remember_visited_tile(player, river_start)
-                reveal_current_position(player)
 
                 if player_knows_river_start:
+                    remember_visited_tile(player, river_start)
+                    reveal_current_position(player)
                     remember_open_edge(player, pos, river_start)
                     set_player_message(player, "You used the raft. No injury, and you drifted to the known river start.")
                 else:
-                    enter_lost_state(player)
+                    enter_lost_state(player, "river")
+                    start_lost_relative_map(player)
                     set_player_message(player, "You used the raft. No injury, but you were dragged to an unknown river start and became lost.")
             else:
                 set_player_message(player, "You used the raft.")
@@ -818,12 +1119,11 @@ def apply_tile_effect(player):
         if check_death(player, "Killed by river injury."):
             return "dead"
 
-        enter_lost_state(player)
+        enter_lost_state(player, "river")
 
         if river_start is not None:
             player["x"], player["y"] = river_start
-            remember_visited_tile(player, river_start)
-            reveal_current_position(player)
+            start_lost_relative_map(player)
 
         set_player_message(player, "The river injured you, dragged you to the river start, and you are now lost.")
         return "continue"
@@ -843,7 +1143,10 @@ def reveal_line(player, direction):
             if not is_outer_wall(x, y, direction):
                 nx, ny = x + dx, y + dy
                 if in_bounds(nx, ny):
-                    remember_wall_edge(player, (x, y), (nx, ny))
+                    if player["lost"]:
+                        remember_lost_edge(player, "lost_known_wall_edges", (x, y), (nx, ny))
+                    else:
+                        remember_wall_edge(player, (x, y), (nx, ny))
             break
 
         x += dx
@@ -852,8 +1155,13 @@ def reveal_line(player, direction):
             break
 
         current = (x, y)
-        remember_open_edge(player, prev, current)
-        reveal_position(player, current)
+        if player["lost"]:
+            remember_lost_edge(player, "lost_known_open_edges", prev, current)
+            remember_visited_tile(player, current)
+            remember_lost_tile(player, current)
+        else:
+            remember_open_edge(player, prev, current)
+            reveal_position(player, current)
         revealed.append(current)
         prev = current
 
@@ -930,14 +1238,38 @@ def serialize_player_state_for(sid):
 
     # A river or black hole hides the player's current position, not the map
     # they already made.  Each player always keeps their own discoveries.
-    known_tiles = copy.deepcopy(player["known_tiles"])
-    known_players = copy.deepcopy(player["known_players"])
-    known_open_edges = copy.deepcopy(player["known_open_edges"])
-    known_broken_walls = copy.deepcopy(player["known_broken_walls"])
-    known_wall_edges = copy.deepcopy(player["known_wall_edges"])
+    if player["lost"]:
+        known_tiles = copy.deepcopy(player["lost_known_tiles"])
+        known_players = copy.deepcopy(player["lost_known_players"])
+        for key, players in player["lost_river_players"].items():
+            known_players.setdefault(key, [])
+            for other in players:
+                if not any(existing["sid"] == other["sid"] for existing in known_players[key]):
+                    known_players[key].append(copy.deepcopy(other))
+        known_open_edges = copy.deepcopy(player["lost_known_open_edges"])
+        known_broken_walls = copy.deepcopy(player["lost_known_broken_walls"])
+        known_wall_edges = copy.deepcopy(player["lost_known_wall_edges"])
+    else:
+        known_tiles = copy.deepcopy(player["known_tiles"])
+        known_players = copy.deepcopy(player["known_players"])
+        known_open_edges = copy.deepcopy(player["known_open_edges"])
+        known_broken_walls = copy.deepcopy(player["known_broken_walls"])
+        known_wall_edges = copy.deepcopy(player["known_wall_edges"])
+    player_view = serialize_player_public(player)
+
+    # The manager remains the only client who receives a lost player's actual
+    # location.  The game server still uses it to validate every action.
+    if player["lost"]:
+        player_view["x"] = None
+        player_view["y"] = None
 
     return {
-        "you": serialize_player_public(player),
+        "you": player_view,
+        "public_revealed_players": list(GAME["public_revealed_positions"].values()),
+        "lost_relative_position": {
+            "x": player["lost_relative_x"],
+            "y": player["lost_relative_y"],
+        } if player["lost"] else None,
         "your_known_tiles": known_tiles,
         "your_known_players": known_players,
         "your_known_open_edges": known_open_edges,
@@ -958,6 +1290,22 @@ def serialize_player_state_for(sid):
 
 
 def emit_full_state():
+    GAME["public_revealed_positions"] = {
+        sid: {
+            "sid": player["sid"],
+            "name": player["name"],
+            "color": player.get("color", DEFAULT_PLAYER_COLOR),
+            "x": player["x"],
+            "y": player["y"],
+        }
+        for sid in GAME["public_revealed_positions"]
+        if (player := GAME["players"].get(sid))
+        and player["alive"]
+        and not player["lost"]
+        and player["x"] is not None
+        and player["y"] is not None
+    }
+    refresh_lost_river_player_positions()
     socketio.emit("manager_state", serialize_manager_state(), room="manager_room")
     for sid in list(GAME["players"].keys()):
         socketio.emit("player_state", serialize_player_state_for(sid), room=sid)
@@ -1069,6 +1417,30 @@ def manager_set_tile(data):
         emit("error_message", {"message": "Exit must be placed on an outer edge tile."})
         return
 
+    current_tile = GAME["board"][(x, y)]
+    if tile in REQUIRED_SINGLE_TILES:
+        duplicate_exists = any(
+            pos != (x, y) and board_tile == tile
+            for pos, board_tile in GAME["board"].items()
+        )
+        if duplicate_exists:
+            emit("error_message", {"message": f"Only one {tile} tile is allowed."})
+            return
+
+    if tile == "river_start":
+        duplicate_start_exists = any(
+            pos != (x, y) and board_tile == "river_start"
+            for pos, board_tile in GAME["board"].items()
+        )
+        if duplicate_start_exists:
+            emit("error_message", {"message": "Only one river_start tile is allowed."})
+            return
+
+    if tile in {"river", "river_start"} and current_tile not in {"river", "river_start"}:
+        if len(get_river_positions()) >= 20:
+            emit("error_message", {"message": "River may use at most 20 tiles including river_start."})
+            return
+
     GAME["board"][(x, y)] = tile
     GAME["consumed_tiles"].discard((x, y))
     emit_full_state()
@@ -1163,13 +1535,9 @@ def manager_start_game():
         emit("error_message", {"message": f"Cannot start: {validation['message']}"})
         return
 
-    treasure_count = sum(tile == "treasure" for tile in GAME["board"].values())
-    exit_count = sum(tile == "exit" for tile in GAME["board"].values())
-    if treasure_count != 1:
-        emit("error_message", {"message": "The board needs exactly one real treasure."})
-        return
-    if exit_count != 1:
-        emit("error_message", {"message": "The board needs exactly one exit."})
+    required_tiles = required_tile_validation()
+    if not required_tiles["ok"]:
+        emit("error_message", {"message": f"Cannot start: {required_tiles['message']}"})
         return
 
     GAME["player_order"] = list(GAME["players"].keys())
@@ -1184,7 +1552,18 @@ def manager_start_game():
 
     for player in GAME["players"].values():
         player["lost"] = False
+        player["lost_kind"] = None
+        player["lost_exit_visible_position"] = None
         player["known_tiles_before_lost"] = {}
+        player["known_open_edges_before_lost"] = []
+        player["known_broken_walls_before_lost"] = []
+        player["known_wall_edges_before_lost"] = []
+        player["last_lost_known_tiles"] = {}
+        player["lost_known_tiles"] = {}
+        player["lost_known_players"] = {}
+        player["lost_known_open_edges"] = []
+        player["lost_known_broken_walls"] = []
+        player["lost_known_wall_edges"] = []
         # A starting square is revealed, but its effect is not triggered until
         # the player enters that square during a turn.
         reveal_current_position(player)
@@ -1239,11 +1618,23 @@ def player_spawn(data):
     player["lost"] = False
     player["known_tiles"] = {}
     player["known_tiles_before_lost"] = {}
+    player["known_open_edges_before_lost"] = []
+    player["known_broken_walls_before_lost"] = []
+    player["known_wall_edges_before_lost"] = []
+    player["last_lost_known_tiles"] = {}
     player["known_players"] = {}
     player["known_open_edges"] = []
     player["known_broken_walls"] = []
     player["known_wall_edges"] = []
     player["visited_tiles"] = [f"{x},{y}"]
+    player["lost_known_tiles"] = {}
+    player["lost_known_players"] = {}
+    player["lost_known_open_edges"] = []
+    player["lost_known_broken_walls"] = []
+    player["lost_known_wall_edges"] = []
+    player["lost_river_players"] = {}
+    player["lost_kind"] = None
+    player["lost_exit_visible_position"] = None
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
     log(f"{player['name']} chose a spawn tile.")
@@ -1266,7 +1657,10 @@ def player_move(data):
     x, y = player["x"], player["y"]
 
     if wall_blocks(x, y, direction):
-        if not is_outer_wall(x, y, direction):
+        if player["lost"]:
+            dx, dy = DIRECTIONS[direction]
+            remember_lost_edge(player, "lost_known_wall_edges", (x, y), (x + dx, y + dy))
+        elif not is_outer_wall(x, y, direction):
             dx, dy = DIRECTIONS[direction]
             nx, ny = x + dx, y + dy
             if in_bounds(nx, ny):
@@ -1280,10 +1674,19 @@ def player_move(data):
     dx, dy = DIRECTIONS[direction]
     new_pos = (x + dx, y + dy)
 
-    remember_open_edge(player, (x, y), new_pos)
+    was_lost = player["lost"]
+    if not was_lost:
+        remember_open_edge(player, (x, y), new_pos)
     player["x"] = new_pos[0]
     player["y"] = new_pos[1]
-    remember_visited_tile(player, new_pos)
+    if was_lost:
+        player["lost_relative_x"] += dx
+        player["lost_relative_y"] += dy
+        remember_lost_edge(player, "lost_known_open_edges", (x, y), new_pos)
+        remember_visited_tile(player, new_pos)
+        remember_lost_tile(player, new_pos)
+    else:
+        remember_visited_tile(player, new_pos)
     log(f"{player['name']} moved {direction}.")
 
     result = apply_tile_effect(player)
@@ -1338,7 +1741,10 @@ def player_shoot(data):
             if not is_outer_wall(x, y, direction):
                 nx, ny = x + dx, y + dy
                 if in_bounds(nx, ny):
-                    remember_wall_edge(shooter, (x, y), (nx, ny))
+                    if shooter["lost"]:
+                        remember_lost_edge(shooter, "lost_known_wall_edges", (x, y), (nx, ny))
+                    else:
+                        remember_wall_edge(shooter, (x, y), (nx, ny))
             break
 
         x += dx
@@ -1410,7 +1816,10 @@ def player_bomb(data):
 
     if ek in GAME["inner_walls"]:
         GAME["inner_walls"].remove(ek)
-        remember_broken_wall(player, (x, y), (nx, ny))
+        if player["lost"]:
+            remember_lost_edge(player, "lost_known_broken_walls", (x, y), (nx, ny))
+        else:
+            remember_broken_wall(player, (x, y), (nx, ny))
         set_player_message(player, "The wall exploded.")
         log(f"{player['name']} destroyed an inner wall.")
     else:
@@ -1481,11 +1890,10 @@ def manager_resolve_black_hole(data):
         return
 
     player = GAME["players"][player_sid]
-    enter_lost_state(player)
+    enter_lost_state(player, "black_hole")
     player["x"] = x
     player["y"] = y
-    remember_visited_tile(player, (x, y))
-    reveal_current_position(player)
+    start_lost_relative_map(player)
 
     set_player_message(player, "You are lost after the black hole.")
     log(f"Manager placed {player['name']} after black hole.")
