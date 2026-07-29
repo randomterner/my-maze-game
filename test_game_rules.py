@@ -44,6 +44,172 @@ class MazeGameRuleTests(unittest.TestCase):
         app.GAME["board"][(4, 4)] = "river"
         self.assertFalse(app.river_validation()["ok"])
 
+    def test_river_is_required_and_start_counts_toward_its_limit(self):
+        self.assertFalse(app.river_validation()["ok"])
+        app.GAME["board"][(0, 0)] = "river_start"
+        self.assertTrue(app.river_validation()["ok"])
+
+    def test_required_tile_validation_rejects_missing_and_duplicate_tiles(self):
+        for index, tile in enumerate(sorted(app.REQUIRED_SINGLE_TILES)):
+            app.GAME["board"][(index % 10, index // 10)] = tile
+        app.GAME["board"][(9, 9)] = "river_start"
+        self.assertTrue(app.required_tile_validation()["ok"])
+
+        app.GAME["board"][(9, 9)] = "monster"
+        result = app.required_tile_validation()
+        self.assertFalse(result["ok"])
+        self.assertIn("monster", result["message"])
+
+    def test_lost_player_state_never_contains_the_hidden_coordinates(self):
+        player = self.add_player("one", "One", 2, 2)
+        player["lost"] = True
+        state = app.serialize_player_state_for("one")
+        self.assertIsNone(state["you"]["x"])
+        self.assertIsNone(state["you"]["y"])
+
+    def test_unknown_river_start_does_not_reveal_its_location(self):
+        player = self.add_player("one", "One", 2, 2)
+        app.GAME["board"][(2, 2)] = "river"
+        app.GAME["board"][(8, 8)] = "river_start"
+
+        app.apply_tile_effect(player)
+
+        self.assertTrue(player["lost"])
+        self.assertEqual((player["x"], player["y"]), (8, 8))
+        self.assertNotIn("8,8", player["known_tiles"])
+        state = app.serialize_player_state_for("one")
+        self.assertEqual(state["lost_relative_position"], {"x": 0, "y": 0})
+        self.assertEqual(state["your_known_tiles"], {"0,0": "river_start"})
+
+    def test_lost_map_uses_relative_coordinates_and_recovers_after_ten_rows_and_columns(self):
+        player = self.add_player("one", "One", 5, 5)
+        self.add_player("two", "Two", 0, 0)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        player["x"], player["y"] = 6, 5
+        player["lost_relative_x"] = 1
+        app.remember_lost_tile(player, (6, 5))
+
+        state = app.serialize_player_state_for("one")
+        self.assertIn("0,0", state["your_known_tiles"])
+        self.assertIn("1,0", state["your_known_tiles"])
+        self.assertIsNone(state["you"]["x"])
+
+        player["lost_known_tiles"] = {
+            f"{x},{y}": "empty" for x in range(10) for y in range(10)
+        }
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertFalse(player["lost"])
+        other_state = app.serialize_player_state_for("two")
+        self.assertEqual(other_state["public_revealed_players"][0]["sid"], "one")
+
+    def test_new_special_tile_shows_players_who_found_it_in_relative_space(self):
+        lost_player = self.add_player("one", "One", 5, 5)
+        other = self.add_player("two", "Two", 6, 5)
+        other["visited_tiles"] = ["5,5"]
+        app.GAME["board"][(5, 5)] = "monster"
+
+        app.enter_lost_state(lost_player, "black_hole")
+        app.start_lost_relative_map(lost_player)
+
+        state = app.serialize_player_state_for("one")
+        self.assertIn("1,0", state["your_known_players"])
+        self.assertEqual(state["your_known_players"]["1,0"][0]["sid"], "two")
+
+        other["lost"] = True
+        app.start_lost_relative_map(lost_player)
+        state = app.serialize_player_state_for("one")
+        self.assertNotIn("1,0", state["your_known_players"])
+
+    def test_river_lost_players_share_their_river_start_relative_map(self):
+        one = self.add_player("one", "One", 4, 4)
+        two = self.add_player("two", "Two", 4, 4)
+        for player in (one, two):
+            app.enter_lost_state(player, "river")
+            app.start_lost_relative_map(player)
+
+        two["x"], two["y"] = 5, 4
+        two["lost_relative_x"] = 1
+        app.refresh_lost_river_player_positions()
+
+        state = app.serialize_player_state_for("one")
+        self.assertIn("1,0", state["your_known_players"])
+        self.assertEqual(state["your_known_players"]["1,0"][0]["sid"], "two")
+
+    def test_shared_river_map_is_kept_for_the_whole_game(self):
+        one = self.add_player("one", "One", 4, 4)
+        app.enter_lost_state(one, "river")
+        app.start_lost_relative_map(one)
+        one["x"], one["y"] = 5, 4
+        one["lost_relative_x"] = 1
+        app.remember_lost_tile(one, (5, 4))
+        app.recover_from_lost(one, "Recovered for test.")
+
+        two = self.add_player("two", "Two", 4, 4)
+        app.enter_lost_state(two, "river")
+        app.start_lost_relative_map(two)
+        state = app.serialize_player_state_for("two")
+        self.assertIn("1,0", state["your_known_tiles"])
+
+    def test_ten_by_ten_rule_reveals_normal_player_until_they_are_lost(self):
+        player = self.add_player("one", "One", 5, 5)
+        viewer = self.add_player("two", "Two", 0, 0)
+        player["known_tiles"] = {
+            f"{x},{y}": "empty" for x in range(10) for y in range(10)
+        }
+
+        self.assertTrue(app.check_lost_map_completion(player))
+        app.emit_full_state()
+        state = app.serialize_player_state_for("two")
+        self.assertEqual(state["public_revealed_players"][0]["sid"], "one")
+        self.assertIn("9,9", viewer["known_tiles"])
+
+        app.enter_lost_state(player, "black_hole")
+        app.emit_full_state()
+        state = app.serialize_player_state_for("two")
+        self.assertEqual(state["public_revealed_players"], [])
+
+    def test_lost_ten_by_ten_shares_both_sections_when_they_overlap(self):
+        player = self.add_player("one", "One", 5, 5)
+        viewer = self.add_player("two", "Two", 0, 0)
+        app.enter_lost_state(player, "black_hole")
+        player["lost_relative_x"] = 0
+        player["lost_relative_y"] = 0
+        player["known_tiles_before_lost"] = {"0,0": "treasure"}
+        player["lost_known_tiles"] = {
+            f"{x},{y}": "monster" for x in range(-5, 5) for y in range(-5, 5)
+        }
+
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertEqual(viewer["known_tiles"]["0,0"], "monster")
+        self.assertEqual(viewer["known_tiles"]["9,9"], "monster")
+
+    def test_river_map_is_shared_when_a_river_player_completes_ten_by_ten(self):
+        player = self.add_player("one", "One", 4, 4)
+        viewer = self.add_player("two", "Two", 0, 0)
+        app.enter_lost_state(player, "river")
+        player["lost_relative_x"] = 0
+        player["lost_relative_y"] = 0
+        player["lost_known_tiles"] = {
+            f"{x},{y}": "river" for x in range(-4, 6) for y in range(-4, 6)
+        }
+
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertEqual(viewer["known_tiles"]["9,9"], "river")
+
+    def test_player_reappears_for_people_who_visited_the_exit_lost_tile(self):
+        player = self.add_player("one", "One", 4, 4)
+        viewer = self.add_player("two", "Two", 0, 0)
+        viewer["visited_tiles"] = ["4,4"]
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        app.recover_from_lost(player, "Recovered for test.")
+        app.refresh_known_player_positions()
+
+        self.assertIn("4,4", viewer["known_players"])
+        self.assertEqual(viewer["known_players"]["4,4"][0]["sid"], "one")
+
     def test_outer_wall_cannot_be_destroyed(self):
         player = self.add_player("one", "One", 0, 0)
         app.GAME["game_started"] = True
@@ -139,18 +305,37 @@ class MazeGameSocketTests(unittest.TestCase):
     def prepare_startable_game(self):
         self.one.emit("player_spawn", {"x": 0, "y": 0})
         self.two.emit("player_spawn", {"x": 1, "y": 0})
-        self.manager.emit("manager_set_tile", {"x": 2, "y": 2, "tile": "treasure"})
-        self.manager.emit("manager_set_tile", {"x": 0, "y": 9, "tile": "exit"})
+        required_tiles = [
+            (2, 2, "treasure"), (3, 2, "fake_treasure"), (0, 9, "exit"),
+            (4, 2, "boat"), (5, 2, "raft"), (6, 2, "clinic"),
+            (7, 2, "er"), (8, 2, "monster"), (9, 2, "devil"),
+            (2, 3, "black_hole"), (3, 3, "flashlight"), (4, 3, "batteries"),
+            (5, 3, "armory"), (6, 3, "river_start"),
+        ]
+        for x, y, tile in required_tiles:
+            self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
         self.manager.emit("manager_start_game")
 
-    def test_start_requires_one_treasure_and_one_exit(self):
+    def test_start_rejects_an_incomplete_board(self):
         self.one.emit("player_spawn", {"x": 0, "y": 0})
         self.two.emit("player_spawn", {"x": 1, "y": 0})
         self.manager.emit("manager_start_game")
         messages = self.manager.get_received()
         self.assertFalse(app.GAME["game_started"])
         self.assertTrue(any(
-            event["name"] == "error_message" and "treasure" in event["args"][0]["message"].lower()
+            event["name"] == "error_message" and "river" in event["args"][0]["message"].lower()
+            for event in messages
+        ))
+
+    def test_manager_cannot_place_a_second_unique_tile(self):
+        self.manager.emit("manager_set_tile", {"x": 2, "y": 2, "tile": "monster"})
+        self.manager.emit("manager_set_tile", {"x": 3, "y": 2, "tile": "monster"})
+        messages = self.manager.get_received()
+
+        self.assertEqual(app.GAME["board"][(2, 2)], "monster")
+        self.assertEqual(app.GAME["board"][(3, 2)], "empty")
+        self.assertTrue(any(
+            event["name"] == "error_message" and "only one monster" in event["args"][0]["message"].lower()
             for event in messages
         ))
 
@@ -185,6 +370,13 @@ class MazeGameSocketTests(unittest.TestCase):
         self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
         self.manager.emit("manager_set_tile", {"x": 1, "y": 0, "tile": "treasure"})
         self.manager.emit("manager_set_tile", {"x": 0, "y": 9, "tile": "exit"})
+        for x, y, tile in [
+            (2, 2, "fake_treasure"), (3, 2, "boat"), (4, 2, "raft"),
+            (5, 2, "clinic"), (6, 2, "er"), (7, 2, "monster"),
+            (8, 2, "black_hole"), (9, 2, "flashlight"), (2, 3, "batteries"),
+            (3, 3, "armory"), (4, 3, "river_start"),
+        ]:
+            self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
         self.one.emit("player_spawn", {"x": 0, "y": 0})
         self.two.emit("player_spawn", {"x": 1, "y": 0})
 
