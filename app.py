@@ -264,7 +264,9 @@ def remember_lost_tile(player, pos):
     if player.get("lost_kind") == "river":
         GAME["river_lost_map"]["tiles"][key] = effective_tile_at(pos)
 
-    if is_new and tile_allows_map_fusion(pos):
+    # A flashlight can reveal a special tile that is already drawn on the
+    # persistent river map.  It still counts as discovering that tile now.
+    if tile_allows_map_fusion(pos):
         reveal_players_at_lost_special_tile(player, pos)
 
     check_lost_map_completion(player)
@@ -528,10 +530,14 @@ def enter_lost_state(player, lost_kind):
     clear_relative_player_visibility(player)
 
 
-def previously_known_tile_ends_lost(player):
-    if player["x"] is None or player["y"] is None:
+def previously_known_tile_ends_lost(player, pos=None):
+    if pos is None:
+        if player["x"] is None or player["y"] is None:
+            return False
+        pos = (player["x"], player["y"])
+    if pos is None:
         return False
-    key = f"{player['x']},{player['y']}"
+    key = f"{pos[0]},{pos[1]}"
     return key in player.get("known_tiles_before_lost", {})
 
 
@@ -650,9 +656,14 @@ def check_birth_spot_discovery(player):
     return False
 
 
-def check_previously_known_recovery(player):
-    if player["lost"] and previously_known_tile_ends_lost(player):
-        recover_from_lost(player, "You reached a familiar tile and are no longer lost.")
+def check_previously_known_recovery(player, pos=None, discovered_by_flashlight=False):
+    if player["lost"] and previously_known_tile_ends_lost(player, pos):
+        message = (
+            "Your flashlight revealed a familiar tile and you are no longer lost."
+            if discovered_by_flashlight
+            else "You reached a familiar tile and are no longer lost."
+        )
+        recover_from_lost(player, message)
         return True
     return False
 
@@ -1201,14 +1212,23 @@ def reveal_line(player, direction):
             break
 
         current = (x, y)
-        if player["lost"]:
+        was_lost = player["lost"]
+        if was_lost:
             remember_lost_edge(player, "lost_known_open_edges", prev, current)
             remember_visited_tile(player, current)
             remember_lost_tile(player, current)
+            recovered = check_previously_known_recovery(
+                player,
+                current,
+                discovered_by_flashlight=True,
+            )
         else:
             remember_open_edge(player, prev, current)
             reveal_position(player, current)
+            recovered = False
         revealed.append(current)
+        if recovered or (was_lost and not player["lost"]):
+            break
         prev = current
 
     return revealed
@@ -1904,8 +1924,13 @@ def player_flashlight(data):
         emit("error_message", {"message": "You need both flashlight and batteries."})
         return
 
+    was_lost = player["lost"]
     revealed = reveal_line(player, direction)
-    if revealed:
+    if was_lost and not player["lost"]:
+        # Recovery writes the important message; do not replace it with a
+        # generic flashlight message.
+        pass
+    elif revealed:
         set_player_message(player, f"Flashlight revealed {len(revealed)} tile(s) {direction}.")
     else:
         set_player_message(player, "Flashlight revealed nothing.")
