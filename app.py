@@ -160,6 +160,48 @@ def remember_lost_edge(player, field, actual_a, actual_b):
             GAME["river_lost_map"][river_field].append(copy.deepcopy(edge))
 
 
+def remember_lost_outer_wall_bomb(player, direction):
+    """Record a bomb-confirmed outer edge without exposing normal coordinates."""
+    x, y = player["x"], player["y"]
+    dx, dy = DIRECTIONS[direction]
+    remember_lost_edge(player, "lost_known_wall_edges", (x, y), (x + dx, y + dy))
+
+    relative_key = f"{player['lost_relative_x']},{player['lost_relative_y']}"
+    clues = player["lost_outer_wall_bomb_clues"].setdefault(relative_key, [])
+    if direction not in clues:
+        clues.append(direction)
+
+
+def lost_outer_wall_axes(player):
+    """Return which absolute axes the player has anchored with bomb attempts."""
+    directions = {
+        direction
+        for clues in player.get("lost_outer_wall_bomb_clues", {}).values()
+        for direction in clues
+    }
+    return {
+        "x": bool(directions & {"left", "right"}),
+        "y": bool(directions & {"up", "down"}),
+    }
+
+
+def lost_map_completion_message(player, known_x, known_y):
+    """Apply the 10x10 escape rule, including information from outer-wall bombs."""
+    has_all_columns = len(known_x) >= BOARD_SIZE
+    has_all_rows = len(known_y) >= BOARD_SIZE
+    axes = lost_outer_wall_axes(player)
+
+    if has_all_columns and has_all_rows:
+        return "You mapped all 10 relative rows and columns and are no longer lost."
+    if axes["x"] and axes["y"]:
+        return "Outer-wall bomb hits fixed both map axes, so you are no longer lost."
+    if axes["y"] and has_all_columns:
+        return "A north/south outer edge and 10 mapped columns revealed your position. You are no longer lost."
+    if axes["x"] and has_all_rows:
+        return "An east/west outer edge and 10 mapped rows revealed your position. You are no longer lost."
+    return None
+
+
 def reveal_players_at_lost_special_tile(player, pos):
     """Show players who previously found this special tile, in relative space."""
     tile_key = f"{pos[0]},{pos[1]}"
@@ -196,17 +238,19 @@ def check_lost_map_completion(player):
 
     known_x = {x for x, _ in coordinates}
     known_y = {y for _, y in coordinates}
-    if len(known_x) >= BOARD_SIZE and len(known_y) >= BOARD_SIZE:
-        if player["lost"]:
+    if player["lost"]:
+        message = lost_map_completion_message(player, known_x, known_y)
+        if message:
             share_lost_section_with_everyone(player)
             recover_from_lost(
                 player,
-                "You mapped all 10 relative rows and columns and are no longer lost.",
+                message,
                 reveal_position_to_everyone=True,
             )
-        else:
-            share_current_section_with_everyone(player)
-            reveal_player_position_to_everyone(player)
+            return True
+    elif len(known_x) >= BOARD_SIZE and len(known_y) >= BOARD_SIZE:
+        share_current_section_with_everyone(player)
+        reveal_player_position_to_everyone(player)
         return True
     return False
 
@@ -243,6 +287,7 @@ def start_lost_relative_map(player):
         player["lost_known_wall_edges"] = []
     player["lost_known_players"] = {}
     player["lost_river_players"] = {}
+    player["lost_outer_wall_bomb_clues"] = {}
     if player["x"] is not None and player["y"] is not None:
         remember_lost_tile(player, (player["x"], player["y"]))
 
@@ -709,6 +754,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_known_broken_walls": [],
         "lost_known_wall_edges": [],
         "lost_river_players": {},
+        "lost_outer_wall_bomb_clues": {},
         "lost_kind": None,
         "lost_exit_visible_position": None,
         "last_message": "Choose a spawn tile by tapping the board.",
@@ -1804,7 +1850,18 @@ def player_bomb(data):
     x, y = player["x"], player["y"]
 
     if is_outer_wall(x, y, direction):
-        set_player_message(player, "The wall did not explode.")
+        if player["lost"]:
+            remember_lost_outer_wall_bomb(player, direction)
+            if not check_lost_map_completion(player):
+                edge_name = {
+                    "up": "north",
+                    "down": "south",
+                    "left": "west",
+                    "right": "east",
+                }[direction]
+                set_player_message(player, f"The wall did not explode. You found the {edge_name} outer edge.")
+        else:
+            set_player_message(player, "The wall did not explode.")
         log(f"{player['name']} tried to bomb an outer wall.")
         emit_full_state()
         end_turn()
