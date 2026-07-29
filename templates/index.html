@@ -783,7 +783,7 @@
           ) {
             const selfTag = document.createElement("div");
             selfTag.className = "playerTag youTag";
-            selfTag.style.bottom = `${2 + markerIndex * 12}px`;
+            selfTag.style.bottom = `${20 + markerIndex * 12}px`;
             selfTag.style.setProperty("--player-color", state.you.color || "#55e4ff");
             selfTag.textContent = state.you.name || "YOU";
             cell.appendChild(selfTag);
@@ -796,7 +796,7 @@
 
             const tag = document.createElement("div");
             tag.className = "playerTag";
-            tag.style.bottom = `${2 + markerIndex * 12}px`;
+            tag.style.bottom = `${20 + markerIndex * 12}px`;
             tag.style.setProperty("--player-color", p.color || "#ffcc55");
             tag.textContent = p.name;
             cell.appendChild(tag);
