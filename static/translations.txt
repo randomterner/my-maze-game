@@ -1,0 +1,360 @@
+# Maze Game translation file
+#
+# Format: English text = translated text
+# Replace ONLY the text on the right side of each line. Keep player names,
+# numbers, coordinates, and placeholders unchanged. Reload the game after
+# saving. Longer phrases are applied before shorter ones.
+#
+# Optional page settings (use your language values):
+__language__ = en
+__direction__ = ltr
+
+# Page titles and headings
+Maze Game - Player = Maze Game - Player
+Maze Game - Manager = Maze Game - Manager
+PRIVATE EXPEDITION LOG = PRIVATE EXPEDITION LOG
+MAZE OPERATIONS CENTER = MAZE OPERATIONS CENTER
+Maze Runner = Maze Runner
+Dungeon Director = Dungeon Director
+Navigate the unknown, claim the treasure, and find the way out. = Navigate the unknown, claim the treasure, and find the way out.
+Shape the maze, watch the expedition, and keep the legends moving. = Shape the maze, watch the expedition, and keep the legends moving.
+PLAYER CONSOLE = PLAYER CONSOLE
+MANAGER CONSOLE = MANAGER CONSOLE
+
+# Joining, status, and common controls
+Your name = Your name
+Choose your player dot color = Choose your player dot color
+Dot color = Dot color
+Join = Join
+Join as manager = Join as manager
+Joined as = Joined as
+Joined as manager. SID: = Joined as manager. SID:
+Not joined yet. = Not joined yet.
+Rules = Rules
+Start game = Start game
+Reset game = Reset game
+Clear board = Clear board
+Enter your name first. = Enter your name first.
+Name is required. = Name is required.
+That player name is already in use. = That player name is already in use.
+A game is already in progress. Join the next game after a reset. = A game is already in progress. Join the next game after a reset.
+Join first. = Join first.
+
+# Player page sections
+Turn: = Turn:
+Current mode: = Current mode:
+Your info = Your info
+Last message = Last message
+Recent log = Recent log
+Line guide = Line guide
+Your board = Your board
+Lost-path map = Lost-path map
+Personal map notes = Personal map notes
+Hidden player trails = Hidden player trails
+Public positions: = Public positions:
+No player data yet. = No player data yet.
+No messages yet. = No messages yet.
+No items yet. = No items yet.
+No hidden player trails right now. = No hidden player trails right now.
+None. = None.
+YOU = YOU
+Socket ID: = Socket ID:
+
+# Manager page sections
+Board tools = Board tools
+Tile mode = Tile mode
+Wall mode = Wall mode
+Current tool: = Current tool:
+Black hole = Black hole
+River validation = River validation
+Legend = Legend
+Players = Players
+Logs = Logs
+No players. = No players.
+No data yet. = No data yet.
+No pending black hole. = No pending black hole.
+Pending black hole. = Pending black hole.
+Pending black hole for = Pending black hole for
+Tap an empty tile. = Tap an empty tile.
+Board can be edited. Waiting to start. = Board can be edited. Waiting to start.
+
+# Player information table and status words
+Name = Name
+Alive = Alive
+Spawned = Spawned
+Lost = Lost
+Position = Position
+Injuries = Injuries
+Bullets = Bullets
+Bombs = Bombs
+Items = Items
+Last message = Last message
+Yes = Yes
+No = No
+Hidden (use your relative map) = Hidden (use your relative map)
+Waiting = Waiting
+Not started = Not started
+Game not started. = Game not started.
+Game Over = Game Over
+Winner: = Winner:
+Unknown = Unknown
+Turn # = Turn #
+It is your turn. = It is your turn.
+Wait for your turn. = Wait for your turn.
+Waiting for manager to start the game. = Waiting for manager to start the game.
+
+# Board, map, wall, and note controls
+Before the game starts, tap a tile to choose your spawn. = Before the game starts, tap a tile to choose your spawn.
+Your discovered map. Personal map notes are shown beside the board. = Your discovered map. Personal map notes are shown beside the board.
+Relative coordinates only = Relative coordinates only
+mapped columns: = mapped columns:
+rows: = rows:
+Map all 10 of each to recover. = Map all 10 of each to recover.
+Choose = Choose
+at coordinates = at coordinates
+as your spawn tile? = as your spawn tile?
+Choose a spawn tile by tapping the board. = Choose a spawn tile by tapping the board.
+Start the game to add unconfirmed guesses. = Start the game to add unconfirmed guesses.
+Mark = Mark
+Tile guess = Tile guess
+Wall guess = Wall guess
+Your tile guess = Your tile guess
+Clear map note = Clear map note
+Wall side from clicked square = Wall side from clicked square
+Edit map notes = Edit map notes
+Stop editing notes = Stop editing notes
+Click a square to toggle a guessed wall on the selected side. This never uses a turn. = Click a square to toggle a guessed wall on the selected side. This never uses a turn.
+Click any unconfirmed square to add or clear your tile guess. This never uses a turn. = Click any unconfirmed square to add or clear your tile guess. This never uses a turn.
+Use this any time, even while another player is taking a turn. = Use this any time, even while another player is taking a turn.
+Relative trails appear here until you know a player’s exact position. = Relative trails appear here until you know a player’s exact position.
+Shared river map = Shared river map
+river map = river map
+lost map = lost map
+relative trail = relative trail
+Unconfirmed map note = Unconfirmed map note
+unconfirmed = unconfirmed
+relative = relative
+
+# Action buttons and directions
+Move = Move
+Shoot = Shoot
+Bomb = Bomb
+Flashlight = Flashlight
+Tile = Tile
+Wall = Wall
+up = up
+down = down
+left = left
+right = right
+wall: up = wall: up
+wall: down = wall: down
+wall: left = wall: left
+wall: right = wall: right
+north = north
+south = south
+west = west
+east = east
+
+# Legends
+Black solid line = wall. = Black solid line = wall.
+Yellow dotted line = you know there is no wall there. = Yellow dotted line = you know there is no wall there.
+Blue line = broken wall. = Blue line = broken wall.
+Blue line = a wall was there and got broken. = Blue line = a wall was there and got broken.
+
+# Tile names and item names
+empty = empty
+treasure = treasure
+fake_treasure = fake_treasure
+exit = exit
+river = river
+river_start = river_start
+boat = boat
+raft = raft
+clinic = clinic
+er = er
+monster = monster
+devil = devil
+black_hole = black_hole
+flashlight = flashlight
+batteries = batteries
+armory = armory
+unknown = unknown
+used treasure = used treasure
+used fake_treasure = used fake_treasure
+used boat = used boat
+used raft = used raft
+used flashlight = used flashlight
+used batteries = used batteries
+
+# River and board validation
+The board needs at least one river tile (river_start counts). = The board needs at least one river tile (river_start counts).
+River may use at most 20 tiles including river_start. = River may use at most 20 tiles including river_start.
+River must contain exactly one river_start tile. = River must contain exactly one river_start tile.
+Diagonal river tiles must connect through a river tile. = Diagonal river tiles must connect through a river tile.
+River cannot split at any point. = River cannot split at any point.
+Single-tile river_start cannot connect to other river tiles. = Single-tile river_start cannot connect to other river tiles.
+river_start must connect to exactly one river tile. = river_start must connect to exactly one river tile.
+River is valid. = River is valid.
+All river tiles must be connected. = All river tiles must be connected.
+The board is missing: = The board is missing:
+Only one of each is allowed: = Only one of each is allowed:
+All required tile types are placed exactly once. = All required tile types are placed exactly once.
+Cannot start: = Cannot start:
+Need at least 2 spawned players. = Need at least 2 spawned players.
+Game already started. = Game already started.
+Only one = Only one
+tile is allowed. = tile is allowed.
+Only one river_start tile is allowed. = Only one river_start tile is allowed.
+Exit must be placed on an outer edge tile. = Exit must be placed on an outer edge tile.
+Invalid tile data. = Invalid tile data.
+Invalid tile type. = Invalid tile type.
+Tile out of bounds. = Tile out of bounds.
+Only the manager can edit the board. = Only the manager can edit the board.
+Only the manager can edit walls. = Only the manager can edit walls.
+Only the manager can clear the board. = Only the manager can clear the board.
+Only the manager can reset the game. = Only the manager can reset the game.
+Only the manager can start the game. = Only the manager can start the game.
+The board is locked while a game is in progress. Reset the game to edit it. = The board is locked while a game is in progress. Reset the game to edit it.
+Invalid wall data. = Invalid wall data.
+Invalid inner wall edge. = Invalid inner wall edge.
+Outer walls cannot be edited. = Outer walls cannot be edited.
+Invalid direction. = Invalid direction.
+Coordinates out of bounds. = Coordinates out of bounds.
+Invalid coordinates. = Invalid coordinates.
+Black hole destination must be an empty tile. = Black hole destination must be an empty tile.
+
+# Spawn and map-note messages
+Spawn selected. Your starting tile will be revealed when the game begins. = Spawn selected. Your starting tile will be revealed when the game begins.
+Spawned on = Spawned on
+Invalid spawn coordinates. = Invalid spawn coordinates.
+Spawn out of bounds. = Spawn out of bounds.
+Map notes are available after the game starts. = Map notes are available after the game starts.
+Invalid map-note coordinates. = Invalid map-note coordinates.
+Invalid map-note tile. = Invalid map-note tile.
+Invalid wall-note coordinates. = Invalid wall-note coordinates.
+Invalid wall-note direction. = Invalid wall-note direction.
+That relative map square is too far away. = That relative map square is too far away.
+Map-note coordinates are out of bounds. = Map-note coordinates are out of bounds.
+That square is already confirmed on your map. = That square is already confirmed on your map.
+Wall guesses must be between two board squares. = Wall guesses must be between two board squares.
+That edge is already confirmed on your map. = That edge is already confirmed on your map.
+Map note: marked = Map note: marked
+as an unconfirmed guess. = as an unconfirmed guess.
+Map note cleared at = Map note cleared at
+Map note: cleared wall guess = Map note: cleared wall guess
+Map note: guessed a wall = Map note: guessed a wall
+of = of
+
+# Tile effects and item messages
+Empty tile. = Empty tile.
+There was a treasure here. = There was a treasure here.
+There was a fake treasure here. = There was a fake treasure here.
+There was a boat here. = There was a boat here.
+There was a raft here. = There was a raft here.
+There was a flashlight here. = There was a flashlight here.
+There were batteries here. = There were batteries here.
+This item was already taken. = This item was already taken.
+You found the real treasure! = You found the real treasure!
+You found a fake treasure. = You found a fake treasure.
+You picked up a boat. = You picked up a boat.
+You picked up a raft. = You picked up a raft.
+You picked up a flashlight. = You picked up a flashlight.
+You picked up batteries. = You picked up batteries.
+You escaped with the real treasure and won! = You escaped with the real treasure and won!
+You found the exit, but you do not have the real treasure. = You found the exit, but you do not have the real treasure.
+Clinic healed all of your injuries. = Clinic healed all of your injuries.
+Clinic cannot treat 4 injuries. Go to the ER. = Clinic cannot treat 4 injuries. Go to the ER.
+Clinic did nothing because you have no injuries. = Clinic did nothing because you have no injuries.
+ER reduced your injuries from 4 to 3. = ER reduced your injuries from 4 to 3.
+ER did nothing. = ER did nothing.
+Monster: bullets = Monster: bullets
+bombs = bombs
+Extra turn granted. = Extra turn granted.
+Devil: +1 injury, -1 bullet, -1 bomb. = Devil: +1 injury, -1 bullet, -1 bomb.
+Black hole! Waiting for manager placement. = Black hole! Waiting for manager placement.
+Armory: bullets = Armory: bullets
+River start. = River start.
+You crossed the river safely with the boat. = You crossed the river safely with the boat.
+You used the raft. No injury, and you drifted to the known river start. = You used the raft. No injury, and you drifted to the known river start.
+You used the raft. No injury, but you were dragged to an unknown river start and became lost. = You used the raft. No injury, but you were dragged to an unknown river start and became lost.
+You used the raft. = You used the raft.
+The river injured you, dragged you to the river start, and you are now lost. = The river injured you, dragged you to the river start, and you are now lost.
+You stepped on: = You stepped on:
+You are lost after the black hole. = You are lost after the black hole.
+
+# Movement, combat, and flashlight messages
+Game has not started. = Game has not started.
+Game is over. = Game is over.
+Player not found. = Player not found.
+You are dead. = You are dead.
+It is not your turn. = It is not your turn.
+Waiting for manager to resolve a black hole. = Waiting for manager to resolve a black hole.
+You hit a wall and stayed in place. Turn ended. = You hit a wall and stayed in place. Turn ended.
+You have no bullets. = You have no bullets.
+Your bullet hit nothing. = Your bullet hit nothing.
+You hit = You hit
+You were shot by = You were shot by
+You have no bombs. = You have no bombs.
+The wall did not explode. You found the = The wall did not explode. You found the
+outer edge. = outer edge.
+The wall did not explode. = The wall did not explode.
+The wall exploded. = The wall exploded.
+There was no wall there. = There was no wall there.
+You need both flashlight and batteries. = You need both flashlight and batteries.
+Flashlight looked = Flashlight looked
+and saw: = and saw:
+and saw = and saw
+tile(s): = tile(s):
+but a wall blocked the beam. = but a wall blocked the beam.
+
+# Lost-state, discovery, and shared-log messages
+You mapped all 10 relative rows and columns and are no longer lost. = You mapped all 10 relative rows and columns and are no longer lost.
+Outer-wall bomb hits fixed both map axes, so you are no longer lost. = Outer-wall bomb hits fixed both map axes, so you are no longer lost.
+A north/south outer edge and 10 mapped columns revealed your position. You are no longer lost. = A north/south outer edge and 10 mapped columns revealed your position. You are no longer lost.
+An east/west outer edge and 10 mapped rows revealed your position. You are no longer lost. = An east/west outer edge and 10 mapped rows revealed your position. You are no longer lost.
+Your flashlight revealed a familiar tile and you are no longer lost. = Your flashlight revealed a familiar tile and you are no longer lost.
+You reached a familiar tile and are no longer lost. = You reached a familiar tile and you are no longer lost.
+You found your birth spot and are no longer lost. = You found your birth spot and are no longer lost.
+You found traces of = You found traces of
+You found = You found
+found you. = found you.
+birth spot. = birth spot.
+MAP FUSION = MAP FUSION
+is no longer lost. = is no longer lost.
+gets an extra turn. = gets an extra turn.
+You died. = You died.
+died. = died.
+Killed by devil tile. = Killed by devil tile.
+Killed by river injury. = Killed by river injury.
+Killed by a bullet. = Killed by a bullet.
+wins as the last player alive. = wins as the last player alive.
+All players died. The game ended with no winner. = All players died. The game ended with no winner.
+Game reset. Connected players were kept. = Game reset. Connected players were kept.
+found the real treasure. = found the real treasure.
+escaped through the exit with the real treasure. = escaped through the exit with the real treasure.
+moved = moved
+hit a wall while moving = hit a wall while moving
+shot = shot
+and hit nothing. = and hit nothing.
+tried to bomb an outer wall. = tried to bomb an outer wall.
+destroyed an inner wall. = destroyed an inner wall.
+used a bomb, but there was no wall. = used a bomb, but there was no wall.
+used flashlight = used flashlight
+entered a black hole. = entered a black hole.
+Manager placed = Manager placed
+after black hole. = after black hole.
+special tile: = special tile:
+revealed = revealed
+spawned on = spawned on
+arrived at = arrived at
+used a flashlight on = used a flashlight on
+added map information from = added map information from
+through = through
+met = met
+MAP FUSION happened between players on the same tile. = MAP FUSION happened between players on the same tile.
+disconnected. = disconnected.
+joined the game. = joined the game.
+Game started. = Game started.
+First turn: = First turn:
+chose a spawn tile. = chose a spawn tile.
+Server started. = Server started.
