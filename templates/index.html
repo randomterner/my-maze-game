@@ -986,6 +986,9 @@
         name: "Shared river map",
         riverMap: true,
         tiles: riverTiles,
+        open_edges: state.river_map.open_edges || [],
+        broken_walls: state.river_map.broken_walls || [],
+        wall_edges: state.river_map.wall_edges || [],
         relative_position: { x: 0, y: 0 },
         showPosition: false
       });
@@ -1009,6 +1012,9 @@
       const startX = current.x - 5;
       const startY = current.y - 5;
       const tiles = trail.tiles || {};
+      const openEdges = trail.open_edges || [];
+      const brokenEdges = trail.broken_walls || [];
+      const wallEdges = trail.wall_edges || [];
 
       for (let displayY = 0; displayY < 10; displayY++) {
         for (let displayX = 0; displayX < 10; displayX++) {
@@ -1028,6 +1034,9 @@
             img.alt = tile;
             cell.appendChild(img);
           }
+          addUniqueEdgeMarkers(cell, wallEdges, "wall", x, y, displayX, displayY);
+          addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY);
+          addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY);
           if (trail.showPosition !== false && current.x === x && current.y === y) {
             const dot = document.createElement("div");
             dot.className = "trailDot";
