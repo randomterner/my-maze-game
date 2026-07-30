@@ -280,9 +280,38 @@
 
     .modeButtons {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 8px;
       margin-bottom: 8px;
+    }
+
+    .noteTools {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 0 auto 8px;
+      max-width: 520px;
+    }
+
+    .noteTools label { font-size: 0.78rem; font-weight: 700; }
+    .noteTools select { min-width: 170px; }
+
+    .manualGuess {
+      position: absolute;
+      top: 2px;
+      right: 3px;
+      z-index: 6;
+      color: #201500;
+      background: #f6c85a;
+      border: 1px solid rgba(255,255,255,0.75);
+      border-radius: 50%;
+      width: 14px;
+      height: 14px;
+      line-height: 13px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 900;
     }
 
     .arrowPad {
@@ -323,6 +352,9 @@
       .modeButtons {
         grid-template-columns: repeat(2, 1fr);
       }
+
+      .noteTools { align-items: stretch; flex-direction: column; }
+      .noteTools select { width: 100%; }
 
       .board {
         width: min(96vw, 420px);
@@ -394,7 +426,7 @@
     .actionBar { background: rgba(8, 13, 24, 0.94); border-top-color: rgba(120, 184, 213, 0.25); box-shadow: 0 -12px 40px rgba(0,0,0,0.32); backdrop-filter: blur(20px); }
     @media (max-width: 640px) {
       :root { --board-size: min(calc(100vw - 82px), 420px); }
-      .wrap { padding: 10px 10px calc(330px + env(safe-area-inset-bottom)); }
+      .wrap { padding: 10px 10px calc(390px + env(safe-area-inset-bottom)); }
       .hero { align-items: flex-start; flex-direction: column; }
       .board { width: var(--board-size); height: var(--board-size); }
       .colLabels { width: var(--board-size); }
@@ -482,6 +514,30 @@
     <button id="mode-shoot" onclick="setMode('shoot')">Shoot</button>
     <button id="mode-bomb" onclick="setMode('bomb')">Bomb</button>
     <button id="mode-flash" onclick="setMode('flash')">Flashlight</button>
+    <button id="mode-note" onclick="setMode('note')">Map note</button>
+  </div>
+
+  <div class="noteTools" id="noteTools" hidden>
+    <label for="manualTile">Your guess:</label>
+    <select id="manualTile" aria-label="Map note tile">
+      <option value="">Clear map note</option>
+      <option value="empty">empty</option>
+      <option value="treasure">treasure</option>
+      <option value="fake_treasure">fake_treasure</option>
+      <option value="exit">exit</option>
+      <option value="river">river</option>
+      <option value="river_start">river_start</option>
+      <option value="boat">boat</option>
+      <option value="raft">raft</option>
+      <option value="clinic">clinic</option>
+      <option value="er">er</option>
+      <option value="monster">monster</option>
+      <option value="devil">devil</option>
+      <option value="black_hole">black_hole</option>
+      <option value="flashlight">flashlight</option>
+      <option value="batteries">batteries</option>
+      <option value="armory">armory</option>
+    </select>
   </div>
 
   <div class="arrowPad">
@@ -547,10 +603,15 @@
       mode === "shoot" ? "Shoot" :
       mode === "bomb" ? "Bomb" : "Flashlight";
 
-    ["move", "shoot", "bomb", "flash"].forEach(m => {
+    if (mode === "note") {
+      document.getElementById("modeLabel").textContent = "Map note";
+    }
+
+    ["move", "shoot", "bomb", "flash", "note"].forEach(m => {
       const btn = document.getElementById(`mode-${m}`);
       if (btn) btn.classList.toggle("activeMode", m === mode);
     });
+    document.getElementById("noteTools").hidden = mode !== "note";
   }
 
   function handleArrow(direction) {
@@ -571,6 +632,12 @@
     if (!state || !state.you) return;
     if (!state.game_started) {
       socket.emit("player_spawn", { x, y });
+    } else if (currentMode === "note") {
+      socket.emit("player_set_map_note", {
+        x,
+        y,
+        tile: document.getElementById("manualTile").value
+      });
     }
   }
 
@@ -709,7 +776,7 @@
     } else {
       document.getElementById("boardTitle").textContent = "Your board";
       document.getElementById("boardHint").textContent = state.game_started
-        ? "Your discovered map."
+        ? "Your discovered map. Use Map note to mark an unconfirmed guess."
         : "Before the game starts, tap a tile to choose your spawn.";
     }
   }
@@ -720,6 +787,7 @@
     if (!state || !state.you) return;
 
     const knownTiles = state.your_known_tiles || {};
+    const manualTiles = state.your_manual_tiles || {};
     const knownPlayers = state.your_known_players || {};
     const openEdges = state.your_known_open_edges || [];
     const brokenEdges = state.your_known_broken_walls || [];
@@ -734,11 +802,14 @@
         const x = window.startX + displayX;
         const y = window.startY + displayY;
         const key = `${x},${y}`;
-        const tile = knownTiles[key] || "unknown";
+        const confirmedTile = knownTiles[key];
+        const manualTile = manualTiles[key];
+        const tile = confirmedTile || manualTile || "unknown";
+        const isManualTile = !confirmedTile && Boolean(manualTile);
 
         const cell = document.createElement("div");
-        cell.className = "cell" + (tile === "unknown" ? " unknown" : "");
-        cell.title = lostMap ? `relative ${x},${y}` : `${x},${y}`;
+        cell.className = "cell" + (tile === "unknown" ? " unknown" : "") + (isManualTile ? " manual" : "");
+        cell.title = `${lostMap ? `relative ${x},${y}` : `${x},${y}`}${isManualTile ? `: unconfirmed ${manualTile}` : ""}`;
         cell.onclick = () => handleBoardClick(x, y);
 
         const texture = textureMap[tile];
@@ -747,6 +818,14 @@
           img.src = `/static/${texture}`;
           img.alt = tile;
           cell.appendChild(img);
+        }
+
+        if (isManualTile) {
+          const guess = document.createElement("div");
+          guess.className = "manualGuess";
+          guess.textContent = "?";
+          guess.title = "Unconfirmed map note";
+          cell.appendChild(guess);
         }
 
         if (state.game_started) {
