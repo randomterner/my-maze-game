@@ -80,6 +80,11 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertEqual(player["last_message"], "A clear test result.")
         self.assertEqual(app.GAME["logs"][-1], "One: A clear test result.")
 
+        log_count = len(app.GAME["logs"])
+        app.set_player_message(player, "A private map note.", shared=False)
+        self.assertEqual(player["last_message"], "A private map note.")
+        self.assertEqual(len(app.GAME["logs"]), log_count)
+
     def test_unknown_river_start_does_not_reveal_its_location(self):
         player = self.add_player("one", "One", 2, 2)
         app.GAME["board"][(2, 2)] = "river"
@@ -409,7 +414,9 @@ class MazeGameRuleTests(unittest.TestCase):
         other["birth_x"], other["birth_y"] = 5, 5
         other["known_tiles"] = {"5,5": "empty", "6,5": "monster"}
         other["manual_tiles"] = {"7,5": "river"}
+        other["known_wall_edges"] = [app.serialize_edge((6, 5), (6, 6))]
         app.GAME["river_lost_map"]["tiles"] = {"0,0": "river_start"}
+        app.GAME["river_lost_map"]["wall_edges"] = [app.serialize_edge((0, 0), (1, 0))]
         app.GAME["game_started"] = True
 
         state = app.serialize_player_state_for("one")
@@ -417,8 +424,10 @@ class MazeGameRuleTests(unittest.TestCase):
 
         self.assertEqual(trail["relative_position"], {"x": 1, "y": 0})
         self.assertEqual(trail["tiles"]["1,0"], "monster")
+        self.assertEqual(trail["wall_edges"], [app.serialize_edge((1, 0), (1, 1))])
         self.assertNotIn("manual_tiles", trail)
         self.assertEqual(state["river_map"]["tiles"]["0,0"], "river_start")
+        self.assertEqual(state["river_map"]["wall_edges"], [app.serialize_edge((0, 0), (1, 0))])
         self.assertNotIn("x", trail)
         self.assertNotIn("y", trail)
 
@@ -567,6 +576,7 @@ class MazeGameSocketTests(unittest.TestCase):
         self.one.emit("player_set_map_note", {"x": 2, "y": 2, "tile": "monster"})
 
         self.assertEqual(player["manual_tiles"]["2,2"], "monster")
+        self.assertFalse(any("Map note:" in line for line in app.GAME["logs"]))
         state = app.serialize_player_state_for(one_sid)
         self.assertEqual(state["your_manual_tiles"]["2,2"], "monster")
 
