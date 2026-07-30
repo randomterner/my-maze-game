@@ -631,6 +631,15 @@
     cell.appendChild(div);
   }
 
+  function addUniqueEdgeMarkers(cell, edgeList, kind, x, y, displayX, displayY) {
+    // Every shared edge is drawn by exactly one cell. Top/left own an edge
+    // inside the visible grid; bottom/right are only needed at its boundary.
+    if (edgeExists(edgeList, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", kind);
+    if (edgeExists(edgeList, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", kind);
+    if (displayY === 9 && edgeExists(edgeList, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", kind);
+    if (displayX === 9 && edgeExists(edgeList, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", kind);
+  }
+
   function escapeHtml(str) {
     return String(str ?? "")
       .replaceAll("&", "&amp;")
@@ -746,20 +755,9 @@
           if (!lostMap && x === 0) addEdgeMarker(cell, "Left", "wall");
           if (!lostMap && x === 9) addEdgeMarker(cell, "Right", "wall");
 
-          if ((lostMap || displayY > 0) && edgeExists(knownWallEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "wall");
-          if ((lostMap || displayX > 0) && edgeExists(knownWallEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "wall");
-          if ((lostMap || displayY < 9) && edgeExists(knownWallEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "wall");
-          if ((lostMap || displayX < 9) && edgeExists(knownWallEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "wall");
-
-          if ((lostMap || displayY > 0) && edgeExists(openEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "open");
-          if ((lostMap || displayX > 0) && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "open");
-          if ((lostMap || displayY < 9) && edgeExists(openEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "open");
-          if ((lostMap || displayX < 9) && edgeExists(openEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Right", "open");
-
-          if ((lostMap || displayY > 0) && edgeExists(brokenEdges, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", "broken");
-          if ((lostMap || displayX > 0) && edgeExists(brokenEdges, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", "broken");
-          if ((lostMap || displayY < 9) && edgeExists(brokenEdges, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", "broken");
-          if ((lostMap || displayX < 9) && edgeExists(brokenEdges, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", "broken");
+          addUniqueEdgeMarkers(cell, knownWallEdges, "wall", x, y, displayX, displayY);
+          addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY);
+          addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY);
         }
 
         const publicHere = lostMap
