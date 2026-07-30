@@ -1,827 +1,581 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Maze Game - Player</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    :root {
-      --bg: #f2f3f7;
-      --card: #ffffff;
-      --text: #222;
-      --muted: #666;
-      --blue: #2f6df6;
-      --blue-dark: #2357c8;
-      --border: #e6e8ef;
-      --shadow: 0 2px 10px rgba(0,0,0,0.06);
-      --radius: 12px;
-      --board-size: min(92vw, 520px);
-      --cell-gap: 2px;
-    }
-
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 12px;
-      padding-bottom: 220px;
-    }
-
-    .card {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 14px;
-      box-shadow: var(--shadow);
-      margin-bottom: 12px;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: 12px;
-      align-items: start;
-    }
-
-    .row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    input, button, a.rulesBtn { font: inherit; }
-
-    input {
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #ccc;
-      min-width: 0;
-    }
-
-    button, a.rulesBtn {
-      padding: 12px 14px;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      background: var(--blue);
-      color: white;
-      min-height: 44px;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    button:hover, a.rulesBtn:hover { background: var(--blue-dark); }
-
-    button.activeMode {
-      outline: 3px solid rgba(47,109,246,0.25);
-      background: #173f99;
-    }
-
-    .small {
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .turnBadge {
-      display: inline-block;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #111;
-      color: white;
-      font-size: 13px;
-    }
-
-    .pill {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 6px 10px;
-      background: #eef2ff;
-      font-size: 13px;
-      margin: 3px 4px 0 0;
-    }
-
-    .logs {
-      max-height: 220px;
-      overflow: auto;
-      background: #fafafa;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 8px;
-      font-size: 14px;
-    }
-
-    .logs div {
-      padding: 4px 0;
-      border-bottom: 1px solid #efefef;
-    }
-
-    .boardOuter {
-      display: grid;
-      grid-template-columns: 28px 1fr;
-      grid-template-rows: 24px 1fr;
-      gap: 6px;
-      align-items: start;
-    }
-
-    .cornerBox {
-      width: 28px;
-      height: 24px;
-    }
-
-    .colLabels {
-      display: grid;
-      grid-template-columns: repeat(10, 1fr);
-      width: var(--board-size);
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-      font-weight: bold;
-    }
-
-    .rowLabels {
-      display: grid;
-      grid-template-rows: repeat(10, 1fr);
-      height: var(--board-size);
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-      font-weight: bold;
-    }
-
-    .rowLabel {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .board {
-      width: var(--board-size);
-      height: var(--board-size);
-      display: grid;
-      grid-template-columns: repeat(10, 1fr);
-      grid-template-rows: repeat(10, 1fr);
-      gap: var(--cell-gap);
-      touch-action: manipulation;
-    }
-
-    .cell {
-      position: relative;
-      overflow: hidden;
-      border-radius: 6px;
-      background: #c9d0dc;
-      aspect-ratio: 1 / 1;
-      cursor: pointer;
-    }
-
-    .cell img {
-      width: 100%;
-      height: 100%;
-      display: block;
-      object-fit: cover;
-      user-select: none;
-      pointer-events: none;
-    }
-
-    .unknown {
-      background: #bfc7d4;
-    }
-
-    .playerTag {
-      position: absolute;
-      right: 2px;
-      bottom: 2px;
-      font-size: 9px;
-      padding: 1px 4px;
-      border-radius: 10px;
-      background: rgba(0,0,0,0.78);
-      color: white;
-      max-width: 44px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      pointer-events: none;
-      z-index: 6;
-    }
-
-    .youTag {
-      background: rgba(47,109,246,0.95);
-    }
-
-    .edgeLine {
-      position: absolute;
-      pointer-events: none;
-      z-index: 4;
-    }
-
-    .edgeTop, .edgeBottom {
-      left: 12%;
-      width: 76%;
-      height: 0;
-    }
-
-    .edgeLeft, .edgeRight {
-      top: 12%;
-      height: 76%;
-      width: 0;
-    }
-
-    .edgeTop { top: 0; }
-    .edgeBottom { bottom: 0; }
-    .edgeLeft { left: 0; }
-    .edgeRight { right: 0; }
-
-    .wallEdgeTop, .wallEdgeBottom {
-      border-top: 3px solid rgba(0,0,0,0.95);
-    }
-
-    .wallEdgeLeft, .wallEdgeRight {
-      border-left: 3px solid rgba(0,0,0,0.95);
-    }
-
-    .openEdgeTop, .openEdgeBottom {
-      border-top: 2px dotted #ffd84d;
-    }
-
-    .openEdgeLeft, .openEdgeRight {
-      border-left: 2px dotted #ffd84d;
-    }
-
-    .brokenEdgeTop, .brokenEdgeBottom {
-      border-top: 3px solid #1e7bff;
-    }
-
-    .brokenEdgeLeft, .brokenEdgeRight {
-      border-left: 3px solid #1e7bff;
-    }
-
-    .actionBar {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 50;
-      background: rgba(255,255,255,0.98);
-      border-top: 1px solid var(--border);
-      box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
-      padding: 8px;
-      padding-bottom: calc(8px + env(safe-area-inset-bottom));
-    }
-
-    .modeButtons {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-
-    .arrowPad {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      max-width: 360px;
-      margin: 0 auto;
-    }
-
-    .arrowPad .spacer { visibility: hidden; }
-
-    .arrowBtn {
-      font-size: 20px;
-      font-weight: bold;
-      min-height: 48px;
-    }
-
-    @media (max-width: 920px) {
-      .layout { grid-template-columns: 1fr; }
-    }
-
-    @media (max-width: 640px) {
-      .wrap {
-        padding: 10px;
-        padding-bottom: 260px;
-      }
-
-      .row {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .row input, .row button, .row a.rulesBtn {
-        width: 100%;
-      }
-
-      .modeButtons {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .board {
-        width: min(96vw, 420px);
-        height: min(96vw, 420px);
-      }
-
-      .colLabels { width: min(96vw, 420px); }
-      .rowLabels { height: min(96vw, 420px); }
-      .logs { max-height: 180px; }
-    }
-    /* Expedition-console visual system */
-    :root {
-      --bg: #080d18; --card: rgba(15, 24, 42, 0.92); --text: #f2f7ff; --muted: #9aa9c4;
-      --blue: #16b8d4; --blue-dark: #0a8aa7; --border: rgba(133, 167, 218, 0.2);
-      --shadow: 0 22px 55px rgba(0, 0, 0, 0.32); --radius: 18px;
-      --board-size: min(92vw, 560px); --cell-gap: 3px;
-    }
-    body {
-      min-height: 100vh; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at 15% 0%, rgba(24, 104, 139, 0.24), transparent 32rem), radial-gradient(circle at 90% 18%, rgba(97, 57, 143, 0.18), transparent 28rem), linear-gradient(145deg, #080d18 0%, #0c1527 48%, #070b14 100%);
-      color: var(--text);
-    }
-    .wrap { max-width: 1320px; padding: 20px 20px calc(320px + env(safe-area-inset-bottom)); }
-    .card { background: linear-gradient(145deg, rgba(22, 34, 58, 0.96), rgba(10, 17, 31, 0.96)); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(16px); }
-    .hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; overflow: hidden; position: relative; padding: 24px; border-color: rgba(51, 203, 222, 0.36); background: linear-gradient(105deg, rgba(17, 41, 66, 0.98), rgba(22, 22, 50, 0.94)); }
-    .hero::after { content: ""; position: absolute; width: 260px; height: 260px; right: -100px; top: -150px; border: 1px solid rgba(74, 215, 236, 0.3); border-radius: 50%; box-shadow: 0 0 0 28px rgba(74, 215, 236, 0.04), 0 0 0 56px rgba(74, 215, 236, 0.03); }
-    .eyebrow { margin: 0 0 5px; color: #65e1f3; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.18em; }
-    .hero h1 { margin: 0; font-size: clamp(1.8rem, 4vw, 2.65rem); letter-spacing: -0.055em; }
-    .hero p { margin: 6px 0 0; color: var(--muted); max-width: 500px; }
-    .hero .row { position: relative; z-index: 1; }
-    .role-chip, .turnBadge, .pill { border: 1px solid rgba(91, 217, 237, 0.28); background: rgba(10, 109, 134, 0.22); color: #d9fbff; letter-spacing: 0.05em; font-size: 0.72rem; font-weight: 800; }
-    .role-chip { display: inline-flex; padding: 7px 10px; border-radius: 999px; margin-top: 12px; }
-    .small { color: var(--muted); }
-    input { color: var(--text); background: rgba(4, 10, 22, 0.6); border-color: rgba(123, 163, 218, 0.32); }
-    input::placeholder { color: #71809d; }
-    .colorPicker { display: inline-flex; align-items: center; gap: 7px; color: #c7d9ef; font-size: 0.76rem; font-weight: 750; white-space: nowrap; }
-    .colorPicker input { width: 42px; min-width: 42px; height: 42px; padding: 4px; cursor: pointer; }
-    button, a.rulesBtn { background: linear-gradient(135deg, #16b8d4, #3570d5); box-shadow: 0 8px 22px rgba(16, 156, 210, 0.22); font-weight: 750; }
-    button:hover, a.rulesBtn:hover { background: linear-gradient(135deg, #32cde4, #4b82e0); }
-    .logs { max-height: 112px; overflow-y: auto; overflow-x: hidden; background: rgba(4, 10, 20, 0.5); border-color: var(--border); color: #c6d4e9; }
-    .logs div { min-height: 25px; border-color: rgba(148, 173, 209, 0.12); }
-    #playerInfo, #lastMessage { max-height: 150px; overflow-y: auto; overflow-x: hidden; }
-    .colLabels, .rowLabels { color: #b5c2d8; letter-spacing: 0.04em; }
-    .board { padding: 9px; gap: var(--cell-gap); border-radius: 17px; background: linear-gradient(145deg, #456273, #101927 22%, #0b111d 78%, #395564); box-shadow: inset 0 0 0 1px rgba(176, 229, 237, 0.24), 0 18px 40px rgba(0,0,0,0.38); }
-    .cell { border-radius: 5px; background: #101a29; box-shadow: inset 0 0 0 1px rgba(157, 199, 221, 0.12); transition: transform 150ms ease, filter 150ms ease; }
-    .cell:hover { transform: translateY(-1px); filter: brightness(1.14); }
-    .cell img { transform: scale(1.02); }
-    .unknown { background: radial-gradient(circle at 35% 35%, rgba(65, 87, 123, 0.55), transparent 18%), linear-gradient(135deg, #17233a, #0b1220 65%); }
-    .playerTag {
-      left: 50%; right: auto; bottom: 4px; transform: translateX(-50%); padding: 0 0 11px;
-      max-width: 86px; overflow: visible; border: 0; border-radius: 0; background: transparent;
-      color: #ffffff; font-size: 9px; font-weight: 800; text-align: center;
-      text-shadow: 1px 1px 0 #07101d, -1px -1px 0 #07101d, 1px -1px 0 #07101d, -1px 1px 0 #07101d;
-      box-shadow: none;
-    }
-    .playerTag::after {
-      content: ""; position: absolute; left: 50%; bottom: 0; width: 8px; height: 8px;
-      transform: translateX(-50%); border: 2px solid #08101c; border-radius: 50%;
-      background: var(--player-color, #ffcc55); box-shadow: 0 0 0 1px rgba(255,255,255,.28);
-    }
-    .youTag { background: transparent; }
-    .youTag::after { background: #55e4ff; }
-    .wallEdgeTop, .wallEdgeBottom { border-top-color: rgba(2, 5, 10, 0.98); }
-    .wallEdgeLeft, .wallEdgeRight { border-left-color: rgba(2, 5, 10, 0.98); }
-    .openEdgeTop, .openEdgeBottom { border-top-color: #f6c85a; }
-    .openEdgeLeft, .openEdgeRight { border-left-color: #f6c85a; }
-    .brokenEdgeTop, .brokenEdgeBottom { border-top-color: #52d8ff; }
-    .brokenEdgeLeft, .brokenEdgeRight { border-left-color: #52d8ff; }
-    .actionBar { background: rgba(8, 13, 24, 0.94); border-top-color: rgba(120, 184, 213, 0.25); box-shadow: 0 -12px 40px rgba(0,0,0,0.32); backdrop-filter: blur(20px); }
-    @media (max-width: 640px) {
-      :root { --board-size: min(calc(100vw - 82px), 420px); }
-      .wrap { padding: 10px 10px calc(330px + env(safe-area-inset-bottom)); }
-      .hero { align-items: flex-start; flex-direction: column; }
-      .board { width: var(--board-size); height: var(--board-size); }
-      .colLabels { width: var(--board-size); }
-      .rowLabels { height: var(--board-size); }
-    }
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="card hero">
-    <div>
-      <div class="eyebrow">PRIVATE EXPEDITION LOG</div>
-      <h1>Maze Runner</h1>
-      <p>Navigate the unknown, claim the treasure, and find the way out.</p>
-      <span class="role-chip">PLAYER CONSOLE</span>
-    </div>
-    <div class="row">
-      <input id="nameInput" placeholder="Your name">
-      <label class="colorPicker" title="Choose your player dot color">
-        <span>Dot color</span>
-        <input id="colorInput" type="color" value="#55e4ff" aria-label="Player dot color">
-      </label>
-      <button onclick="joinPlayer()">Join</button>
-      <a
-        class="rulesBtn"
-        href="https://docs.google.com/document/d/1V2dLYzytEPp-pj8lYusuTic1JNMxjCUr5TD_5PVWVbE/edit?tab=t.0"
-        target="_blank"
-        rel="noopener noreferrer"
-      >Rules</a>
-    </div>
-    <div class="small" id="joinStatus">Not joined yet.</div>
-  </div>
-
-  <div class="layout">
-    <div>
-      <div class="card">
-        <div><strong>Turn:</strong> <span id="turnInfo" class="turnBadge">Waiting</span></div>
-        <div class="small" id="gameStatus">Game not started.</div>
-        <div class="small" id="socketInfo"></div>
-        <div class="small" style="margin-top:6px;"><strong>Current mode:</strong> <span id="modeLabel">Move</span></div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Your info</h3>
-        <div id="playerInfo">No player data yet.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Last message</h3>
-        <div id="lastMessage">No messages yet.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Line guide</h3>
-        <div class="small">Black solid line = wall.</div>
-        <div class="small" style="margin-top:8px;">Yellow dotted line = you know there is no wall there.</div>
-        <div class="small" style="margin-top:8px;">Blue line = a wall was there and got broken.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">Recent log</h3>
-        <div class="logs" id="logs"></div>
-      </div>
-    </div>
-
-    <div>
-      <div class="card">
-        <h3 id="boardTitle" style="margin-top:0;">Your board</h3>
-        <div class="small" id="boardHint">Before the game starts, tap a tile to choose your spawn.</div>
-
-        <div class="boardOuter">
-          <div class="cornerBox"></div>
-          <div class="colLabels" id="colLabels"></div>
-          <div class="rowLabels" id="rowLabels"></div>
-          <div class="board" id="board"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="actionBar">
-  <div class="modeButtons">
-    <button id="mode-move" class="activeMode" onclick="setMode('move')">Move</button>
-    <button id="mode-shoot" onclick="setMode('shoot')">Shoot</button>
-    <button id="mode-bomb" onclick="setMode('bomb')">Bomb</button>
-    <button id="mode-flash" onclick="setMode('flash')">Flashlight</button>
-  </div>
-
-  <div class="arrowPad">
-    <div class="spacer"></div>
-    <button class="arrowBtn" onclick="handleArrow('up')">↑</button>
-    <div class="spacer"></div>
-
-    <button class="arrowBtn" onclick="handleArrow('left')">←</button>
-    <button class="spacer"></button>
-    <button class="arrowBtn" onclick="handleArrow('right')">→</button>
-
-    <div class="spacer"></div>
-    <button class="arrowBtn" onclick="handleArrow('down')">↓</button>
-    <div class="spacer"></div>
-  </div>
-</div>
-
-<script>
-  const socket = io();
-  let state = null;
-  let currentMode = "move";
-
-  const textureMap = {
-    empty: "pixel_tiles/empty.png",
-    treasure: "pixel_tiles/treasure.png",
-    fake_treasure: "pixel_tiles/fake_treasure.png",
-    exit: "pixel_tiles/exit.png",
-    river: "pixel_tiles/river.png",
-    river_start: "pixel_tiles/river_start.png",
-    boat: "pixel_tiles/boat.png",
-    raft: "pixel_tiles/raft.png",
-    clinic: "pixel_tiles/clinic.png",
-    er: "pixel_tiles/er.png",
-    monster: "pixel_tiles/monster.png",
-    devil: "pixel_tiles/devil.png",
-    black_hole: "pixel_tiles/black_hole.png",
-    flashlight: "pixel_tiles/flashlight.png",
-    batteries: "pixel_tiles/batteries.png",
-    armory: "pixel_tiles/armory.png",
-    used_treasure: "pixel_tiles/treasure.png",
-    used_fake_treasure: "pixel_tiles/fake_treasure.png",
-    used_boat: "pixel_tiles/boat.png",
-    used_raft: "pixel_tiles/raft.png",
-    used_flashlight: "pixel_tiles/flashlight.png",
-    used_batteries: "pixel_tiles/batteries.png",
-    unknown: null
-  };
-
-  function joinPlayer() {
-    const name = document.getElementById("nameInput").value.trim();
-    const color = document.getElementById("colorInput").value;
-    if (!name) {
-      alert("Enter your name first.");
-      return;
-    }
-    socket.emit("join_player", { name, color });
-  }
-
-  function setMode(mode) {
-    currentMode = mode;
-    document.getElementById("modeLabel").textContent =
-      mode === "move" ? "Move" :
-      mode === "shoot" ? "Shoot" :
-      mode === "bomb" ? "Bomb" : "Flashlight";
-
-    ["move", "shoot", "bomb", "flash"].forEach(m => {
-      const btn = document.getElementById(`mode-${m}`);
-      if (btn) btn.classList.toggle("activeMode", m === mode);
-    });
-  }
-
-  function handleArrow(direction) {
-    if (!state) return;
-
-    if (currentMode === "move") {
-      socket.emit("player_move", { direction });
-    } else if (currentMode === "shoot") {
-      socket.emit("player_shoot", { direction });
-    } else if (currentMode === "bomb") {
-      socket.emit("player_bomb", { direction });
-    } else if (currentMode === "flash") {
-      socket.emit("player_flashlight", { direction });
-    }
-  }
-
-  function handleBoardClick(x, y) {
-    if (!state || !state.you) return;
-    if (!state.game_started) {
-      socket.emit("player_spawn", { x, y });
-    }
-  }
-
-  function parseCoordinate(key) {
-    return key.split(",").map(Number);
-  }
-
-  function getMapWindow() {
-    if (!state?.you?.lost) return { startX: 0, startY: 0 };
-
-    const current = state.lost_relative_position || { x: 0, y: 0 };
-    const boardSize = state.board_size || 10;
-    return {
-      startX: current.x - Math.floor(boardSize / 2),
-      startY: current.y - Math.floor(boardSize / 2),
-    };
-  }
-
-  function buildBoardLabels() {
-    const colLabels = document.getElementById("colLabels");
-    const rowLabels = document.getElementById("rowLabels");
-    const window = getMapWindow();
-
-    colLabels.innerHTML = "";
-    rowLabels.innerHTML = "";
-
-    const columns = state?.you?.lost
-      ? Array.from({ length: 10 }, (_, index) => window.startX + index)
-      : ["A","B","C","D","E","F","G","H","I","J"];
-    columns.forEach(label => {
-      const div = document.createElement("div");
-      div.textContent = label;
-      colLabels.appendChild(div);
-    });
-
-    for (let index = 0; index < 10; index++) {
-      const div = document.createElement("div");
-      div.className = "rowLabel";
-      div.textContent = state?.you?.lost ? window.startY + index : index + 1;
-      rowLabels.appendChild(div);
-    }
-  }
-
-  function edgeExists(edgeList, a, b) {
-    if (!edgeList) return false;
-    return edgeList.some(edge => {
-      const [p1, p2] = edge;
-      return (
-        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
-        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
-      );
-    });
-  }
-
-  function addEdgeMarker(cell, side, kind) {
-    const div = document.createElement("div");
-    div.className = `edgeLine edge${side} ${kind}Edge${side}`;
-    cell.appendChild(div);
-  }
-
-  function addUniqueEdgeMarkers(cell, edgeList, kind, x, y, displayX, displayY) {
-    // Every shared edge is drawn by exactly one cell. Top/left own an edge
-    // inside the visible grid; bottom/right are only needed at its boundary.
-    if (edgeExists(edgeList, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", kind);
-    if (edgeExists(edgeList, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", kind);
-    if (displayY === 9 && edgeExists(edgeList, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", kind);
-    if (displayX === 9 && edgeExists(edgeList, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", kind);
-  }
-
-  function escapeHtml(str) {
-    return String(str ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;");
-  }
-
-  function scrollLogsToBottom() {
-    const el = document.getElementById("logs");
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }
-
-  function updateInfo() {
-    if (!state || !state.you) return;
-
-    const you = state.you;
-    const items = Object.entries(you.items || {})
-      .filter(([k, v]) => v)
-      .map(([k]) => `<span class="pill">${escapeHtml(k)}</span>`)
-      .join("") || "<span class='small'>No items yet.</span>";
-    const publicPositions = state.public_revealed_players || [];
-    const publicPositionList = publicPositions.length
-      ? publicPositions.map(player => `${escapeHtml(player.name)}: ${player.x}, ${player.y}`).join(" · ")
-      : "<span class='small'>None.</span>";
-
-    document.getElementById("playerInfo").innerHTML = `
-      <div><strong>Name:</strong> ${escapeHtml(you.name)}</div>
-      <div><strong>Alive:</strong> ${you.alive ? "Yes" : "No"}</div>
-      <div><strong>Spawned:</strong> ${you.spawned ? "Yes" : "No"}</div>
-      <div><strong>Lost:</strong> ${you.lost ? "Yes" : "No"}</div>
-      <div><strong>Position:</strong> ${you.lost ? "Hidden (use your relative map)" : (you.x === null ? "-" : `${you.x}, ${you.y}`)}</div>
-      <div><strong>Injuries:</strong> ${you.injuries}</div>
-      <div><strong>Bullets:</strong> ${you.bullets}</div>
-      <div><strong>Bombs:</strong> ${you.bombs}</div>
-      <div style="margin-top:8px;"><strong>Items:</strong></div>
-      <div>${items}</div>
-      <div style="margin-top:8px;"><strong>Public positions:</strong></div>
-      <div>${publicPositionList}</div>
-    `;
-
-    document.getElementById("lastMessage").textContent = you.last_message || "";
-
-    if (!state.game_started) {
-      document.getElementById("turnInfo").textContent = "Not started";
-      document.getElementById("gameStatus").textContent = "Waiting for manager to start the game.";
-    } else if (state.game_over) {
-      document.getElementById("turnInfo").textContent = "Game Over";
-      document.getElementById("gameStatus").textContent =
-        state.winner_reason ? `Winner: ${escapeHtml(state.winner_reason)}` : "Game Over";
-    } else {
-      document.getElementById("turnInfo").textContent = state.current_turn_name || "Unknown";
-      document.getElementById("gameStatus").textContent =
-        state.is_your_turn ? "It is your turn." : "Wait for your turn.";
-    }
-
-    document.getElementById("logs").innerHTML =
-      (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
-
-    if (you.lost) {
-      const tiles = Object.keys(state.your_known_tiles || {}).map(parseCoordinate);
-      const columns = new Set(tiles.map(([x]) => x)).size;
-      const rows = new Set(tiles.map(([, y]) => y)).size;
-      document.getElementById("boardTitle").textContent = "Lost-path map";
-      document.getElementById("boardHint").textContent =
-        `Relative coordinates only — mapped columns: ${columns}/10, rows: ${rows}/10. Map all 10 of each to recover.`;
-    } else {
-      document.getElementById("boardTitle").textContent = "Your board";
-      document.getElementById("boardHint").textContent = state.game_started
-        ? "Your discovered map."
-        : "Before the game starts, tap a tile to choose your spawn.";
-    }
-  }
-
-  function buildBoard() {
-    const boardEl = document.getElementById("board");
-    boardEl.innerHTML = "";
-    if (!state || !state.you) return;
-
-    const knownTiles = state.your_known_tiles || {};
-    const knownPlayers = state.your_known_players || {};
-    const openEdges = state.your_known_open_edges || [];
-    const brokenEdges = state.your_known_broken_walls || [];
-    const knownWallEdges = state.your_known_wall_edges || [];
-    const window = getMapWindow();
-    const lostMap = Boolean(state.you.lost);
-    const relativePosition = state.lost_relative_position || { x: 0, y: 0 };
-    const publicPositions = state.public_revealed_players || [];
-
-    for (let displayY = 0; displayY < 10; displayY++) {
-      for (let displayX = 0; displayX < 10; displayX++) {
-        const x = window.startX + displayX;
-        const y = window.startY + displayY;
-        const key = `${x},${y}`;
-        const tile = knownTiles[key] || "unknown";
-
-        const cell = document.createElement("div");
-        cell.className = "cell" + (tile === "unknown" ? " unknown" : "");
-        cell.title = lostMap ? `relative ${x},${y}` : `${x},${y}`;
-        cell.onclick = () => handleBoardClick(x, y);
-
-        const texture = textureMap[tile];
-        if (texture) {
-          const img = document.createElement("img");
-          img.src = `/static/${texture}`;
-          img.alt = tile;
-          cell.appendChild(img);
+import unittest
+
+import app
+
+
+class MazeGameRuleTests(unittest.TestCase):
+    def setUp(self):
+        app.GAME = app.new_game_state()
+
+    def add_player(self, sid, name, x, y):
+        player = app.create_player(sid, name)
+        player.update({"x": x, "y": y, "birth_x": x, "birth_y": y, "spawned": True})
+        app.GAME["players"][sid] = player
+        return player
+
+    def test_clinic_heals_one_to_three_injuries_but_not_four(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(0, 0)] = "clinic"
+        player["injuries"] = 2
+        app.apply_tile_effect(player)
+        self.assertEqual(player["injuries"], 0)
+        self.assertIn("healed all", player["last_message"].lower())
+        app.apply_tile_effect(player)
+        self.assertEqual(player["injuries"], 0)
+        self.assertIn("no injuries", player["last_message"].lower())
+        player["injuries"] = 4
+        app.apply_tile_effect(player)
+        self.assertEqual(player["injuries"], 4)
+        self.assertIn("go to the er", player["last_message"].lower())
+
+    def test_river_rejects_unconnected_diagonal_tiles(self):
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 1)] = "river"
+        result = app.river_validation()
+        self.assertFalse(result["ok"])
+        self.assertIn("diagonal", result["message"].lower())
+
+    def test_river_allows_a_connected_diagonal_corner(self):
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 0)] = "river"
+        app.GAME["board"][(1, 1)] = "river"
+
+        self.assertTrue(app.river_validation()["ok"])
+
+    def test_river_requires_one_connected_start(self):
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 0)] = "river"
+        self.assertTrue(app.river_validation()["ok"])
+        app.GAME["board"][(4, 4)] = "river"
+        self.assertFalse(app.river_validation()["ok"])
+
+    def test_river_is_required_and_start_counts_toward_its_limit(self):
+        self.assertFalse(app.river_validation()["ok"])
+        app.GAME["board"][(0, 0)] = "river_start"
+        self.assertTrue(app.river_validation()["ok"])
+
+    def test_required_tile_validation_rejects_missing_and_duplicate_tiles(self):
+        for index, tile in enumerate(sorted(app.REQUIRED_SINGLE_TILES)):
+            app.GAME["board"][(index % 10, index // 10)] = tile
+        app.GAME["board"][(9, 9)] = "river_start"
+        self.assertTrue(app.required_tile_validation()["ok"])
+
+        app.GAME["board"][(9, 9)] = "monster"
+        result = app.required_tile_validation()
+        self.assertFalse(result["ok"])
+        self.assertIn("monster", result["message"])
+
+    def test_lost_player_state_never_contains_the_hidden_coordinates(self):
+        player = self.add_player("one", "One", 2, 2)
+        player["lost"] = True
+        state = app.serialize_player_state_for("one")
+        self.assertIsNone(state["you"]["x"])
+        self.assertIsNone(state["you"]["y"])
+
+    def test_every_player_message_is_added_to_the_shared_log(self):
+        player = self.add_player("one", "One", 2, 2)
+
+        app.set_player_message(player, "A clear test result.")
+
+        self.assertEqual(player["last_message"], "A clear test result.")
+        self.assertEqual(app.GAME["logs"][-1], "One: A clear test result.")
+
+    def test_unknown_river_start_does_not_reveal_its_location(self):
+        player = self.add_player("one", "One", 2, 2)
+        app.GAME["board"][(2, 2)] = "river"
+        app.GAME["board"][(8, 8)] = "river_start"
+
+        app.apply_tile_effect(player)
+
+        self.assertTrue(player["lost"])
+        self.assertEqual((player["x"], player["y"]), (8, 8))
+        self.assertNotIn("8,8", player["known_tiles"])
+        state = app.serialize_player_state_for("one")
+        self.assertEqual(state["lost_relative_position"], {"x": 0, "y": 0})
+        self.assertEqual(state["your_known_tiles"], {"0,0": "river_start"})
+
+    def test_lost_map_uses_relative_coordinates_and_recovers_after_ten_rows_and_columns(self):
+        player = self.add_player("one", "One", 5, 5)
+        self.add_player("two", "Two", 0, 0)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        player["x"], player["y"] = 6, 5
+        player["lost_relative_x"] = 1
+        app.remember_lost_tile(player, (6, 5))
+
+        state = app.serialize_player_state_for("one")
+        self.assertIn("0,0", state["your_known_tiles"])
+        self.assertIn("1,0", state["your_known_tiles"])
+        self.assertIsNone(state["you"]["x"])
+
+        player["lost_known_tiles"] = {
+            f"{x},{y}": "empty" for x in range(10) for y in range(10)
+        }
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertFalse(player["lost"])
+        other_state = app.serialize_player_state_for("two")
+        self.assertEqual(other_state["public_revealed_players"][0]["sid"], "one")
+
+    def test_new_special_tile_shows_players_who_found_it_in_relative_space(self):
+        lost_player = self.add_player("one", "One", 5, 5)
+        other = self.add_player("two", "Two", 6, 5)
+        other["visited_tiles"] = ["5,5"]
+        app.GAME["board"][(5, 5)] = "monster"
+
+        app.enter_lost_state(lost_player, "black_hole")
+        app.start_lost_relative_map(lost_player)
+
+        state = app.serialize_player_state_for("one")
+        self.assertIn("1,0", state["your_known_players"])
+        self.assertEqual(state["your_known_players"]["1,0"][0]["sid"], "two")
+
+        other["lost"] = True
+        app.start_lost_relative_map(lost_player)
+        state = app.serialize_player_state_for("one")
+        self.assertNotIn("1,0", state["your_known_players"])
+
+    def test_river_lost_players_share_their_river_start_relative_map(self):
+        one = self.add_player("one", "One", 4, 4)
+        two = self.add_player("two", "Two", 4, 4)
+        for player in (one, two):
+            app.enter_lost_state(player, "river")
+            app.start_lost_relative_map(player)
+
+        two["x"], two["y"] = 5, 4
+        two["lost_relative_x"] = 1
+        app.refresh_lost_river_player_positions()
+
+        state = app.serialize_player_state_for("one")
+        self.assertIn("1,0", state["your_known_players"])
+        self.assertEqual(state["your_known_players"]["1,0"][0]["sid"], "two")
+
+    def test_shared_river_map_is_kept_for_the_whole_game(self):
+        one = self.add_player("one", "One", 4, 4)
+        app.enter_lost_state(one, "river")
+        app.start_lost_relative_map(one)
+        one["x"], one["y"] = 5, 4
+        one["lost_relative_x"] = 1
+        app.remember_lost_tile(one, (5, 4))
+        app.recover_from_lost(one, "Recovered for test.")
+
+        two = self.add_player("two", "Two", 4, 4)
+        app.enter_lost_state(two, "river")
+        app.start_lost_relative_map(two)
+        state = app.serialize_player_state_for("two")
+        self.assertIn("1,0", state["your_known_tiles"])
+
+    def test_ten_by_ten_rule_reveals_normal_player_until_they_are_lost(self):
+        player = self.add_player("one", "One", 5, 5)
+        viewer = self.add_player("two", "Two", 0, 0)
+        player["known_tiles"] = {
+            f"{x},{y}": "empty" for x in range(10) for y in range(10)
         }
 
-        if (state.game_started) {
-          if (!lostMap && y === 0) addEdgeMarker(cell, "Top", "wall");
-          if (!lostMap && y === 9) addEdgeMarker(cell, "Bottom", "wall");
-          if (!lostMap && x === 0) addEdgeMarker(cell, "Left", "wall");
-          if (!lostMap && x === 9) addEdgeMarker(cell, "Right", "wall");
+        self.assertTrue(app.check_lost_map_completion(player))
+        app.emit_full_state()
+        state = app.serialize_player_state_for("two")
+        self.assertEqual(state["public_revealed_players"][0]["sid"], "one")
+        self.assertIn("9,9", viewer["known_tiles"])
 
-          addUniqueEdgeMarkers(cell, knownWallEdges, "wall", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY);
+        app.enter_lost_state(player, "black_hole")
+        app.emit_full_state()
+        state = app.serialize_player_state_for("two")
+        self.assertEqual(state["public_revealed_players"], [])
+
+    def test_lost_ten_by_ten_shares_both_sections_when_they_overlap(self):
+        player = self.add_player("one", "One", 5, 5)
+        viewer = self.add_player("two", "Two", 0, 0)
+        app.enter_lost_state(player, "black_hole")
+        player["lost_relative_x"] = 0
+        player["lost_relative_y"] = 0
+        player["known_tiles_before_lost"] = {"0,0": "treasure"}
+        player["lost_known_tiles"] = {
+            f"{x},{y}": "monster" for x in range(-5, 5) for y in range(-5, 5)
         }
 
-        const publicHere = lostMap
-          ? []
-          : publicPositions.filter(player => player.x === x && player.y === y);
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertEqual(viewer["known_tiles"]["0,0"], "monster")
+        self.assertEqual(viewer["known_tiles"]["9,9"], "monster")
 
-        if (state.game_started && (tile !== "unknown" || publicHere.length > 0)) {
-          let markerIndex = 0;
-          const displayedSids = new Set();
-
-          if (
-            state.you &&
-            (lostMap
-              ? relativePosition.x === x && relativePosition.y === y
-              : state.you.x === x && state.you.y === y)
-          ) {
-            const selfTag = document.createElement("div");
-            selfTag.className = "playerTag youTag";
-            selfTag.style.bottom = `${20 + markerIndex * 12}px`;
-            selfTag.style.setProperty("--player-color", state.you.color || "#55e4ff");
-            selfTag.textContent = state.you.name || "YOU";
-            cell.appendChild(selfTag);
-            displayedSids.add(state.you.sid);
-            markerIndex++;
-          }
-
-          [...(knownPlayers[key] || []), ...publicHere].forEach((p) => {
-            if (displayedSids.has(p.sid)) return;
-
-            const tag = document.createElement("div");
-            tag.className = "playerTag";
-            tag.style.bottom = `${20 + markerIndex * 12}px`;
-            tag.style.setProperty("--player-color", p.color || "#ffcc55");
-            tag.textContent = p.name;
-            cell.appendChild(tag);
-            displayedSids.add(p.sid);
-            markerIndex++;
-          });
+    def test_river_map_is_shared_when_a_river_player_completes_ten_by_ten(self):
+        player = self.add_player("one", "One", 4, 4)
+        viewer = self.add_player("two", "Two", 0, 0)
+        app.enter_lost_state(player, "river")
+        player["lost_relative_x"] = 0
+        player["lost_relative_y"] = 0
+        player["lost_known_tiles"] = {
+            f"{x},{y}": "river" for x in range(-4, 6) for y in range(-4, 6)
         }
 
-        boardEl.appendChild(cell);
-      }
-    }
-  }
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertEqual(viewer["known_tiles"]["9,9"], "river")
 
-  socket.on("connected", data => {
-    document.getElementById("socketInfo").textContent = `Socket ID: ${data.sid}`;
-  });
+    def test_player_reappears_for_people_who_visited_the_exit_lost_tile(self):
+        player = self.add_player("one", "One", 4, 4)
+        viewer = self.add_player("two", "Two", 0, 0)
+        viewer["visited_tiles"] = ["4,4"]
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
 
-  socket.on("joined_as_player", data => {
-    document.getElementById("joinStatus").textContent = `Joined as ${data.name}`;
-  });
+        app.recover_from_lost(player, "Recovered for test.")
+        app.refresh_known_player_positions()
 
-  socket.on("player_state", data => {
-    state = data;
-    buildBoardLabels();
-    updateInfo();
-    buildBoard();
-    scrollLogsToBottom();
-  });
+        self.assertIn("4,4", viewer["known_players"])
+        self.assertEqual(viewer["known_players"]["4,4"][0]["sid"], "one")
 
-  socket.on("error_message", data => {
-    alert(data.message);
-  });
-</script>
-</body>
-</html>
+    def test_outer_wall_cannot_be_destroyed(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["game_started"] = True
+        app.GAME["player_order"] = ["one"]
+        self.assertTrue(app.is_outer_wall(0, 0, "up"))
+        self.assertTrue(app.wall_blocks(0, 0, "up"))
+        self.assertEqual(player["bombs"], 3)
+
+    def test_outer_wall_bomb_clues_can_complete_a_lost_map(self):
+        player = self.add_player("one", "One", 0, 0)
+        self.add_player("two", "Two", 9, 9)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        app.remember_lost_outer_wall_bomb(player, "up")
+        self.assertTrue(player["lost"])
+        self.assertFalse(app.check_lost_map_completion(player))
+
+        app.remember_lost_outer_wall_bomb(player, "left")
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertFalse(player["lost"])
+        self.assertEqual(
+            app.serialize_player_state_for("two")["public_revealed_players"][0]["sid"],
+            "one",
+        )
+
+    def test_outer_wall_clue_and_ten_columns_can_complete_a_lost_map(self):
+        player = self.add_player("one", "One", 4, 0)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        app.remember_lost_outer_wall_bomb(player, "up")
+        player["lost_known_tiles"] = {
+            f"{x},0": "empty" for x in range(10)
+        }
+
+        self.assertTrue(app.check_lost_map_completion(player))
+        self.assertFalse(player["lost"])
+
+    def test_flashlight_counts_as_a_lost_visit_and_recovers_a_familiar_tile(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(1, 0)] = "monster"
+        player["known_tiles"] = {"1,0": "monster"}
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        revealed = app.reveal_line(player, "right")
+
+        self.assertEqual(revealed, [(1, 0)])
+        self.assertIn("1,0", player["visited_tiles"])
+        self.assertFalse(player["lost"])
+        self.assertIn("flashlight revealed a familiar tile", player["last_message"].lower())
+
+    def test_flashlight_visit_counts_for_lost_special_tile_information(self):
+        observer = self.add_player("one", "One", 0, 0)
+        lost_player = self.add_player("two", "Two", 1, 0)
+        app.GAME["board"][(1, 0)] = "river_start"
+
+        app.reveal_line(observer, "right")
+        self.assertIn("1,0", observer["visited_tiles"])
+
+        app.enter_lost_state(lost_player, "river")
+        app.start_lost_relative_map(lost_player)
+        state = app.serialize_player_state_for("two")
+        self.assertEqual(state["your_known_players"]["-1,0"][0]["sid"], "one")
+
+    def test_flashlight_visits_every_revealed_tile_and_logs_special_tiles(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(1, 0)] = "river"
+        app.GAME["board"][(2, 0)] = "monster"
+
+        revealed = app.reveal_line(player, "right")
+
+        self.assertIn((1, 0), revealed)
+        self.assertIn((2, 0), revealed)
+        self.assertTrue({"1,0", "2,0", "9,0"}.issubset(player["visited_tiles"]))
+        self.assertEqual(player["known_tiles"]["1,0"], "river")
+        self.assertEqual(player["known_tiles"]["2,0"], "monster")
+        self.assertTrue(any("flashlight on special tile: river" in line for line in app.GAME["logs"]))
+        self.assertTrue(any("flashlight on special tile: monster" in line for line in app.GAME["logs"]))
+
+    def test_special_tile_discovery_adds_the_available_map_information(self):
+        explorer = self.add_player("one", "One", 0, 0)
+        contributor = self.add_player("two", "Two", 5, 5)
+        app.GAME["game_started"] = True
+        app.GAME["board"][(1, 0)] = "monster"
+        contributor["visited_tiles"] = ["1,0"]
+        contributor["known_tiles"] = {"8,8": "exit"}
+        contributor["known_open_edges"] = [app.serialize_edge((8, 8), (8, 9))]
+        contributor["known_wall_edges"] = [app.serialize_edge((7, 8), (8, 8))]
+
+        app.reveal_line(explorer, "right")
+
+        self.assertEqual(explorer["known_tiles"]["8,8"], "exit")
+        self.assertTrue(all(edge in explorer["known_open_edges"] for edge in contributor["known_open_edges"]))
+        self.assertTrue(all(edge in explorer["known_wall_edges"] for edge in contributor["known_wall_edges"]))
+        self.assertTrue(any("added map information from Two through monster" in line for line in app.GAME["logs"]))
+
+    def test_stepping_on_a_special_tile_adds_its_map_information(self):
+        explorer = self.add_player("one", "One", 1, 0)
+        contributor = self.add_player("two", "Two", 5, 5)
+        app.GAME["game_started"] = True
+        app.GAME["board"][(1, 0)] = "river_start"
+        contributor["visited_tiles"] = ["1,0"]
+        contributor["known_tiles"] = {"7,7": "treasure"}
+
+        app.apply_tile_effect(explorer)
+
+        self.assertEqual(explorer["known_tiles"]["7,7"], "treasure")
+        self.assertTrue(any("stepped onto special tile: river_start" in line for line in app.GAME["logs"]))
+
+    def test_lost_tile_discovery_stays_on_the_relative_map(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(1, 0)] = "monster"
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        app.reveal_line(player, "right")
+
+        self.assertNotIn("1,0", player["known_tiles"])
+        self.assertEqual(player["lost_known_tiles"]["1,0"], "monster")
+
+    def test_last_survivor_wins_and_all_dead_ends_game(self):
+        one = self.add_player("one", "One", 0, 0)
+        two = self.add_player("two", "Two", 1, 0)
+        two["alive"] = False
+        app.check_last_player_win()
+        self.assertTrue(app.GAME["game_over"])
+        self.assertEqual(app.GAME["winner_sid"], "one")
+
+        app.GAME = app.new_game_state()
+        one = self.add_player("one", "One", 0, 0)
+        two = self.add_player("two", "Two", 1, 0)
+        one["alive"] = False
+        two["alive"] = False
+        app.check_last_player_win()
+        self.assertTrue(app.GAME["game_over"])
+        self.assertEqual(app.GAME["winner_reason"], "all_players_dead")
+
+    def test_monster_caps_resources_and_grants_an_extra_turn(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(0, 0)] = "monster"
+        player["bullets"] = 5
+        player["bombs"] = 4
+
+        app.apply_tile_effect(player)
+
+        self.assertEqual(player["bullets"], 5)
+        self.assertEqual(player["bombs"], 5)
+        self.assertTrue(player["extra_turn"])
+
+    def test_river_boat_and_raft_follow_their_rules(self):
+        player = self.add_player("one", "One", 1, 0)
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 0)] = "river"
+
+        player["items"]["boat"] = True
+        app.apply_tile_effect(player)
+        self.assertEqual((player["x"], player["y"]), (1, 0))
+        self.assertEqual(player["injuries"], 0)
+
+        player["items"]["boat"] = False
+        player["items"]["raft"] = True
+        app.apply_tile_effect(player)
+        self.assertEqual((player["x"], player["y"]), (0, 0))
+        self.assertEqual(player["injuries"], 0)
+
+    def test_players_keep_separate_maps_when_they_meet(self):
+        one = self.add_player("one", "One", 3, 3)
+        two = self.add_player("two", "Two", 3, 3)
+        one["known_tiles"] = {"0,0": "treasure"}
+        two["known_tiles"] = {"9,9": "exit"}
+
+        app.announce_players_on_tile(one)
+        app.refresh_known_player_positions()
+
+        self.assertEqual(one["known_tiles"], {"0,0": "treasure"})
+        self.assertEqual(two["known_tiles"], {"9,9": "exit"})
+        self.assertIn("3,3", one["known_players"])
+        self.assertIn("3,3", two["known_players"])
+
+    def test_player_color_is_preserved_and_validated(self):
+        player = app.create_player("one", "One", "#A1b2C3")
+        self.assertEqual(player["color"], "#a1b2c3")
+        self.assertEqual(app.serialize_player_public(player)["color"], "#a1b2c3")
+        self.assertEqual(app.create_player("two", "Two", "not-a-color")["color"], "#55e4ff")
+
+class MazeGameSocketTests(unittest.TestCase):
+    def setUp(self):
+        app.GAME = app.new_game_state()
+        app.MANAGER_SID = None
+        self.manager = app.socketio.test_client(app.app)
+        self.one = app.socketio.test_client(app.app)
+        self.two = app.socketio.test_client(app.app)
+        self.manager.emit("join_manager")
+        self.one.emit("join_player", {"name": "One"})
+        self.two.emit("join_player", {"name": "Two"})
+        self.manager.get_received()
+        self.one.get_received()
+        self.two.get_received()
+
+    def tearDown(self):
+        self.manager.disconnect()
+        self.one.disconnect()
+        self.two.disconnect()
+
+    def prepare_startable_game(self):
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        self.two.emit("player_spawn", {"x": 1, "y": 0})
+        required_tiles = [
+            (2, 2, "treasure"), (3, 2, "fake_treasure"), (0, 9, "exit"),
+            (4, 2, "boat"), (5, 2, "raft"), (6, 2, "clinic"),
+            (7, 2, "er"), (8, 2, "monster"), (9, 2, "devil"),
+            (2, 3, "black_hole"), (3, 3, "flashlight"), (4, 3, "batteries"),
+            (5, 3, "armory"), (6, 3, "river_start"),
+        ]
+        for x, y, tile in required_tiles:
+            self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
+        self.manager.emit("manager_start_game")
+
+    def test_start_rejects_an_incomplete_board(self):
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        self.two.emit("player_spawn", {"x": 1, "y": 0})
+        self.manager.emit("manager_start_game")
+        messages = self.manager.get_received()
+        self.assertFalse(app.GAME["game_started"])
+        self.assertTrue(any(
+            event["name"] == "error_message" and "river" in event["args"][0]["message"].lower()
+            for event in messages
+        ))
+
+    def test_manager_cannot_place_a_second_unique_tile(self):
+        self.manager.emit("manager_set_tile", {"x": 2, "y": 2, "tile": "monster"})
+        self.manager.emit("manager_set_tile", {"x": 3, "y": 2, "tile": "monster"})
+        messages = self.manager.get_received()
+
+        self.assertEqual(app.GAME["board"][(2, 2)], "monster")
+        self.assertEqual(app.GAME["board"][(3, 2)], "empty")
+        self.assertTrue(any(
+            event["name"] == "error_message" and "only one monster" in event["args"][0]["message"].lower()
+            for event in messages
+        ))
+
+    def test_board_locks_and_new_players_cannot_join_after_start(self):
+        self.prepare_startable_game()
+        self.assertTrue(app.GAME["game_started"])
+        original = app.GAME["board"][(3, 3)]
+        self.manager.emit("manager_set_tile", {"x": 3, "y": 3, "tile": "devil"})
+        self.assertEqual(app.GAME["board"][(3, 3)], original)
+
+        late_player = app.socketio.test_client(app.app)
+        late_player.emit("join_player", {"name": "Late"})
+        self.assertEqual(len(app.GAME["players"]), 2)
+        messages = late_player.get_received()
+        self.assertTrue(any(event["name"] == "error_message" for event in messages))
+        late_player.disconnect()
+
+    def test_black_hole_can_place_player_on_an_empty_tile_with_a_player(self):
+        self.prepare_startable_game()
+        one_sid, two_sid = app.GAME["player_order"][:2]
+        one_player = app.GAME["players"][one_sid]
+        two_player = app.GAME["players"][two_sid]
+        one_player["x"], one_player["y"] = 4, 4
+        two_player["x"], two_player["y"] = 5, 5
+        app.GAME["pending_black_hole"] = {"player_sid": one_sid}
+
+        self.manager.emit("manager_resolve_black_hole", {"x": 5, "y": 5})
+        self.assertEqual((one_player["x"], one_player["y"]), (5, 5))
+        self.assertIsNone(app.GAME["pending_black_hole"])
+
+    def test_lost_outer_wall_bombs_mark_the_map_and_recover_after_two_axes(self):
+        self.prepare_startable_game()
+        one_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
+        player = app.GAME["players"][one_sid]
+        player["x"], player["y"] = 0, 0
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(one_sid)
+
+        self.one.emit("player_bomb", {"direction": "up"})
+        self.assertTrue(player["lost"])
+        self.assertEqual(player["bombs"], 2)
+        self.assertTrue(player["lost_known_wall_edges"])
+        self.assertIn("north outer edge", player["last_message"])
+
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(one_sid)
+        self.one.emit("player_bomb", {"direction": "left"})
+        self.assertFalse(player["lost"])
+        self.assertEqual(
+            app.serialize_player_state_for(app.GAME["player_order"][1])["public_revealed_players"][0]["sid"],
+            one_sid,
+        )
+
+    def test_flashlight_socket_action_recovers_from_a_familiar_lost_tile(self):
+        self.prepare_startable_game()
+        one_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
+        player = app.GAME["players"][one_sid]
+        player["x"], player["y"] = 0, 0
+        player["items"]["flashlight"] = True
+        player["items"]["batteries"] = True
+        player["known_tiles"] = {"1,0": "empty"}
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(one_sid)
+
+        self.one.emit("player_flashlight", {"direction": "right"})
+
+        self.assertFalse(player["lost"])
+        self.assertIn("1,0", player["visited_tiles"])
+        self.assertIn("flashlight revealed a familiar tile", player["last_message"].lower())
+        self.assertIn("saw: empty", player["last_message"].lower())
+        self.assertIn(f"{player['name']}: {player['last_message']}", app.GAME["logs"])
+
+    def test_player_can_add_and_clear_a_personal_map_note(self):
+        self.prepare_startable_game()
+        one_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
+        player = app.GAME["players"][one_sid]
+
+        self.one.emit("player_set_map_note", {"x": 2, "y": 2, "tile": "monster"})
+
+        self.assertEqual(player["manual_tiles"]["2,2"], "monster")
+        state = app.serialize_player_state_for(one_sid)
+        self.assertEqual(state["your_manual_tiles"]["2,2"], "monster")
+
+        app.add_known_tile(player, (2, 2))
+        self.assertNotIn("2,2", player["manual_tiles"])
+
+        self.one.emit("player_set_map_note", {"x": 3, "y": 3, "tile": "river"})
+        self.one.emit("player_set_map_note", {"x": 3, "y": 3, "tile": ""})
+        self.assertNotIn("3,3", player["manual_tiles"])
+
+    def test_starting_tile_activates_its_effect(self):
+        self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
+        self.manager.emit("manager_set_tile", {"x": 1, "y": 0, "tile": "treasure"})
+        self.manager.emit("manager_set_tile", {"x": 0, "y": 9, "tile": "exit"})
+        for x, y, tile in [
+            (2, 2, "fake_treasure"), (3, 2, "boat"), (4, 2, "raft"),
+            (5, 2, "clinic"), (6, 2, "er"), (7, 2, "monster"),
+            (8, 2, "black_hole"), (9, 2, "flashlight"), (2, 3, "batteries"),
+            (3, 3, "armory"), (4, 3, "river_start"),
+        ]:
+            self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        self.two.emit("player_spawn", {"x": 1, "y": 0})
+
+        self.manager.emit("manager_start_game")
+
+        players = list(app.GAME["players"].values())
+        devil_player = next(player for player in players if (player["x"], player["y"]) == (0, 0))
+        treasure_player = next(player for player in players if (player["x"], player["y"]) == (1, 0))
+        self.assertEqual(devil_player["injuries"], 1)
+        self.assertTrue(treasure_player["items"]["treasure"])
+        self.assertIn((1, 0), app.GAME["consumed_tiles"])
+
+
+if __name__ == "__main__":
+    unittest.main()
