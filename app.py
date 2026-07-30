@@ -255,7 +255,7 @@ def check_lost_map_completion(player):
     return False
 
 
-def remember_lost_tile(player, pos):
+def remember_lost_tile(player, pos, source="revealed"):
     relative_pos = lost_relative_position_for(player, pos)
     key = f"{relative_pos[0]},{relative_pos[1]}"
     is_new = key not in player["lost_known_tiles"]
@@ -268,6 +268,8 @@ def remember_lost_tile(player, pos):
     # persistent river map.  It still counts as discovering that tile now.
     if tile_allows_map_fusion(pos):
         reveal_players_at_lost_special_tile(player, pos)
+
+    log_special_tile_reveal(player, pos, source)
 
     check_lost_map_completion(player)
     return is_new
@@ -408,6 +410,10 @@ def merge_map_knowledge(receiver, donor):
         if edge not in receiver["known_wall_edges"]:
             receiver["known_wall_edges"].append(copy.deepcopy(edge))
 
+    for edge in donor["known_wall_edges"]:
+        if edge not in receiver["known_wall_edges"]:
+            receiver["known_wall_edges"].append(copy.deepcopy(edge))
+
 
 def is_birth_spot(pos):
     for p in GAME["players"].values():
@@ -419,6 +425,59 @@ def is_birth_spot(pos):
 def tile_allows_map_fusion(pos):
     tile = GAME["board"].get(pos, "empty")
     return tile not in {"empty", "river"}
+
+
+def is_special_tile(pos):
+    """A tile worth announcing when it is revealed.
+
+    River squares are included here because they are meaningful discoveries,
+    even though they do not trigger normal special-tile map sharing.
+    """
+    return GAME["board"].get(pos, "empty") != "empty"
+
+
+def log_special_tile_reveal(player, pos, source):
+    if not is_special_tile(pos):
+        return
+    tile = GAME["board"].get(pos, "empty")
+    log(f"{player['name']} {source} special tile: {tile}.")
+
+
+def add_special_tile_information_to_map(player, pos):
+    """Copy map information supplied by a normally discovered special tile.
+
+    A player who sees a special tile—by stepping on it or by flashlight—has
+    made the same discovery.  Other non-lost players who previously visited
+    that tile can therefore contribute their map knowledge.  Lost players use
+    their relative special-tile map instead, so their hidden location is never
+    exposed through this normal-map path.
+    """
+    if not GAME["game_started"] or player["lost"] or not tile_allows_map_fusion(pos):
+        return []
+
+    tile_key = f"{pos[0]},{pos[1]}"
+    contributors = []
+    for other in GAME["players"].values():
+        if (
+            other["sid"] == player["sid"]
+            or not other["alive"]
+            or other["lost"]
+            or other["x"] is None
+            or other["y"] is None
+            or tile_key not in other["visited_tiles"]
+        ):
+            continue
+
+        merge_map_knowledge(player, other)
+        set_relative_player_visibility(player, other)
+        contributors.append(other["name"])
+
+    if contributors:
+        log(
+            f"{player['name']} added map information from "
+            f"{', '.join(contributors)} through {GAME['board'][pos]}."
+        )
+    return contributors
 
 
 def player_is_on_your_map(viewer, other_sid):
@@ -822,18 +881,25 @@ def update_known_players_for_viewer(viewer):
     viewer["known_players"] = new_map
 
 
-def reveal_position(player, pos):
+def reveal_position(player, pos, source="revealed"):
     add_known_tile(player, pos)
     remember_visited_tile(player, pos)
+    log_special_tile_reveal(player, pos, source)
+    add_special_tile_information_to_map(player, pos)
     update_known_players_for_viewer(player)
     if not player["lost"]:
         check_lost_map_completion(player)
 
 
-def reveal_current_position(player):
+def reveal_current_position(player, source="revealed"):
     if player["x"] is None or player["y"] is None:
         return
-    reveal_position(player, (player["x"], player["y"]))
+    pos = (player["x"], player["y"])
+    if player["lost"]:
+        remember_visited_tile(player, pos)
+        remember_lost_tile(player, pos, source)
+        return
+    reveal_position(player, pos, source)
 
 
 def check_death(player, reason=""):
@@ -1066,7 +1132,7 @@ def apply_tile_effect(player):
     pos = (player["x"], player["y"])
     raw_tile = GAME["board"][pos]
 
-    reveal_current_position(player)
+    reveal_current_position(player, "stepped onto")
 
     if raw_tile in PICKUP_TILES:
         set_player_message(player, handle_pickup(player, pos, raw_tile))
@@ -1161,7 +1227,7 @@ def apply_tile_effect(player):
 
                 if player_knows_river_start:
                     remember_visited_tile(player, river_start)
-                    reveal_current_position(player)
+                    reveal_current_position(player, "arrived at")
                     remember_open_edge(player, pos, river_start)
                     set_player_message(player, "You used the raft. No injury, and you drifted to the known river start.")
                 else:
@@ -1216,7 +1282,7 @@ def reveal_line(player, direction):
         if was_lost:
             remember_lost_edge(player, "lost_known_open_edges", prev, current)
             remember_visited_tile(player, current)
-            remember_lost_tile(player, current)
+            remember_lost_tile(player, current, "used a flashlight on")
             recovered = check_previously_known_recovery(
                 player,
                 current,
@@ -1224,7 +1290,7 @@ def reveal_line(player, direction):
             )
         else:
             remember_open_edge(player, prev, current)
-            reveal_position(player, current)
+            reveal_position(player, current, "used a flashlight on")
             recovered = False
         revealed.append(current)
         if recovered or (was_lost and not player["lost"]):
@@ -1750,7 +1816,7 @@ def player_move(data):
         player["lost_relative_y"] += dy
         remember_lost_edge(player, "lost_known_open_edges", (x, y), new_pos)
         remember_visited_tile(player, new_pos)
-        remember_lost_tile(player, new_pos)
+        remember_lost_tile(player, new_pos, "stepped onto")
     else:
         remember_visited_tile(player, new_pos)
     log(f"{player['name']} moved {direction}.")
