@@ -403,6 +403,28 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertIn("3,3", one["known_players"])
         self.assertIn("3,3", two["known_players"])
 
+    def test_hidden_player_trail_uses_relative_coordinates_until_position_is_known(self):
+        viewer = self.add_player("one", "One", 0, 0)
+        other = self.add_player("two", "Two", 6, 5)
+        other["birth_x"], other["birth_y"] = 5, 5
+        other["known_tiles"] = {"5,5": "empty", "6,5": "monster"}
+        other["manual_tiles"] = {"7,5": "river"}
+        app.GAME["river_lost_map"]["tiles"] = {"0,0": "river_start"}
+        app.GAME["game_started"] = True
+
+        state = app.serialize_player_state_for("one")
+        trail = state["hidden_player_maps"][0]
+
+        self.assertEqual(trail["relative_position"], {"x": 1, "y": 0})
+        self.assertEqual(trail["tiles"]["1,0"], "monster")
+        self.assertNotIn("manual_tiles", trail)
+        self.assertEqual(state["river_map"]["tiles"]["0,0"], "river_start")
+        self.assertNotIn("x", trail)
+        self.assertNotIn("y", trail)
+
+        app.set_relative_player_visibility(viewer, other)
+        self.assertEqual(app.serialize_player_state_for("one")["hidden_player_maps"], [])
+
     def test_player_color_is_preserved_and_validated(self):
         player = app.create_player("one", "One", "#A1b2C3")
         self.assertEqual(player["color"], "#a1b2c3")
@@ -538,7 +560,9 @@ class MazeGameSocketTests(unittest.TestCase):
     def test_player_can_add_and_clear_a_personal_map_note(self):
         self.prepare_startable_game()
         one_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
+        two_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "Two")
         player = app.GAME["players"][one_sid]
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(two_sid)
 
         self.one.emit("player_set_map_note", {"x": 2, "y": 2, "tile": "monster"})
 
@@ -552,6 +576,14 @@ class MazeGameSocketTests(unittest.TestCase):
         self.one.emit("player_set_map_note", {"x": 3, "y": 3, "tile": "river"})
         self.one.emit("player_set_map_note", {"x": 3, "y": 3, "tile": ""})
         self.assertNotIn("3,3", player["manual_tiles"])
+
+        self.one.emit("player_toggle_map_wall_note", {"x": 3, "y": 3, "direction": "right"})
+        guessed_edge = app.serialize_edge((3, 3), (4, 3))
+        self.assertIn(guessed_edge, player["manual_wall_edges"])
+        self.assertIn(guessed_edge, app.serialize_player_state_for(one_sid)["your_manual_wall_edges"])
+
+        app.remember_open_edge(player, (3, 3), (4, 3))
+        self.assertNotIn(guessed_edge, player["manual_wall_edges"])
 
     def test_starting_tile_activates_its_effect(self):
         self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
