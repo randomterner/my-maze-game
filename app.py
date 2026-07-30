@@ -260,6 +260,7 @@ def remember_lost_tile(player, pos, source="revealed"):
     key = f"{relative_pos[0]},{relative_pos[1]}"
     is_new = key not in player["lost_known_tiles"]
     player["lost_known_tiles"][key] = effective_tile_at(pos)
+    player["lost_manual_tiles"].pop(key, None)
 
     if player.get("lost_kind") == "river":
         GAME["river_lost_map"]["tiles"][key] = effective_tile_at(pos)
@@ -290,6 +291,7 @@ def start_lost_relative_map(player):
         player["lost_known_broken_walls"] = []
         player["lost_known_wall_edges"] = []
     player["lost_known_players"] = {}
+    player["lost_manual_tiles"] = {}
     player["lost_river_players"] = {}
     player["lost_outer_wall_bomb_clues"] = {}
     if player["x"] is not None and player["y"] is not None:
@@ -319,6 +321,7 @@ def share_map_with_everyone(tiles, open_edges, broken_walls, wall_edges):
     for recipient in GAME["players"].values():
         for key, tile in tiles.items():
             recipient["known_tiles"][key] = tile
+            recipient["manual_tiles"].pop(key, None)
         for edge in open_edges:
             append_unique_edge(recipient["known_open_edges"], edge)
         for edge in broken_walls:
@@ -397,6 +400,7 @@ def merge_map_knowledge(receiver, donor):
     for key, value in donor["known_tiles"].items():
         if key not in receiver["known_tiles"]:
             receiver["known_tiles"][key] = value
+        receiver["manual_tiles"].pop(key, None)
 
     for edge in donor["known_open_edges"]:
         if edge not in receiver["known_open_edges"]:
@@ -806,6 +810,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
             "batteries": False,
         },
         "known_tiles": {},
+        "manual_tiles": {},
         "known_tiles_before_lost": {},
         "known_open_edges_before_lost": [],
         "known_broken_walls_before_lost": [],
@@ -819,6 +824,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_relative_x": 0,
         "lost_relative_y": 0,
         "lost_known_tiles": {},
+        "lost_manual_tiles": {},
         "lost_known_players": {},
         "lost_known_open_edges": [],
         "lost_known_broken_walls": [],
@@ -835,6 +841,9 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
 
 def set_player_message(player, message):
     player["last_message"] = message
+    # The shared expedition log is the history everyone can see.  Keep every
+    # player's latest result there as well as on their own player panel.
+    log(f"{player['name']}: {message}")
 
 
 def effective_tile_at(pos):
@@ -847,7 +856,9 @@ def effective_tile_at(pos):
 def add_known_tile(player, pos):
     if not in_bounds(pos[0], pos[1]):
         return
-    player["known_tiles"][f"{pos[0]},{pos[1]}"] = effective_tile_at(pos)
+    key = f"{pos[0]},{pos[1]}"
+    player["known_tiles"][key] = effective_tile_at(pos)
+    player["manual_tiles"].pop(key, None)
 
 
 def update_known_players_for_viewer(viewer):
@@ -1128,11 +1139,11 @@ def handle_pickup(player, pos, tile):
     return ""
 
 
-def apply_tile_effect(player):
+def apply_tile_effect(player, discovery_source="stepped onto"):
     pos = (player["x"], player["y"])
     raw_tile = GAME["board"][pos]
 
-    reveal_current_position(player, "stepped onto")
+    reveal_current_position(player, discovery_source)
 
     if raw_tile in PICKUP_TILES:
         set_player_message(player, handle_pickup(player, pos, raw_tile))
@@ -1154,11 +1165,13 @@ def apply_tile_effect(player):
         return "continue"
 
     if raw_tile == "clinic":
-        if player["injuries"] == 4:
+        if 0 < player["injuries"] < 4:
             player["injuries"] = 0
-            set_player_message(player, "Clinic healed you to 0 injuries.")
+            set_player_message(player, "Clinic healed all of your injuries.")
+        elif player["injuries"] == 4:
+            set_player_message(player, "Clinic cannot treat 4 injuries. Go to the ER.")
         else:
-            set_player_message(player, "Clinic did nothing.")
+            set_player_message(player, "Clinic did nothing because you have no injuries.")
         return "continue"
 
     if raw_tile == "er":
@@ -1372,6 +1385,7 @@ def serialize_player_state_for(sid):
     # they already made.  Each player always keeps their own discoveries.
     if player["lost"]:
         known_tiles = copy.deepcopy(player["lost_known_tiles"])
+        manual_tiles = copy.deepcopy(player["lost_manual_tiles"])
         known_players = copy.deepcopy(player["lost_known_players"])
         for key, players in player["lost_river_players"].items():
             known_players.setdefault(key, [])
@@ -1383,6 +1397,7 @@ def serialize_player_state_for(sid):
         known_wall_edges = copy.deepcopy(player["lost_known_wall_edges"])
     else:
         known_tiles = copy.deepcopy(player["known_tiles"])
+        manual_tiles = copy.deepcopy(player["manual_tiles"])
         known_players = copy.deepcopy(player["known_players"])
         known_open_edges = copy.deepcopy(player["known_open_edges"])
         known_broken_walls = copy.deepcopy(player["known_broken_walls"])
@@ -1403,6 +1418,7 @@ def serialize_player_state_for(sid):
             "y": player["lost_relative_y"],
         } if player["lost"] else None,
         "your_known_tiles": known_tiles,
+        "your_manual_tiles": manual_tiles,
         "your_known_players": known_players,
         "your_known_open_edges": known_open_edges,
         "your_known_broken_walls": known_broken_walls,
@@ -1696,13 +1712,9 @@ def manager_start_game():
         player["lost_known_open_edges"] = []
         player["lost_known_broken_walls"] = []
         player["lost_known_wall_edges"] = []
-        # A starting square is revealed, but its effect is not triggered until
-        # the player enters that square during a turn.
-        reveal_current_position(player)
-        set_player_message(
-            player,
-            f"Game started. You spawned on: {effective_tile_at((player['x'], player['y']))}",
-        )
+        spawn_tile = GAME["board"][(player["x"], player["y"])]
+        apply_tile_effect(player, "spawned on")
+        set_player_message(player, f"Spawned on {spawn_tile}. {player['last_message']}")
 
     for player in GAME["players"].values():
         check_birth_spot_discovery(player)
@@ -1749,6 +1761,7 @@ def player_spawn(data):
     player["spawned"] = True
     player["lost"] = False
     player["known_tiles"] = {}
+    player["manual_tiles"] = {}
     player["known_tiles_before_lost"] = {}
     player["known_open_edges_before_lost"] = []
     player["known_broken_walls_before_lost"] = []
@@ -1760,6 +1773,7 @@ def player_spawn(data):
     player["known_wall_edges"] = []
     player["visited_tiles"] = [f"{x},{y}"]
     player["lost_known_tiles"] = {}
+    player["lost_manual_tiles"] = {}
     player["lost_known_players"] = {}
     player["lost_known_open_edges"] = []
     player["lost_known_broken_walls"] = []
@@ -1770,6 +1784,56 @@ def player_spawn(data):
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
     log(f"{player['name']} chose a spawn tile.")
+    emit_full_state()
+
+
+@socketio.on("player_set_map_note")
+def player_set_map_note(data):
+    """Let a player mark a personal map guess without changing the board."""
+    if request.sid not in GAME["players"]:
+        emit("error_message", {"message": "Player not found."})
+        return
+    if not GAME["game_started"]:
+        emit("error_message", {"message": "Map notes are available after the game starts."})
+        return
+
+    try:
+        x = int(data["x"])
+        y = int(data["y"])
+    except (KeyError, TypeError, ValueError):
+        emit("error_message", {"message": "Invalid map-note coordinates."})
+        return
+
+    tile = data.get("tile", "")
+    if tile not in TILE_TYPES and tile != "":
+        emit("error_message", {"message": "Invalid map-note tile."})
+        return
+
+    player = GAME["players"][request.sid]
+    key = f"{x},{y}"
+    if player["lost"]:
+        if not (-100 <= x <= 100 and -100 <= y <= 100):
+            emit("error_message", {"message": "That relative map square is too far away."})
+            return
+        known_tiles = player["lost_known_tiles"]
+        manual_tiles = player["lost_manual_tiles"]
+    else:
+        if not in_bounds(x, y):
+            emit("error_message", {"message": "Map-note coordinates are out of bounds."})
+            return
+        known_tiles = player["known_tiles"]
+        manual_tiles = player["manual_tiles"]
+
+    if key in known_tiles:
+        emit("error_message", {"message": "That square is already confirmed on your map."})
+        return
+
+    if tile:
+        manual_tiles[key] = tile
+        set_player_message(player, f"Map note: marked {tile} at {x},{y} as an unconfirmed guess.")
+    else:
+        manual_tiles.pop(key, None)
+        set_player_message(player, f"Map note cleared at {x},{y}.")
     emit_full_state()
 
 
@@ -1992,14 +2056,21 @@ def player_flashlight(data):
 
     was_lost = player["lost"]
     revealed = reveal_line(player, direction)
+    seen_tiles = [effective_tile_at(pos).replace("used_", "used ") for pos in revealed]
+    seen_description = ", ".join(seen_tiles)
     if was_lost and not player["lost"]:
-        # Recovery writes the important message; do not replace it with a
-        # generic flashlight message.
-        pass
+        recovery_message = player["last_message"]
+        set_player_message(
+            player,
+            f"Flashlight looked {direction} and saw: {seen_description}. {recovery_message}",
+        )
     elif revealed:
-        set_player_message(player, f"Flashlight revealed {len(revealed)} tile(s) {direction}.")
+        set_player_message(
+            player,
+            f"Flashlight looked {direction} and saw {len(revealed)} tile(s): {seen_description}.",
+        )
     else:
-        set_player_message(player, "Flashlight revealed nothing.")
+        set_player_message(player, f"Flashlight looked {direction} but a wall blocked the beam.")
 
     log(f"{player['name']} used flashlight {direction}.")
     emit_full_state()
