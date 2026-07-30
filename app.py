@@ -116,18 +116,24 @@ def remember_open_edge(player, a, b):
     edge = serialize_edge(a, b)
     if edge not in player["known_open_edges"]:
         player["known_open_edges"].append(edge)
+    if edge in player["manual_wall_edges"]:
+        player["manual_wall_edges"].remove(edge)
 
 
 def remember_broken_wall(player, a, b):
     edge = serialize_edge(a, b)
     if edge not in player["known_broken_walls"]:
         player["known_broken_walls"].append(edge)
+    if edge in player["manual_wall_edges"]:
+        player["manual_wall_edges"].remove(edge)
 
 
 def remember_wall_edge(player, a, b):
     edge = serialize_edge(a, b)
     if edge not in player["known_wall_edges"]:
         player["known_wall_edges"].append(edge)
+    if edge in player["manual_wall_edges"]:
+        player["manual_wall_edges"].remove(edge)
 
 
 def remember_visited_tile(player, pos):
@@ -150,6 +156,8 @@ def remember_lost_edge(player, field, actual_a, actual_b):
     edge = serialize_edge(relative_a, relative_b)
     if edge not in player[field]:
         player[field].append(edge)
+    if edge in player["lost_manual_wall_edges"]:
+        player["lost_manual_wall_edges"].remove(edge)
     if player.get("lost_kind") == "river":
         river_field = {
             "lost_known_open_edges": "open_edges",
@@ -292,6 +300,7 @@ def start_lost_relative_map(player):
         player["lost_known_wall_edges"] = []
     player["lost_known_players"] = {}
     player["lost_manual_tiles"] = {}
+    player["lost_manual_wall_edges"] = []
     player["lost_river_players"] = {}
     player["lost_outer_wall_bomb_clues"] = {}
     if player["x"] is not None and player["y"] is not None:
@@ -811,6 +820,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         },
         "known_tiles": {},
         "manual_tiles": {},
+        "manual_wall_edges": [],
         "known_tiles_before_lost": {},
         "known_open_edges_before_lost": [],
         "known_broken_walls_before_lost": [],
@@ -825,6 +835,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_relative_y": 0,
         "lost_known_tiles": {},
         "lost_manual_tiles": {},
+        "lost_manual_wall_edges": [],
         "lost_known_players": {},
         "lost_known_open_edges": [],
         "lost_known_broken_walls": [],
@@ -1374,6 +1385,71 @@ def serialize_manager_state():
     }
 
 
+def viewer_knows_exact_position(viewer, other):
+    """Return true only when this viewer has been given the other position."""
+    if other["sid"] in GAME["public_revealed_positions"]:
+        return True
+    if viewer["lost"]:
+        return False
+    return any(
+        entry["sid"] == other["sid"]
+        for entries in viewer["known_players"].values()
+        for entry in entries
+    )
+
+
+def serialize_relative_trail(other):
+    """Create a coordinate-safe, lost-map-style board for another player."""
+    if other["lost"]:
+        return {
+            "tiles": copy.deepcopy(other["lost_known_tiles"]),
+            "relative_position": {
+                "x": other["lost_relative_x"],
+                "y": other["lost_relative_y"],
+            },
+            "lost": True,
+        }
+
+    birth_x, birth_y = other["birth_x"], other["birth_y"]
+
+    def relative_tiles(tiles):
+        translated = {}
+        for key, tile in tiles.items():
+            x, y = (int(value) for value in key.split(","))
+            translated[f"{x - birth_x},{y - birth_y}"] = tile
+        return translated
+
+    return {
+        "tiles": relative_tiles(other["known_tiles"]),
+        "relative_position": {
+            "x": other["x"] - birth_x,
+            "y": other["y"] - birth_y,
+        },
+        "lost": False,
+    }
+
+
+def serialize_hidden_player_maps_for(viewer):
+    """Share relative trails only while a player's exact position is unknown."""
+    trails = []
+    for other in GAME["players"].values():
+        if (
+            other["sid"] == viewer["sid"]
+            or not other["alive"]
+            or other["x"] is None
+            or other["y"] is None
+            or viewer_knows_exact_position(viewer, other)
+        ):
+            continue
+        trails.append({
+            "sid": other["sid"],
+            "name": other["name"],
+            "color": other.get("color", DEFAULT_PLAYER_COLOR),
+            **serialize_relative_trail(other),
+        })
+    return trails
+
+
 def serialize_player_state_for(sid):
     player = GAME["players"].get(sid)
     if not player:
@@ -1386,6 +1462,7 @@ def serialize_player_state_for(sid):
     if player["lost"]:
         known_tiles = copy.deepcopy(player["lost_known_tiles"])
         manual_tiles = copy.deepcopy(player["lost_manual_tiles"])
+        manual_wall_edges = copy.deepcopy(player["lost_manual_wall_edges"])
         known_players = copy.deepcopy(player["lost_known_players"])
         for key, players in player["lost_river_players"].items():
             known_players.setdefault(key, [])
@@ -1398,6 +1475,7 @@ def serialize_player_state_for(sid):
     else:
         known_tiles = copy.deepcopy(player["known_tiles"])
         manual_tiles = copy.deepcopy(player["manual_tiles"])
+        manual_wall_edges = copy.deepcopy(player["manual_wall_edges"])
         known_players = copy.deepcopy(player["known_players"])
         known_open_edges = copy.deepcopy(player["known_open_edges"])
         known_broken_walls = copy.deepcopy(player["known_broken_walls"])
@@ -1419,10 +1497,15 @@ def serialize_player_state_for(sid):
         } if player["lost"] else None,
         "your_known_tiles": known_tiles,
         "your_manual_tiles": manual_tiles,
+        "your_manual_wall_edges": manual_wall_edges,
         "your_known_players": known_players,
         "your_known_open_edges": known_open_edges,
         "your_known_broken_walls": known_broken_walls,
         "your_known_wall_edges": known_wall_edges,
+        "hidden_player_maps": serialize_hidden_player_maps_for(player),
+        "river_map": {
+            "tiles": copy.deepcopy(GAME["river_lost_map"]["tiles"]),
+        },
         "board_size": BOARD_SIZE,
         "current_turn_sid": turn_sid,
         "current_turn_name": GAME["players"][turn_sid]["name"] if turn_sid in GAME["players"] else None,
@@ -1762,6 +1845,7 @@ def player_spawn(data):
     player["lost"] = False
     player["known_tiles"] = {}
     player["manual_tiles"] = {}
+    player["manual_wall_edges"] = []
     player["known_tiles_before_lost"] = {}
     player["known_open_edges_before_lost"] = []
     player["known_broken_walls_before_lost"] = []
@@ -1774,6 +1858,7 @@ def player_spawn(data):
     player["visited_tiles"] = [f"{x},{y}"]
     player["lost_known_tiles"] = {}
     player["lost_manual_tiles"] = {}
+    player["lost_manual_wall_edges"] = []
     player["lost_known_players"] = {}
     player["lost_known_open_edges"] = []
     player["lost_known_broken_walls"] = []
@@ -1834,6 +1919,64 @@ def player_set_map_note(data):
     else:
         manual_tiles.pop(key, None)
         set_player_message(player, f"Map note cleared at {x},{y}.")
+    emit_full_state()
+
+
+@socketio.on("player_toggle_map_wall_note")
+def player_toggle_map_wall_note(data):
+    """Toggle a private guessed wall edge without using a turn."""
+    if request.sid not in GAME["players"]:
+        emit("error_message", {"message": "Player not found."})
+        return
+    if not GAME["game_started"]:
+        emit("error_message", {"message": "Map notes are available after the game starts."})
+        return
+
+    try:
+        x = int(data["x"])
+        y = int(data["y"])
+    except (KeyError, TypeError, ValueError):
+        emit("error_message", {"message": "Invalid wall-note coordinates."})
+        return
+    direction = data.get("direction")
+    if direction not in DIRECTIONS:
+        emit("error_message", {"message": "Invalid wall-note direction."})
+        return
+
+    player = GAME["players"][request.sid]
+    dx, dy = DIRECTIONS[direction]
+    other_pos = (x + dx, y + dy)
+    if player["lost"]:
+        if not (-100 <= x <= 100 and -100 <= y <= 100):
+            emit("error_message", {"message": "That relative map square is too far away."})
+            return
+        known_edges = (
+            player["lost_known_open_edges"]
+            + player["lost_known_broken_walls"]
+            + player["lost_known_wall_edges"]
+        )
+        manual_edges = player["lost_manual_wall_edges"]
+    else:
+        if not in_bounds(x, y) or not in_bounds(*other_pos):
+            emit("error_message", {"message": "Wall guesses must be between two board squares."})
+            return
+        known_edges = (
+            player["known_open_edges"]
+            + player["known_broken_walls"]
+            + player["known_wall_edges"]
+        )
+        manual_edges = player["manual_wall_edges"]
+
+    edge = serialize_edge((x, y), other_pos)
+    if edge in known_edges:
+        emit("error_message", {"message": "That edge is already confirmed on your map."})
+        return
+    if edge in manual_edges:
+        manual_edges.remove(edge)
+        set_player_message(player, f"Map note: cleared wall guess {direction} of {x},{y}.")
+    else:
+        manual_edges.append(edge)
+        set_player_message(player, f"Map note: guessed a wall {direction} of {x},{y}.")
     emit_full_state()
 
 
