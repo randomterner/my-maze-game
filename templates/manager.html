@@ -642,19 +642,9 @@
           w.className = "topWall";
           cell.appendChild(w);
         }
-        if (y < 9 && hasInnerWallBetween([x, y], [x, y + 1])) {
-          const w = document.createElement("div");
-          w.className = "bottomWall";
-          cell.appendChild(w);
-        }
         if (x > 0 && hasInnerWallBetween([x, y], [x - 1, y])) {
           const w = document.createElement("div");
           w.className = "leftWall";
-          cell.appendChild(w);
-        }
-        if (x < 9 && hasInnerWallBetween([x, y], [x + 1, y])) {
-          const w = document.createElement("div");
-          w.className = "rightWall";
           cell.appendChild(w);
         }
 
@@ -663,19 +653,9 @@
           w.className = "topWall brokenEdgeTop";
           cell.appendChild(w);
         }
-        if (y < 9 && edgeExists(brokenEdges, [x, y], [x, y + 1])) {
-          const w = document.createElement("div");
-          w.className = "bottomWall brokenEdgeBottom";
-          cell.appendChild(w);
-        }
         if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) {
           const w = document.createElement("div");
           w.className = "leftWall brokenEdgeLeft";
-          cell.appendChild(w);
-        }
-        if (x < 9 && edgeExists(brokenEdges, [x, y], [x + 1, y])) {
-          const w = document.createElement("div");
-          w.className = "rightWall brokenEdgeRight";
           cell.appendChild(w);
         }
 
