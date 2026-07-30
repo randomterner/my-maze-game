@@ -265,6 +265,9 @@
       border-left: 3px solid #1e7bff;
     }
 
+    .manualWallEdgeTop, .manualWallEdgeBottom { border-top: 2px dashed #d989ff; }
+    .manualWallEdgeLeft, .manualWallEdgeRight { border-left: 2px dashed #d989ff; }
+
     .actionBar {
       position: fixed;
       left: 0;
@@ -280,22 +283,40 @@
 
     .modeButtons {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 8px;
       margin-bottom: 8px;
     }
 
-    .noteTools {
+    .boardWorkspace {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      margin: 0 auto 8px;
-      max-width: 520px;
+      align-items: flex-start;
+      gap: 16px;
     }
 
-    .noteTools label { font-size: 0.78rem; font-weight: 700; }
-    .noteTools select { min-width: 170px; }
+    .mapNotesPanel {
+      width: 220px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(4, 10, 20, 0.45);
+    }
+
+    .mapNotesPanel h4 { margin: 0 0 8px; }
+    .mapNotesPanel label { display: block; margin: 10px 0 4px; font-size: 0.78rem; font-weight: 700; }
+    .mapNotesPanel select, .mapNotesPanel button { width: 100%; }
+
+    .mapSidePanels { width: 220px; flex: 0 0 220px; display: grid; gap: 12px; }
+    .otherMapsPanel { max-height: 390px; overflow-y: auto; padding-right: 3px; }
+    .otherMapsPanel h4 { margin: 0 0 8px; }
+    .trailCard { margin: 0 0 10px; padding: 9px; border: 1px solid rgba(120, 184, 213, 0.22); border-radius: 10px; background: rgba(5, 13, 25, 0.48); }
+    .trailTitle { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 6px; font-size: 0.76rem; font-weight: 800; }
+    .trailBoard { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; aspect-ratio: 1; }
+    .trailCell { position: relative; min-width: 0; background: #101a29; border-radius: 2px; overflow: hidden; }
+    .trailCell.unknown { background: #17233a; }
+    .trailCell img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .trailDot { position: absolute; width: 7px; height: 7px; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 1px solid #07101d; border-radius: 50%; background: var(--trail-color); z-index: 7; }
+    .trailGuess { position: absolute; top: 0; right: 1px; z-index: 6; color: #201500; font-size: 8px; font-weight: 900; }
 
     .manualGuess {
       position: absolute;
@@ -353,8 +374,8 @@
         grid-template-columns: repeat(2, 1fr);
       }
 
-      .noteTools { align-items: stretch; flex-direction: column; }
-      .noteTools select { width: 100%; }
+      .boardWorkspace { align-items: stretch; flex-direction: column; }
+      .mapSidePanels { width: auto; flex-basis: auto; }
 
       .board {
         width: min(96vw, 420px);
@@ -497,11 +518,61 @@
         <h3 id="boardTitle" style="margin-top:0;">Your board</h3>
         <div class="small" id="boardHint">Before the game starts, tap a tile to choose your spawn.</div>
 
-        <div class="boardOuter">
-          <div class="cornerBox"></div>
-          <div class="colLabels" id="colLabels"></div>
-          <div class="rowLabels" id="rowLabels"></div>
-          <div class="board" id="board"></div>
+        <div class="boardWorkspace">
+          <div class="boardOuter">
+            <div class="cornerBox"></div>
+            <div class="colLabels" id="colLabels"></div>
+            <div class="rowLabels" id="rowLabels"></div>
+            <div class="board" id="board"></div>
+          </div>
+          <div class="mapSidePanels">
+            <aside class="mapNotesPanel">
+              <h4>Personal map notes</h4>
+              <div class="small" id="mapNoteHint">Start the game to add unconfirmed guesses.</div>
+              <label for="manualNoteKind">Mark</label>
+              <select id="manualNoteKind" aria-label="Map note type" onchange="updateMapNoteControls()" disabled>
+                <option value="tile">Tile guess</option>
+                <option value="wall">Wall guess</option>
+              </select>
+              <div id="tileGuessControls">
+                <label for="manualTile">Your tile guess</label>
+                <select id="manualTile" aria-label="Map note tile" disabled>
+                  <option value="">Clear map note</option>
+                  <option value="empty">empty</option>
+                  <option value="treasure">treasure</option>
+                  <option value="fake_treasure">fake_treasure</option>
+                  <option value="exit">exit</option>
+                  <option value="river">river</option>
+                  <option value="river_start">river_start</option>
+                  <option value="boat">boat</option>
+                  <option value="raft">raft</option>
+                  <option value="clinic">clinic</option>
+                  <option value="er">er</option>
+                  <option value="monster">monster</option>
+                  <option value="devil">devil</option>
+                  <option value="black_hole">black_hole</option>
+                  <option value="flashlight">flashlight</option>
+                  <option value="batteries">batteries</option>
+                  <option value="armory">armory</option>
+                </select>
+              </div>
+              <div id="wallGuessControls" hidden>
+                <label for="manualWallDirection">Wall side from clicked square</label>
+                <select id="manualWallDirection" aria-label="Map note wall direction" disabled>
+                  <option value="up">up</option>
+                  <option value="down">down</option>
+                  <option value="left">left</option>
+                  <option value="right">right</option>
+                </select>
+              </div>
+              <button id="mapNoteToggle" onclick="toggleMapNotes()" disabled style="margin-top:10px;">Edit map notes</button>
+            </aside>
+            <aside class="otherMapsPanel">
+              <h4>Hidden player trails</h4>
+              <div class="small" id="otherMapsHint">Relative trails appear here until you know a player’s exact position.</div>
+              <div id="otherMaps"></div>
+            </aside>
+          </div>
         </div>
       </div>
     </div>
@@ -514,30 +585,6 @@
     <button id="mode-shoot" onclick="setMode('shoot')">Shoot</button>
     <button id="mode-bomb" onclick="setMode('bomb')">Bomb</button>
     <button id="mode-flash" onclick="setMode('flash')">Flashlight</button>
-    <button id="mode-note" onclick="setMode('note')">Map note</button>
-  </div>
-
-  <div class="noteTools" id="noteTools" hidden>
-    <label for="manualTile">Your guess:</label>
-    <select id="manualTile" aria-label="Map note tile">
-      <option value="">Clear map note</option>
-      <option value="empty">empty</option>
-      <option value="treasure">treasure</option>
-      <option value="fake_treasure">fake_treasure</option>
-      <option value="exit">exit</option>
-      <option value="river">river</option>
-      <option value="river_start">river_start</option>
-      <option value="boat">boat</option>
-      <option value="raft">raft</option>
-      <option value="clinic">clinic</option>
-      <option value="er">er</option>
-      <option value="monster">monster</option>
-      <option value="devil">devil</option>
-      <option value="black_hole">black_hole</option>
-      <option value="flashlight">flashlight</option>
-      <option value="batteries">batteries</option>
-      <option value="armory">armory</option>
-    </select>
   </div>
 
   <div class="arrowPad">
@@ -559,6 +606,7 @@
   const socket = io();
   let state = null;
   let currentMode = "move";
+  let mapNoteMode = false;
 
   const textureMap = {
     empty: "pixel_tiles/empty.png",
@@ -603,15 +651,46 @@
       mode === "shoot" ? "Shoot" :
       mode === "bomb" ? "Bomb" : "Flashlight";
 
-    if (mode === "note") {
-      document.getElementById("modeLabel").textContent = "Map note";
-    }
-
-    ["move", "shoot", "bomb", "flash", "note"].forEach(m => {
+    ["move", "shoot", "bomb", "flash"].forEach(m => {
       const btn = document.getElementById(`mode-${m}`);
       if (btn) btn.classList.toggle("activeMode", m === mode);
     });
-    document.getElementById("noteTools").hidden = mode !== "note";
+  }
+
+  function updateMapNoteControls() {
+    const enabled = Boolean(state?.game_started && state?.you);
+    const selector = document.getElementById("manualTile");
+    const noteKind = document.getElementById("manualNoteKind");
+    const wallDirection = document.getElementById("manualWallDirection");
+    const toggle = document.getElementById("mapNoteToggle");
+    const hint = document.getElementById("mapNoteHint");
+    const tileControls = document.getElementById("tileGuessControls");
+    const wallControls = document.getElementById("wallGuessControls");
+    const wallMode = noteKind.value === "wall";
+    selector.disabled = !enabled;
+    noteKind.disabled = !enabled;
+    wallDirection.disabled = !enabled;
+    toggle.disabled = !enabled;
+    tileControls.hidden = wallMode;
+    wallControls.hidden = !wallMode;
+    if (!enabled) {
+      mapNoteMode = false;
+      toggle.textContent = "Edit map notes";
+      hint.textContent = "Start the game to add unconfirmed guesses.";
+      return;
+    }
+    toggle.textContent = mapNoteMode ? "Stop editing notes" : "Edit map notes";
+    hint.textContent = mapNoteMode
+      ? (wallMode
+        ? "Click a square to toggle a guessed wall on the selected side. This never uses a turn."
+        : "Click any unconfirmed square to add or clear your tile guess. This never uses a turn.")
+      : "Use this any time, even while another player is taking a turn.";
+  }
+
+  function toggleMapNotes() {
+    if (!state?.game_started) return;
+    mapNoteMode = !mapNoteMode;
+    updateMapNoteControls();
   }
 
   function handleArrow(direction) {
@@ -631,13 +710,24 @@
   function handleBoardClick(x, y) {
     if (!state || !state.you) return;
     if (!state.game_started) {
-      socket.emit("player_spawn", { x, y });
-    } else if (currentMode === "note") {
-      socket.emit("player_set_map_note", {
-        x,
-        y,
-        tile: document.getElementById("manualTile").value
-      });
+      const label = `${String.fromCharCode(65 + x)}${y + 1}`;
+      if (window.confirm(`Choose ${label} at coordinates (${x}, ${y}) as your spawn tile?`)) {
+        socket.emit("player_spawn", { x, y });
+      }
+    } else if (mapNoteMode) {
+      if (document.getElementById("manualNoteKind").value === "wall") {
+        socket.emit("player_toggle_map_wall_note", {
+          x,
+          y,
+          direction: document.getElementById("manualWallDirection").value
+        });
+      } else {
+        socket.emit("player_set_map_note", {
+          x,
+          y,
+          tile: document.getElementById("manualTile").value
+        });
+      }
     }
   }
 
@@ -765,6 +855,7 @@
 
     document.getElementById("logs").innerHTML =
       (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
+    updateMapNoteControls();
 
     if (you.lost) {
       const tiles = Object.keys(state.your_known_tiles || {}).map(parseCoordinate);
@@ -776,7 +867,7 @@
     } else {
       document.getElementById("boardTitle").textContent = "Your board";
       document.getElementById("boardHint").textContent = state.game_started
-        ? "Your discovered map. Use Map note to mark an unconfirmed guess."
+        ? "Your discovered map. Personal map notes are shown beside the board."
         : "Before the game starts, tap a tile to choose your spawn.";
     }
   }
@@ -788,6 +879,7 @@
 
     const knownTiles = state.your_known_tiles || {};
     const manualTiles = state.your_manual_tiles || {};
+    const manualWallEdges = state.your_manual_wall_edges || [];
     const knownPlayers = state.your_known_players || {};
     const openEdges = state.your_known_open_edges || [];
     const brokenEdges = state.your_known_broken_walls || [];
@@ -837,6 +929,7 @@
           addUniqueEdgeMarkers(cell, knownWallEdges, "wall", x, y, displayX, displayY);
           addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY);
           addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY);
+          addUniqueEdgeMarkers(cell, manualWallEdges, "manualWall", x, y, displayX, displayY);
         }
 
         const publicHere = lostMap
@@ -882,6 +975,74 @@
     }
   }
 
+  function buildOtherPlayerMaps() {
+    const container = document.getElementById("otherMaps");
+    if (!container) return;
+    container.innerHTML = "";
+    const trails = [...(state?.hidden_player_maps || [])];
+    const riverTiles = state?.river_map?.tiles || {};
+    if (Object.keys(riverTiles).length) {
+      trails.unshift({
+        name: "Shared river map",
+        riverMap: true,
+        tiles: riverTiles,
+        relative_position: { x: 0, y: 0 },
+        showPosition: false
+      });
+    }
+    if (!trails.length) {
+      container.innerHTML = '<div class="small">No hidden player trails right now.</div>';
+      return;
+    }
+
+    trails.forEach(trail => {
+      const card = document.createElement("div");
+      card.className = "trailCard";
+      const title = document.createElement("div");
+      title.className = "trailTitle";
+      title.innerHTML = `<span>${escapeHtml(trail.name)}</span><span>${trail.riverMap ? "river map" : (trail.lost ? "lost map" : "relative trail")}</span>`;
+      card.appendChild(title);
+
+      const board = document.createElement("div");
+      board.className = "trailBoard";
+      const current = trail.relative_position || { x: 0, y: 0 };
+      const startX = current.x - 5;
+      const startY = current.y - 5;
+      const tiles = trail.tiles || {};
+
+      for (let displayY = 0; displayY < 10; displayY++) {
+        for (let displayX = 0; displayX < 10; displayX++) {
+          const x = startX + displayX;
+          const y = startY + displayY;
+          const key = `${x},${y}`;
+          const confirmedTile = tiles[key];
+          const tile = confirmedTile || "unknown";
+          const cell = document.createElement("div");
+          cell.className = "trailCell" + (tile === "unknown" ? " unknown" : "");
+          cell.title = `relative trail ${x},${y}`;
+
+          const texture = textureMap[tile];
+          if (texture) {
+            const img = document.createElement("img");
+            img.src = `/static/${texture}`;
+            img.alt = tile;
+            cell.appendChild(img);
+          }
+          if (trail.showPosition !== false && current.x === x && current.y === y) {
+            const dot = document.createElement("div");
+            dot.className = "trailDot";
+            dot.style.setProperty("--trail-color", trail.color || "#ffcc55");
+            dot.title = `${trail.name}'s relative position`;
+            cell.appendChild(dot);
+          }
+          board.appendChild(cell);
+        }
+      }
+      card.appendChild(board);
+      container.appendChild(card);
+    });
+  }
+
   socket.on("connected", data => {
     document.getElementById("socketInfo").textContent = `Socket ID: ${data.sid}`;
   });
@@ -895,6 +1056,7 @@
     buildBoardLabels();
     updateInfo();
     buildBoard();
+    buildOtherPlayerMaps();
     scrollLogsToBottom();
   });
 
