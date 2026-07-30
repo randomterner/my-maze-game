@@ -850,11 +850,12 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
     }
 
 
-def set_player_message(player, message):
+def set_player_message(player, message, shared=True):
     player["last_message"] = message
-    # The shared expedition log is the history everyone can see.  Keep every
-    # player's latest result there as well as on their own player panel.
-    log(f"{player['name']}: {message}")
+    if shared:
+        # The shared expedition log is the history everyone can see. Keep
+        # host/game results there, while player-written notes stay private.
+        log(f"{player['name']}: {message}")
 
 
 def effective_tile_at(pos):
@@ -1403,6 +1404,9 @@ def serialize_relative_trail(other):
     if other["lost"]:
         return {
             "tiles": copy.deepcopy(other["lost_known_tiles"]),
+            "open_edges": copy.deepcopy(other["lost_known_open_edges"]),
+            "broken_walls": copy.deepcopy(other["lost_known_broken_walls"]),
+            "wall_edges": copy.deepcopy(other["lost_known_wall_edges"]),
             "relative_position": {
                 "x": other["lost_relative_x"],
                 "y": other["lost_relative_y"],
@@ -1419,8 +1423,21 @@ def serialize_relative_trail(other):
             translated[f"{x - birth_x},{y - birth_y}"] = tile
         return translated
 
+    def relative_edges(edges):
+        translated = []
+        for edge in edges:
+            a, b = edge
+            translated.append(serialize_edge(
+                (a[0] - birth_x, a[1] - birth_y),
+                (b[0] - birth_x, b[1] - birth_y),
+            ))
+        return translated
+
     return {
         "tiles": relative_tiles(other["known_tiles"]),
+        "open_edges": relative_edges(other["known_open_edges"]),
+        "broken_walls": relative_edges(other["known_broken_walls"]),
+        "wall_edges": relative_edges(other["known_wall_edges"]),
         "relative_position": {
             "x": other["x"] - birth_x,
             "y": other["y"] - birth_y,
@@ -1505,6 +1522,9 @@ def serialize_player_state_for(sid):
         "hidden_player_maps": serialize_hidden_player_maps_for(player),
         "river_map": {
             "tiles": copy.deepcopy(GAME["river_lost_map"]["tiles"]),
+            "open_edges": copy.deepcopy(GAME["river_lost_map"]["open_edges"]),
+            "broken_walls": copy.deepcopy(GAME["river_lost_map"]["broken_walls"]),
+            "wall_edges": copy.deepcopy(GAME["river_lost_map"]["wall_edges"]),
         },
         "board_size": BOARD_SIZE,
         "current_turn_sid": turn_sid,
@@ -1915,10 +1935,10 @@ def player_set_map_note(data):
 
     if tile:
         manual_tiles[key] = tile
-        set_player_message(player, f"Map note: marked {tile} at {x},{y} as an unconfirmed guess.")
+        set_player_message(player, f"Map note: marked {tile} at {x},{y} as an unconfirmed guess.", shared=False)
     else:
         manual_tiles.pop(key, None)
-        set_player_message(player, f"Map note cleared at {x},{y}.")
+        set_player_message(player, f"Map note cleared at {x},{y}.", shared=False)
     emit_full_state()
 
 
@@ -1973,10 +1993,10 @@ def player_toggle_map_wall_note(data):
         return
     if edge in manual_edges:
         manual_edges.remove(edge)
-        set_player_message(player, f"Map note: cleared wall guess {direction} of {x},{y}.")
+        set_player_message(player, f"Map note: cleared wall guess {direction} of {x},{y}.", shared=False)
     else:
         manual_edges.append(edge)
-        set_player_message(player, f"Map note: guessed a wall {direction} of {x},{y}.")
+        set_player_message(player, f"Map note: guessed a wall {direction} of {x},{y}.", shared=False)
     emit_full_state()
 
 
