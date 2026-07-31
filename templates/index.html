@@ -102,6 +102,19 @@
       font-size: 13px;
     }
 
+    .turnBadge.yourTurn {
+      background: #1e8e4e;
+      border-color: #9af2ba;
+      color: white;
+      box-shadow: 0 0 0 3px rgba(112, 238, 154, 0.23), 0 0 22px rgba(76, 226, 128, 0.48);
+      animation: turnPulse 1.15s ease-in-out infinite alternate;
+    }
+
+    @keyframes turnPulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.06); }
+    }
+
     .pill {
       display: inline-block;
       border-radius: 999px;
@@ -416,7 +429,7 @@
     .colorPicker input { width: 42px; min-width: 42px; height: 42px; padding: 4px; cursor: pointer; }
     button, a.rulesBtn { background: linear-gradient(135deg, #16b8d4, #3570d5); box-shadow: 0 8px 22px rgba(16, 156, 210, 0.22); font-weight: 750; }
     button:hover, a.rulesBtn:hover { background: linear-gradient(135deg, #32cde4, #4b82e0); }
-    .logs { max-height: 112px; overflow-y: auto; overflow-x: hidden; background: rgba(4, 10, 20, 0.5); border-color: var(--border); color: #c6d4e9; }
+    .logs { max-height: 280px; overflow-y: auto; overflow-x: hidden; background: rgba(4, 10, 20, 0.5); border-color: var(--border); color: #c6d4e9; }
     .logs div { min-height: 25px; border-color: rgba(148, 173, 209, 0.12); }
     #playerInfo, #lastMessage { max-height: 150px; overflow-y: auto; overflow-x: hidden; }
     .colLabels, .rowLabels { color: #b5c2d8; letter-spacing: 0.04em; }
@@ -453,6 +466,7 @@
       .board { width: var(--board-size); height: var(--board-size); }
       .colLabels { width: var(--board-size); }
       .rowLabels { height: var(--board-size); }
+      .logs { max-height: 220px; }
     }
   </style>
 </head>
@@ -485,7 +499,6 @@
   <div class="layout">
     <div>
       <div class="card">
-        <div><strong>Turn:</strong> <span id="turnInfo" class="turnBadge">Waiting</span></div>
         <div class="small" id="gameStatus">Game not started.</div>
         <div class="small" id="socketInfo"></div>
         <div class="small" style="margin-top:6px;"><strong>Current mode:</strong> <span id="modeLabel">Move</span></div>
@@ -518,6 +531,7 @@
       <div class="card">
         <h3 id="boardTitle" style="margin-top:0;">Your board</h3>
         <div class="small" id="boardHint">Before the game starts, tap a tile to choose your spawn.</div>
+        <div style="margin:10px 0;"><strong>Turn:</strong> <span id="turnInfo" class="turnBadge">Waiting</span></div>
 
         <div class="boardWorkspace">
           <div class="boardOuter">
@@ -845,13 +859,18 @@
 
     if (!state.game_started) {
       document.getElementById("turnInfo").textContent = "Not started";
+      document.getElementById("turnInfo").classList.remove("yourTurn");
       document.getElementById("gameStatus").textContent = "Waiting for manager to start the game.";
     } else if (state.game_over) {
       document.getElementById("turnInfo").textContent = "Game Over";
+      document.getElementById("turnInfo").classList.remove("yourTurn");
       document.getElementById("gameStatus").textContent =
         state.winner_reason ? `Winner: ${escapeHtml(state.winner_reason)}` : "Game Over";
     } else {
-      document.getElementById("turnInfo").textContent = state.current_turn_name || "Unknown";
+      document.getElementById("turnInfo").textContent = state.is_your_turn
+        ? "YOUR TURN"
+        : (state.current_turn_name || "Unknown");
+      document.getElementById("turnInfo").classList.toggle("yourTurn", Boolean(state.is_your_turn));
       document.getElementById("gameStatus").textContent =
         state.is_your_turn ? "It is your turn." : "Wait for your turn.";
     }
@@ -1061,6 +1080,10 @@
 
   socket.on("joined_as_player", data => {
     document.getElementById("joinStatus").textContent = `Joined as ${data.name}`;
+    const joined = window.translateGameText?.("Joined as") ?? "Joined as";
+    const chooseSpawn = window.translateGameText?.("Choose a spawn tile by tapping the board.")
+      ?? "Choose a spawn tile by tapping the board.";
+    window.alert(`${joined} ${data.name}. ${chooseSpawn}`);
   });
 
   socket.on("player_state", data => {
