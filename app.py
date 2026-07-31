@@ -1165,7 +1165,7 @@ def handle_pickup(player, pos, tile):
     return ""
 
 
-def apply_tile_effect(player, discovery_source="stepped onto"):
+def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=True):
     pos = (player["x"], player["y"])
     raw_tile = GAME["board"][pos]
 
@@ -1213,10 +1213,12 @@ def apply_tile_effect(player, discovery_source="stepped onto"):
         old_bombs = player["bombs"]
         player["bullets"] = min(5, player["bullets"] + 1)
         player["bombs"] = min(5, player["bombs"] + 1)
-        player["extra_turn"] = True
+        if grant_extra_turn:
+            player["extra_turn"] = True
         set_player_message(
             player,
-            f"Monster: bullets {old_bullets}->{player['bullets']}, bombs {old_bombs}->{player['bombs']}. Extra turn granted."
+            f"Monster: bullets {old_bullets}->{player['bullets']}, bombs {old_bombs}->{player['bombs']}."
+            + (" Extra turn granted." if grant_extra_turn else "")
         )
         return "continue"
 
@@ -1247,10 +1249,16 @@ def apply_tile_effect(player, discovery_source="stepped onto"):
         return "continue"
 
     if raw_tile == "river_start":
+        if player["lost"] and player.get("lost_kind") == "river":
+            set_player_message(player, "You continue along the river.")
+            return "continue"
         set_player_message(player, "River start.")
         return "continue"
 
     if raw_tile == "river":
+        if player["lost"] and player.get("lost_kind") == "river":
+            set_player_message(player, "You continue along the river.")
+            return "continue"
         river_start = find_river_start()
 
         if player["items"]["boat"]:
@@ -1830,7 +1838,7 @@ def manager_start_game():
         player["lost_known_broken_walls"] = []
         player["lost_known_wall_edges"] = []
         spawn_tile = GAME["board"][(player["x"], player["y"])]
-        apply_tile_effect(player, "spawned on")
+        apply_tile_effect(player, "spawned on", grant_extra_turn=False)
         set_player_message(player, f"Spawned on {spawn_tile}. {player['last_message']}")
 
     for player in GAME["players"].values():
