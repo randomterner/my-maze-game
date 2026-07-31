@@ -1,0 +1,364 @@
+# Maze Game translation file
+#
+# Format: English text = translated text
+# Replace ONLY the text on the right side of each line. Keep player names,
+# numbers, coordinates, and placeholders unchanged. Reload the game after
+# saving. Longer phrases are applied before shorter ones.
+#
+# Optional page settings (use your language values):
+__language__ = he
+__direction__ = rtl
+
+# Page titles and headings
+Maze Game - Player = משחק המבוך - שחקן
+Maze Game - Manager = משחק המבוך - מנהל
+PRIVATE EXPEDITION LOG = יומן מסע פרטי
+MAZE OPERATIONS CENTER = מרכז ניהול המבוך
+Maze Runner = רץ המבוך
+Dungeon Director = מנהל המבוך
+Navigate the unknown, claim the treasure, and find the way out. = נווטו בלא נודע, מצאו את האוצר ומצאו את הדרך החוצה.
+Shape the maze, watch the expedition, and keep the legends moving. = עצבו את המבוך, עקבו אחר המשלחת ושמרו על ההרפתקה בתנועה.
+PLAYER CONSOLE = לוח שחקן
+MANAGER CONSOLE = לוח מנהל
+
+# Joining, status, and common controls
+Your name = השם שלך
+Choose your player dot color = בחרו את צבע הנקודה של השחקן
+Dot color = צבע הנקודה
+Join = הצטרפות
+Join as manager = הצטרפות כמנהל
+Joined as = הצטרפת בתור
+Joined as manager. SID: = הצטרפת כמנהל. מזהה חיבור:
+Not joined yet. = טרם הצטרפתם.
+Rules = חוקים
+Start game = התחל משחק
+Reset game = אפס משחק
+Clear board = נקה לוח
+Enter your name first. = הזינו קודם את שמכם.
+Name is required. = חובה להזין שם.
+That player name is already in use. = שם השחקן הזה כבר בשימוש.
+A game is already in progress. Join the next game after a reset. = משחק כבר מתנהל. הצטרפו למשחק הבא לאחר איפוס.
+Join first. = הצטרפו תחילה.
+
+# Player page sections
+Turn: = תור:
+Current mode: = מצב נוכחי:
+Your info = הפרטים שלך
+Last message = הודעה אחרונה
+Recent log = יומן אחרון
+Line guide = מקרא קווים
+Your board = הלוח שלך
+Lost-path map = מפת נתיב אבוד
+Personal map notes = הערות מפה אישיות
+Hidden player trails = מסלולי שחקנים נסתרים
+Public positions: = מיקומים פומביים:
+No player data yet. = אין עדיין נתוני שחקן.
+No messages yet. = אין עדיין הודעות.
+No items yet. = אין עדיין חפצים.
+No hidden player trails right now. = אין כרגע מסלולי שחקנים נסתרים.
+None. = אין.
+YOU = אתם
+Socket ID: = מזהה חיבור:
+
+# Manager page sections
+Board tools = כלי לוח
+Tile mode = מצב אריחים
+Wall mode = מצב קירות
+Current tool: = כלי נוכחי:
+Black hole = חור שחור
+River validation = בדיקת נהר
+Legend = מקרא
+Players = שחקנים
+Logs = יומן
+No players. = אין שחקנים.
+No data yet. = אין עדיין נתונים.
+No pending black hole. = אין חור שחור ממתין.
+Pending black hole. = חור שחור ממתין.
+Pending black hole for = חור שחור ממתין עבור
+Tap an empty tile. = לחצו על אריח ריק.
+Board can be edited. Waiting to start. = ניתן לערוך את הלוח. ממתין להתחלה.
+
+# Player information table and status words
+Name = שם
+Alive = בחיים
+Spawned = נוצר
+Lost = אבוד
+Position = מיקום
+Injuries = פציעות
+Bullets = כדורים
+Bombs = פצצות
+Items = חפצים
+Last message = הודעה אחרונה
+Yes = כן
+No = לא
+Hidden (use your relative map) = מוסתר (השתמשו במפה היחסית שלכם)
+Waiting = ממתין
+Not started = לא התחיל
+Game not started. = המשחק לא התחיל.
+Game Over = המשחק נגמר
+Winner: = מנצח:
+Unknown = לא ידוע
+Turn # = תור מספר
+It is your turn. = זה התור שלכם.
+Wait for your turn. = המתינו לתורכם.
+Waiting for manager to start the game. = ממתין שהמנהל יתחיל את המשחק.
+
+# Board, map, wall, and note controls
+Before the game starts, tap a tile to choose your spawn. = לפני תחילת המשחק, לחצו על אריח כדי לבחור נקודת התחלה.
+Your discovered map. Personal map notes are shown beside the board. = המפה שגיליתם. הערות המפה האישיות מוצגות לצד הלוח.
+Relative coordinates only = קואורדינטות יחסיות בלבד
+mapped columns: = עמודות ממופות:
+rows: = שורות:
+Map all 10 of each to recover. = מפו את כל 10 השורות והעמודות כדי להתאושש.
+Choose = בחרו
+at coordinates = בקואורדינטות
+as your spawn tile? = כאריח ההתחלה שלכם?
+Choose a spawn tile by tapping the board. = בחרו אריח התחלה בלחיצה על הלוח.
+Start the game to add unconfirmed guesses. = התחילו את המשחק כדי להוסיף ניחושים לא מאושרים.
+Mark = סימון
+Tile guess = ניחוש אריח
+Wall guess = ניחוש קיר
+Your tile guess = ניחוש האריח שלכם
+Clear map note = נקה הערת מפה
+Wall side from clicked square = צד הקיר מהמשבצת שנלחצה
+Edit map notes = עריכת הערות מפה
+Stop editing notes = הפסק עריכת הערות
+Click a square to toggle a guessed wall on the selected side. This never uses a turn. = לחצו על משבצת כדי להחליף ניחוש קיר בצד שנבחר. פעולה זו אינה משתמשת בתור.
+Click any unconfirmed square to add or clear your tile guess. This never uses a turn. = לחצו על כל משבצת לא מאושרת כדי להוסיף או לנקות את ניחוש האריח שלכם. פעולה זו אינה משתמשת בתור.
+Use this any time, even while another player is taking a turn. = אפשר להשתמש בזה בכל זמן, גם בזמן תור של שחקן אחר.
+Relative trails appear here until you know a playerâ€™s exact position. = מסלולים יחסיים יופיעו כאן עד שתדעו את המיקום המדויק של שחקן.
+Shared river map = מפת נהר משותפת
+river map = מפת נהר
+lost map = מפה אבודה
+relative trail = מסלול יחסי
+Unconfirmed map note = הערת מפה לא מאושרת
+unconfirmed = לא מאושר
+relative = יחסי
+
+# Action buttons and directions
+Move = זוז
+Shoot = ירה
+Bomb = פצצה
+Flashlight = פנס
+Tile = אריח
+Wall = קיר
+up = למעלה
+down = למטה
+left = שמאלה
+right = ימינה
+wall: up = קיר: למעלה
+wall: down = קיר: למטה
+wall: left = קיר: שמאלה
+wall: right = קיר: ימינה
+north = צפון
+south = דרום
+west = מערב
+east = מזרח
+
+# Legends
+Black solid line = wall. => קו שחור רציף מציין קיר.
+Yellow dotted line = you know there is no wall there. => קו צהוב מנוקד מציין שידוע לכם שאין שם קיר.
+Blue line = broken wall. => קו כחול מציין קיר שבור.
+Blue line = a wall was there and got broken. => קו כחול מציין שהיה שם קיר והוא נשבר.
+
+# Tile names and item names
+empty = ריק
+treasure = אוצר
+fake_treasure = אוצר מזויף
+exit = יציאה
+river = נהר
+river_start = תחילת הנהר
+boat = סירה
+raft = רפסודה
+clinic = מרפאה
+er = מיון
+monster = מפלצת
+devil = שטן
+black_hole = חור שחור
+flashlight = פנס
+batteries = סוללות
+armory = נשקייה
+unknown = לא ידוע
+used treasure = אוצר שנלקח
+used fake_treasure = אוצר מזויף שנלקח
+used boat = סירה שנלקחה
+used raft = רפסודה שנלקחה
+used flashlight = השתמש בפנס
+used batteries = סוללות שנלקחו
+
+# River and board validation
+The board needs at least one river tile (river_start counts). = הלוח זקוק ללפחות אריח נהר אחד (תחילת הנהר נחשבת).
+River may use at most 20 tiles including river_start. = הנהר יכול להשתמש בעד 20 אריחים, כולל תחילת הנהר.
+River must contain exactly one river_start tile. = הנהר חייב להכיל בדיוק אריח תחילת נהר אחד.
+Diagonal river tiles must connect through a river tile. = אריחי נהר אלכסוניים חייבים להתחבר דרך אריח נהר.
+River cannot split at any point. = הנהר אינו יכול להתפצל בשום נקודה.
+Single-tile river_start cannot connect to other river tiles. = תחילת נהר של אריח יחיד אינה יכולה להתחבר לאריחי נהר אחרים.
+river_start must connect to exactly one river tile. = תחילת הנהר חייבת להתחבר בדיוק לאריח נהר אחד.
+River is valid. = הנהר תקין.
+All river tiles must be connected. = כל אריחי הנהר חייבים להיות מחוברים.
+The board is missing: = בלוח חסרים:
+Only one of each is allowed: = מותר רק אחד מכל סוג:
+All required tile types are placed exactly once. = כל סוגי האריחים הנדרשים הונחו בדיוק פעם אחת.
+Cannot start: = לא ניתן להתחיל:
+Need at least 2 spawned players. = דרושים לפחות 2 שחקנים שנוצרו.
+Game already started. = המשחק כבר התחיל.
+Only one = רק אחד
+tile is allowed. = אריח מותר.
+Only one river_start tile is allowed. = מותר רק אריח תחילת נהר אחד.
+Exit must be placed on an outer edge tile. = יש להניח את היציאה על אריח בקצה החיצוני.
+Invalid tile data. = נתוני אריח לא תקינים.
+Invalid tile type. = סוג אריח לא תקין.
+Tile out of bounds. = האריח מחוץ לגבולות.
+Only the manager can edit the board. = רק המנהל יכול לערוך את הלוח.
+Only the manager can edit walls. = רק המנהל יכול לערוך קירות.
+Only the manager can clear the board. = רק המנהל יכול לנקות את הלוח.
+Only the manager can reset the game. = רק המנהל יכול לאפס את המשחק.
+Only the manager can start the game. = רק המנהל יכול להתחיל את המשחק.
+The board is locked while a game is in progress. Reset the game to edit it. = הלוח נעול בזמן שמשחק מתנהל. אפסו את המשחק כדי לערוך אותו.
+Invalid wall data. = נתוני קיר לא תקינים.
+Invalid inner wall edge. = קצה קיר פנימי לא תקין.
+Outer walls cannot be edited. = לא ניתן לערוך קירות חיצוניים.
+Invalid direction. = כיוון לא תקין.
+Coordinates out of bounds. = הקואורדינטות מחוץ לגבולות.
+Invalid coordinates. = קואורדינטות לא תקינות.
+Black hole destination must be an empty tile. = יעד החור השחור חייב להיות אריח ריק.
+
+# Spawn and map-note messages
+Spawn selected. Your starting tile will be revealed when the game begins. = נקודת ההתחלה נבחרה. אריח ההתחלה שלכם ייחשף כשהמשחק יתחיל.
+Spawned on = נוצר על
+Invalid spawn coordinates. = קואורדינטות התחלה לא תקינות.
+Spawn out of bounds. = נקודת ההתחלה מחוץ לגבולות.
+Map notes are available after the game starts. = הערות מפה זמינות לאחר תחילת המשחק.
+Invalid map-note coordinates. = קואורדינטות הערת מפה לא תקינות.
+Invalid map-note tile. = אריח הערת מפה לא תקין.
+Invalid wall-note coordinates. = קואורדינטות הערת קיר לא תקינות.
+Invalid wall-note direction. = כיוון הערת קיר לא תקין.
+That relative map square is too far away. = משבצת המפה היחסית רחוקה מדי.
+Map-note coordinates are out of bounds. = קואורדינטות הערת המפה מחוץ לגבולות.
+That square is already confirmed on your map. = המשבצת הזו כבר מאושרת במפה שלכם.
+Wall guesses must be between two board squares. = ניחושי קיר חייבים להיות בין שתי משבצות לוח.
+That edge is already confirmed on your map. = הקצה הזה כבר מאושר במפה שלכם.
+Map note: marked = הערת מפה: סומן
+as an unconfirmed guess. = כניחוש לא מאושר.
+Map note cleared at = הערת מפה נוקתה ב־
+Map note: cleared wall guess = הערת מפה: נוקה ניחוש קיר
+Map note: guessed a wall = הערת מפה: נוחש קיר
+of = של
+
+# Tile effects and item messages
+Empty tile. = אריח ריק.
+There was a treasure here. = היה כאן אוצר.
+There was a fake treasure here. = היה כאן אוצר מזויף.
+There was a boat here. = הייתה כאן סירה.
+There was a raft here. = הייתה כאן רפסודה.
+There was a flashlight here. = היה כאן פנס.
+There were batteries here. = היו כאן סוללות.
+This item was already taken. = החפץ הזה כבר נלקח.
+You found the real treasure! = מצאתם את האוצר האמיתי!
+You found a fake treasure. = מצאתם אוצר מזויף.
+You picked up a boat. = אספתם סירה.
+You picked up a raft. = אספתם רפסודה.
+You picked up a flashlight. = אספתם פנס.
+You picked up batteries. = אספתם סוללות.
+You escaped with the real treasure and won! = ברחתם עם האוצר האמיתי וניצחתם!
+You found the exit, but you do not have the real treasure. = מצאתם את היציאה, אבל אין לכם את האוצר האמיתי.
+Clinic healed all of your injuries. = המרפאה ריפאה את כל הפציעות שלכם.
+Clinic cannot treat 4 injuries. Go to the ER. = המרפאה אינה יכולה לטפל ב־4 פציעות. גשו למיון.
+Clinic did nothing because you have no injuries. = המרפאה לא עשתה דבר כי אין לכם פציעות.
+ER reduced your injuries from 4 to 3. = המיון הפחית את הפציעות שלכם מ־4 ל־3.
+ER did nothing. = המיון לא עשה דבר.
+Monster: bullets = מפלצת: כדורים
+bombs = פצצות
+Extra turn granted. = ניתן תור נוסף.
+Devil: +1 injury, -1 bullet, -1 bomb. = שטן: ‎+1 פציעה, ‎-1 כדור, ‎-1 פצצה.
+Black hole! Waiting for manager placement. = חור שחור! ממתין שהמנהל יקבע מיקום.
+Armory: bullets = נשקייה: כדורים
+River start. = תחילת הנהר.
+You crossed the river safely with the boat. = חציתם את הנהר בבטחה עם הסירה.
+You used the raft. No injury, and you drifted to the known river start. = השתמשתם ברפסודה. לא נפצעתם, ונסחפתם לתחילת הנהר המוכרת.
+You used the raft. No injury, but you were dragged to an unknown river start and became lost. = השתמשתם ברפסודה. לא נפצעתם, אך נגררתם לתחילת נהר לא מוכרת והלכתם לאיבוד.
+You used the raft. = השתמשתם ברפסודה.
+The river injured you, dragged you to the river start, and you are now lost. = הנהר פצע אתכם, גרר אתכם לתחילת הנהר וכעת אתם אבודים.
+You stepped on: = דרכתם על:
+You are lost after the black hole. = הלכתם לאיבוד לאחר החור השחור.
+
+# Movement, combat, and flashlight messages
+Game has not started. = המשחק לא התחיל.
+Game is over. = המשחק הסתיים.
+Player not found. = השחקן לא נמצא.
+You are dead. = אתם מתים.
+It is not your turn. = זה לא התור שלכם.
+Waiting for manager to resolve a black hole. = ממתין שהמנהל יפתור את החור השחור.
+You hit a wall and stayed in place. Turn ended. = פגעתם בקיר ונשארתם במקום. התור הסתיים.
+You have no bullets. = אין לכם כדורים.
+Your bullet hit nothing. = הכדור שלכם לא פגע בכלום.
+You hit = פגעתם ב־
+You were shot by = נוריתם על ידי
+You have no bombs. = אין לכם פצצות.
+The wall did not explode. You found the = הקיר לא התפוצץ. מצאתם את הקצה
+outer edge. = החיצוני.
+The wall did not explode. = הקיר לא התפוצץ.
+The wall exploded. = הקיר התפוצץ.
+There was no wall there. = לא היה שם קיר.
+You need both flashlight and batteries. = אתם זקוקים גם לפנס וגם לסוללות.
+Flashlight looked = הפנס הביט
+and saw: = וראה:
+and saw = וראה
+tile(s): = אריחים:
+but a wall blocked the beam. = אך קיר חסם את קרן האור.
+
+# Lost-state, discovery, and shared-log messages
+You mapped all 10 relative rows and columns and are no longer lost. = מיפיתם את כל 10 השורות והעמודות היחסיות ואינכם אבודים עוד.
+Outer-wall bomb hits fixed both map axes, so you are no longer lost. = פגיעות פצצה בקירות חיצוניים קבעו את שני צירי המפה, ולכן אינכם אבודים עוד.
+A north/south outer edge and 10 mapped columns revealed your position. You are no longer lost. = קצה חיצוני בצפון/דרום ו־10 עמודות ממופות חשפו את מיקומכם. אינכם אבודים עוד.
+An east/west outer edge and 10 mapped rows revealed your position. You are no longer lost. = קצה חיצוני במזרח/מערב ו־10 שורות ממופות חשפו את מיקומכם. אינכם אבודים עוד.
+Your flashlight revealed a familiar tile and you are no longer lost. = הפנס שלכם חשף אריח מוכר ואינכם אבודים עוד.
+You reached a familiar tile and are no longer lost. = הגעתם לאריח מוכר ואינכם אבודים עוד.
+You found your birth spot and are no longer lost. = מצאתם את נקודת הלידה שלכם ואינכם אבודים עוד.
+You found traces of = מצאתם עקבות של
+You found = מצאתם
+You found birth spots belonging to = מצאתם נקודות לידה השייכות ל־
+found you. = מצא אתכם.
+birth spot. = נקודת לידה.
+visited the birth tile of = ביקר באריח הלידה של
+MAP FUSION = מיזוג מפות
+is no longer lost. = אינו אבוד עוד.
+gets an extra turn. = מקבל תור נוסף.
+You died. = מתתם.
+died. = מת.
+Killed by devil tile. = נהרג על ידי אריח השטן.
+Killed by river injury. = נהרג מפגיעת הנהר.
+Killed by a bullet. = נהרג מכדור.
+wins as the last player alive. = מנצח כשחקן האחרון בחיים.
+All players died. The game ended with no winner. = כל השחקנים מתו. המשחק הסתיים ללא מנצח.
+Game reset. Connected players were kept. = המשחק אופס. השחקנים המחוברים נשמרו.
+found the real treasure. = מצא את האוצר האמיתי.
+escaped through the exit with the real treasure. = ברח דרך היציאה עם האוצר האמיתי.
+moved = זז
+hit a wall while moving = פגע בקיר בזמן תנועה
+shot = ירה
+and hit nothing. = ולא פגע בכלום.
+tried to bomb an outer wall. = ניסה לפוצץ קיר חיצוני.
+destroyed an inner wall. = השמיד קיר פנימי.
+used a bomb, but there was no wall. = השתמש בפצצה, אך לא היה קיר.
+used flashlight = השתמש בפנס
+entered a black hole. = נכנס לחור שחור.
+Manager placed = המנהל הציב את
+after black hole. = אחרי החור השחור.
+special tile: = אריח מיוחד:
+revealed = חשף
+spawned on = נוצר על
+arrived at = הגיע אל
+used a flashlight on = השתמש בפנס על
+added map information from = הוסיף מידע מפה מ־
+through = דרך
+met = פגש
+MAP FUSION happened between players on the same tile. = מיזוג מפות התרחש בין שחקנים על אותו אריח.
+disconnected. = התנתק.
+joined the game. = הצטרף למשחק.
+Game started. = המשחק התחיל.
+First turn: = תור ראשון:
+chose a spawn tile. = בחר אריח התחלה.
+Server started. = השרת התחיל.
+
+
