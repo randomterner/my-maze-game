@@ -452,6 +452,14 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertTrue(two["lost"])
         self.assertEqual(one["lost_kind"], "river")
         self.assertEqual(two["lost_kind"], "river")
+        self.assertFalse(any("MAP FUSION" in line for line in app.GAME["logs"]))
+
+        app.GAME["turn_number"] += 1
+        app.activate_map_fusion(one)
+
+        self.assertTrue(any("MAP FUSION" in line for line in app.GAME["logs"]))
+        self.assertTrue(one["lost"])
+        self.assertTrue(two["lost"])
 
     def test_birth_tile_visits_log_every_owner_name(self):
         visitor = self.add_player("visitor", "Visitor", 4, 4)
@@ -595,6 +603,8 @@ class MazeGameSocketTests(unittest.TestCase):
 
         self.manager.emit("manager_resolve_black_hole", {"x": 5, "y": 5})
         self.assertEqual((one_player["x"], one_player["y"]), (5, 5))
+        self.assertTrue(one_player["lost"])
+        self.assertFalse(any("MAP FUSION" in line for line in app.GAME["logs"]))
         self.assertIsNone(app.GAME["pending_black_hole"])
 
     def test_lost_outer_wall_bombs_mark_the_map_and_recover_after_two_axes(self):
@@ -660,6 +670,28 @@ class MazeGameSocketTests(unittest.TestCase):
 
         self.assertEqual((player["x"], player["y"]), (5, 3))
         self.assertEqual(player["injuries"], injuries_after_drag)
+        self.assertTrue(player["river_traveling"])
+        self.assertEqual(player["last_message"], "You continue along the river.")
+
+    def test_non_lost_player_can_continue_after_rafting_to_a_known_river_start(self):
+        self.prepare_startable_game()
+        player_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
+        player = app.GAME["players"][player_sid]
+        app.GAME["board"][(5, 3)] = "river"
+        player["x"], player["y"] = 5, 3
+        player["known_tiles"]["6,3"] = "river_start"
+        player["items"]["raft"] = True
+
+        app.apply_tile_effect(player)
+        self.assertEqual((player["x"], player["y"]), (6, 3))
+        self.assertFalse(player["lost"])
+        self.assertTrue(player["river_traveling"])
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(player_sid)
+
+        self.one.emit("player_move", {"direction": "left"})
+
+        self.assertEqual((player["x"], player["y"]), (5, 3))
+        self.assertFalse(player["lost"])
         self.assertTrue(player["river_traveling"])
         self.assertEqual(player["last_message"], "You continue along the river.")
 
