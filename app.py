@@ -598,6 +598,8 @@ def enter_lost_state(player, lost_kind):
         player["last_lost_known_tiles"] = copy.deepcopy(player["known_tiles"])
     player["lost"] = True
     player["lost_kind"] = lost_kind
+    # A loss must stand on its own before a shared map can affect it.
+    player["map_fusion_blocked_until_turn"] = GAME["turn_number"] + 1
     GAME["public_revealed_positions"].pop(player["sid"], None)
     clear_relative_player_visibility(player)
 
@@ -629,6 +631,9 @@ def activate_map_fusion(player):
     if not GAME["game_started"]:
         return
 
+    if player.get("map_fusion_blocked_until_turn", 0) > GAME["turn_number"]:
+        return
+
     if player["x"] is None or player["y"] is None:
         return
 
@@ -646,6 +651,12 @@ def activate_map_fusion(player):
 
     if same_tile_players:
         involved = [player] + same_tile_players
+
+        if any(
+            candidate.get("map_fusion_blocked_until_turn", 0) > GAME["turn_number"]
+            for candidate in involved
+        ):
+            return
 
         for a in involved:
             for b in involved:
@@ -857,6 +868,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_river_players": {},
         "lost_outer_wall_bomb_clues": {},
         "lost_kind": None,
+        "map_fusion_blocked_until_turn": 0,
         "river_traveling": False,
         "lost_exit_visible_position": None,
         "last_message": "Choose a spawn tile by tapping the board.",
@@ -1832,6 +1844,7 @@ def manager_start_game():
     for player in GAME["players"].values():
         player["lost"] = False
         player["lost_kind"] = None
+        player["map_fusion_blocked_until_turn"] = 0
         player["river_traveling"] = False
         player["lost_exit_visible_position"] = None
         player["known_tiles_before_lost"] = {}
@@ -1914,6 +1927,7 @@ def player_spawn(data):
     player["lost_known_wall_edges"] = []
     player["lost_river_players"] = {}
     player["lost_kind"] = None
+    player["map_fusion_blocked_until_turn"] = 0
     player["river_traveling"] = False
     player["lost_exit_visible_position"] = None
 
