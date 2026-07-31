@@ -2208,9 +2208,12 @@ def player_move(data):
         player.get("in_river")
         and GAME["board"][(player["x"], player["y"])] in {"river", "river_start"}
     )
+    # A player's own birth tile always ends lost state, including while their
+    # river-continuation tag is active on a river square.
+    recovered_at_birth = check_birth_spot_discovery(player)
     if not continuing_river:
-        check_birth_spot_discovery(player)
-        check_previously_known_recovery(player)
+        if not recovered_at_birth:
+            check_previously_known_recovery(player)
         announce_players_on_tile(player)
     refresh_known_player_positions()
 
