@@ -169,6 +169,55 @@ class MazeGameRuleTests(unittest.TestCase):
         state = app.serialize_player_state_for("two")
         self.assertIn("1,0", state["your_known_tiles"])
 
+    def test_knowing_river_start_adds_the_shared_river_map_to_normal_map(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(5, 5)] = "river_start"
+        player["known_tiles"] = {"5,5": "river_start"}
+        app.GAME["river_lost_map"]["tiles"] = {
+            "0,0": "river_start",
+            "1,0": "river",
+        }
+        app.GAME["river_lost_map"]["wall_edges"] = [
+            app.serialize_edge((0, 0), (1, 0))
+        ]
+
+        state = app.serialize_player_state_for("one")
+
+        self.assertEqual(state["your_known_tiles"]["6,5"], "river")
+        self.assertIn("6,5", player["visited_tiles"])
+        self.assertIn(
+            app.serialize_edge((5, 5), (6, 5)),
+            state["your_known_wall_edges"],
+        )
+
+    def test_river_lost_players_see_known_river_start_maps_in_river_coordinates(self):
+        river_lost = self.add_player("one", "River lost", 5, 5)
+        mapper = self.add_player("two", "Mapper", 7, 5)
+        app.GAME["board"][(5, 5)] = "river_start"
+        app.enter_lost_state(river_lost, "river")
+        app.start_lost_relative_map(river_lost)
+        mapper["birth_x"], mapper["birth_y"] = 0, 0
+        mapper["known_tiles"] = {"5,5": "river_start", "7,5": "monster"}
+
+        state = app.serialize_player_state_for("one")
+        trail = next(item for item in state["hidden_player_maps"] if item["sid"] == "two")
+
+        self.assertEqual(trail["relative_position"], {"x": 2, "y": 0})
+        self.assertEqual(trail["tiles"]["2,0"], "monster")
+
+    def test_confirmed_shared_map_tiles_count_as_visits_only_when_not_lost(self):
+        receiver = self.add_player("one", "Receiver", 0, 0)
+        donor = self.add_player("two", "Donor", 1, 1)
+        donor["known_tiles"] = {"4,4": "treasure"}
+
+        app.merge_map_knowledge(receiver, donor)
+        self.assertIn("4,4", receiver["visited_tiles"])
+
+        lost_receiver = self.add_player("three", "Lost receiver", 0, 0)
+        lost_receiver["lost"] = True
+        app.merge_map_knowledge(lost_receiver, donor)
+        self.assertNotIn("4,4", lost_receiver["visited_tiles"])
+
     def test_ten_by_ten_rule_reveals_normal_player_until_they_are_lost(self):
         player = self.add_player("one", "One", 5, 5)
         viewer = self.add_player("two", "Two", 0, 0)
