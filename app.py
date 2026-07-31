@@ -142,6 +142,17 @@ def remember_visited_tile(player, pos):
         player["visited_tiles"].append(key)
 
 
+def add_confirmed_map_tile(player, pos, tile):
+    """Add automatic map information and count it as a visit while oriented."""
+    if not in_bounds(*pos):
+        return
+    key = f"{pos[0]},{pos[1]}"
+    player["known_tiles"][key] = tile
+    player["manual_tiles"].pop(key, None)
+    if not player.get("lost"):
+        remember_visited_tile(player, pos)
+
+
 def lost_relative_position_for(player, actual_pos):
     """Convert a server-only board position into the lost map's coordinates."""
     return (
@@ -166,6 +177,7 @@ def remember_lost_edge(player, field, actual_a, actual_b):
         }.get(field)
         if river_field and edge not in GAME["river_lost_map"][river_field]:
             GAME["river_lost_map"][river_field].append(copy.deepcopy(edge))
+            sync_river_lost_map_to_known_players()
 
 
 def remember_lost_outer_wall_bomb(player, direction):
@@ -272,6 +284,7 @@ def remember_lost_tile(player, pos, source="revealed"):
 
     if player.get("lost_kind") == "river":
         GAME["river_lost_map"]["tiles"][key] = effective_tile_at(pos)
+        sync_river_lost_map_to_known_players()
 
     # A flashlight can reveal a special tile that is already drawn on the
     # persistent river map.  It still counts as discovering that tile now.
@@ -307,6 +320,64 @@ def start_lost_relative_map(player):
         remember_lost_tile(player, (player["x"], player["y"]))
 
 
+def player_knows_river_start(player):
+    """Whether this player's confirmed map is anchored to the river start."""
+    river_start = find_river_start()
+    if river_start is None:
+        return False
+    if player.get("lost"):
+        return (
+            player.get("lost_kind") == "river"
+            and player.get("lost_known_tiles", {}).get("0,0") == "river_start"
+        )
+    return f"{river_start[0]},{river_start[1]}" in player.get("known_tiles", {})
+
+
+def sync_river_lost_map_to_player(player):
+    """Put the shared river map onto a normal map once its start is known."""
+    river_start = find_river_start()
+    if player.get("lost") or river_start is None or not player_knows_river_start(player):
+        return False
+
+    changed = False
+
+    def actual_position(relative):
+        return river_start[0] + relative[0], river_start[1] + relative[1]
+
+    for relative_key, tile in GAME["river_lost_map"]["tiles"].items():
+        relative = tuple(int(value) for value in relative_key.split(","))
+        actual = actual_position(relative)
+        if not in_bounds(*actual):
+            continue
+        actual_key = f"{actual[0]},{actual[1]}"
+        if player["known_tiles"].get(actual_key) != tile:
+            changed = True
+        add_confirmed_map_tile(player, actual, tile)
+
+    for source_field, target_field in (
+        ("open_edges", "known_open_edges"),
+        ("broken_walls", "known_broken_walls"),
+        ("wall_edges", "known_wall_edges"),
+    ):
+        for edge in GAME["river_lost_map"][source_field]:
+            actual_a = actual_position(tuple(edge[0]))
+            actual_b = actual_position(tuple(edge[1]))
+            if not in_bounds(*actual_a) or not in_bounds(*actual_b):
+                continue
+            translated = serialize_edge(actual_a, actual_b)
+            if translated not in player[target_field]:
+                player[target_field].append(translated)
+                changed = True
+
+    return changed
+
+
+def sync_river_lost_map_to_known_players():
+    for player in GAME["players"].values():
+        if player.get("alive"):
+            sync_river_lost_map_to_player(player)
+
+
 def reveal_player_position_to_everyone(player):
     """Publish a current location until that player becomes lost again."""
     was_already_public = player["sid"] in GAME["public_revealed_positions"]
@@ -329,8 +400,8 @@ def share_map_with_everyone(tiles, open_edges, broken_walls, wall_edges):
     """Add a completed section of map knowledge to every player's normal map."""
     for recipient in GAME["players"].values():
         for key, tile in tiles.items():
-            recipient["known_tiles"][key] = tile
-            recipient["manual_tiles"].pop(key, None)
+            pos = tuple(int(value) for value in key.split(","))
+            add_confirmed_map_tile(recipient, pos, tile)
         for edge in open_edges:
             append_unique_edge(recipient["known_open_edges"], edge)
         for edge in broken_walls:
@@ -408,8 +479,8 @@ def share_lost_section_with_everyone(player):
 def merge_map_knowledge(receiver, donor):
     for key, value in donor["known_tiles"].items():
         if key not in receiver["known_tiles"]:
-            receiver["known_tiles"][key] = value
-        receiver["manual_tiles"].pop(key, None)
+            pos = tuple(int(part) for part in key.split(","))
+            add_confirmed_map_tile(receiver, pos, value)
 
     for edge in donor["known_open_edges"]:
         if edge not in receiver["known_open_edges"]:
@@ -904,9 +975,7 @@ def effective_tile_at(pos):
 def add_known_tile(player, pos):
     if not in_bounds(pos[0], pos[1]):
         return
-    key = f"{pos[0]},{pos[1]}"
-    player["known_tiles"][key] = effective_tile_at(pos)
-    player["manual_tiles"].pop(key, None)
+    add_confirmed_map_tile(player, pos, effective_tile_at(pos))
 
 
 def update_known_players_for_viewer(viewer):
@@ -1453,7 +1522,7 @@ def viewer_knows_exact_position(viewer, other):
     )
 
 
-def serialize_relative_trail(other):
+def serialize_relative_trail(other, origin=None):
     """Create a coordinate-safe, lost-map-style board for another player."""
     if other["lost"]:
         return {
@@ -1468,13 +1537,13 @@ def serialize_relative_trail(other):
             "lost": True,
         }
 
-    birth_x, birth_y = other["birth_x"], other["birth_y"]
+    origin_x, origin_y = origin or (other["birth_x"], other["birth_y"])
 
     def relative_tiles(tiles):
         translated = {}
         for key, tile in tiles.items():
             x, y = (int(value) for value in key.split(","))
-            translated[f"{x - birth_x},{y - birth_y}"] = tile
+            translated[f"{x - origin_x},{y - origin_y}"] = tile
         return translated
 
     def relative_edges(edges):
@@ -1482,8 +1551,8 @@ def serialize_relative_trail(other):
         for edge in edges:
             a, b = edge
             translated.append(serialize_edge(
-                (a[0] - birth_x, a[1] - birth_y),
-                (b[0] - birth_x, b[1] - birth_y),
+                (a[0] - origin_x, a[1] - origin_y),
+                (b[0] - origin_x, b[1] - origin_y),
             ))
         return translated
 
@@ -1493,8 +1562,8 @@ def serialize_relative_trail(other):
         "broken_walls": relative_edges(other["known_broken_walls"]),
         "wall_edges": relative_edges(other["known_wall_edges"]),
         "relative_position": {
-            "x": other["x"] - birth_x,
-            "y": other["y"] - birth_y,
+            "x": other["x"] - origin_x,
+            "y": other["y"] - origin_y,
         },
         "lost": False,
     }
@@ -1503,6 +1572,12 @@ def serialize_relative_trail(other):
 def serialize_hidden_player_maps_for(viewer):
     """Share relative trails only while a player's exact position is unknown."""
     trails = []
+    river_start = find_river_start()
+    viewer_has_river_anchor = (
+        viewer.get("lost")
+        and viewer.get("lost_kind") == "river"
+        and player_knows_river_start(viewer)
+    )
     for other in GAME["players"].values():
         if (
             other["sid"] == viewer["sid"]
@@ -1512,11 +1587,16 @@ def serialize_hidden_player_maps_for(viewer):
             or viewer_knows_exact_position(viewer, other)
         ):
             continue
+        river_relative = (
+            viewer_has_river_anchor
+            and not other.get("lost")
+            and player_knows_river_start(other)
+        )
         trails.append({
             "sid": other["sid"],
             "name": other["name"],
             "color": other.get("color", DEFAULT_PLAYER_COLOR),
-            **serialize_relative_trail(other),
+            **serialize_relative_trail(other, river_start if river_relative else None),
         })
     return trails
 
@@ -1525,6 +1605,8 @@ def serialize_player_state_for(sid):
     player = GAME["players"].get(sid)
     if not player:
         return {}
+
+    sync_river_lost_map_to_player(player)
 
     turn_sid = current_turn_sid()
 
