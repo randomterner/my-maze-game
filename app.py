@@ -857,6 +857,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_river_players": {},
         "lost_outer_wall_bomb_clues": {},
         "lost_kind": None,
+        "river_traveling": False,
         "lost_exit_visible_position": None,
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
@@ -1171,6 +1172,12 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
 
     reveal_current_position(player, discovery_source)
 
+    # Being dragged to the river start begins a continuous river journey.
+    # River tiles only map the journey until the player steps onto dry land.
+    if player.get("river_traveling") and raw_tile in {"river", "river_start"}:
+        set_player_message(player, "You continue along the river.")
+        return "continue"
+
     if raw_tile in PICKUP_TILES:
         set_player_message(player, handle_pickup(player, pos, raw_tile))
         return "continue"
@@ -1249,16 +1256,13 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
         return "continue"
 
     if raw_tile == "river_start":
-        if player["lost"] and player.get("lost_kind") == "river":
-            set_player_message(player, "You continue along the river.")
-            return "continue"
-        set_player_message(player, "River start.")
+        player["injuries"] += 1
+        if check_death(player, "Killed by river-start injury."):
+            return "dead"
+        set_player_message(player, "River start: +1 injury, but you stayed oriented.")
         return "continue"
 
     if raw_tile == "river":
-        if player["lost"] and player.get("lost_kind") == "river":
-            set_player_message(player, "You continue along the river.")
-            return "continue"
         river_start = find_river_start()
 
         if player["items"]["boat"]:
@@ -1271,6 +1275,7 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
                 player_knows_river_start = river_start_key in player["known_tiles"]
 
                 player["x"], player["y"] = river_start
+                player["river_traveling"] = True
 
                 if player_knows_river_start:
                     remember_visited_tile(player, river_start)
@@ -1293,6 +1298,7 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
 
         if river_start is not None:
             player["x"], player["y"] = river_start
+            player["river_traveling"] = True
             start_lost_relative_map(player)
 
         set_player_message(player, "The river injured you, dragged you to the river start, and you are now lost.")
@@ -1826,6 +1832,7 @@ def manager_start_game():
     for player in GAME["players"].values():
         player["lost"] = False
         player["lost_kind"] = None
+        player["river_traveling"] = False
         player["lost_exit_visible_position"] = None
         player["known_tiles_before_lost"] = {}
         player["known_open_edges_before_lost"] = []
@@ -1907,6 +1914,7 @@ def player_spawn(data):
     player["lost_known_wall_edges"] = []
     player["lost_river_players"] = {}
     player["lost_kind"] = None
+    player["river_traveling"] = False
     player["lost_exit_visible_position"] = None
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
@@ -2055,6 +2063,9 @@ def player_move(data):
     dx, dy = DIRECTIONS[direction]
     new_pos = (x + dx, y + dy)
 
+    if player.get("river_traveling") and GAME["board"][new_pos] not in {"river", "river_start"}:
+        player["river_traveling"] = False
+
     was_lost = player["lost"]
     if not was_lost:
         remember_open_edge(player, (x, y), new_pos)
@@ -2085,9 +2096,14 @@ def player_move(data):
         end_turn()
         return
 
-    check_birth_spot_discovery(player)
-    check_previously_known_recovery(player)
-    announce_players_on_tile(player)
+    continuing_river = (
+        player.get("river_traveling")
+        and GAME["board"][(player["x"], player["y"])] in {"river", "river_start"}
+    )
+    if not continuing_river:
+        check_birth_spot_discovery(player)
+        check_previously_known_recovery(player)
+        announce_players_on_tile(player)
     refresh_known_player_positions()
 
     emit_full_state()
