@@ -742,6 +742,26 @@ class MazeGameSocketTests(unittest.TestCase):
         self.assertTrue(player["in_river"])
         self.assertEqual(player["last_message"], "You continue along the river.")
 
+    def test_own_birth_tile_ends_river_lost_state_during_river_continuation(self):
+        self.prepare_startable_game()
+        player_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
+        player = app.GAME["players"][player_sid]
+        app.GAME["board"][(5, 3)] = "river"
+        player["birth_x"], player["birth_y"] = 5, 3
+        player["x"], player["y"] = 5, 3
+        player["items"]["boat"] = False
+        player["items"]["raft"] = False
+
+        app.apply_tile_effect(player)
+        self.assertTrue(player["lost"])
+        self.assertEqual((player["x"], player["y"]), (6, 3))
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(player_sid)
+
+        self.one.emit("player_move", {"direction": "left"})
+
+        self.assertFalse(player["lost"])
+        self.assertIn("birth spot", player["last_message"].lower())
+
     def test_non_lost_player_can_continue_after_rafting_to_a_known_river_start(self):
         self.prepare_startable_game()
         player_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
