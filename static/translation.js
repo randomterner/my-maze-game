@@ -6,12 +6,14 @@
     text.split(/\r?\n/).forEach(line => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) return;
-      // Use the final spaced equals sign as the divider. This lets a source
-      // phrase itself contain "=" (for example, a legend entry).
-      const separator = trimmed.lastIndexOf(" = ");
+      // `=>` is available for phrases that themselves contain `=`.
+      const separatorToken = trimmed.includes(" => ") ? " => " : " = ";
+      const separator = separatorToken === " => "
+        ? trimmed.indexOf(separatorToken)
+        : trimmed.lastIndexOf(separatorToken);
       if (separator < 1) return;
       const source = trimmed.slice(0, separator).trim();
-      const target = trimmed.slice(separator + 3).trim();
+      const target = trimmed.slice(separator + separatorToken.length).trim();
       if (source && target) result[source] = target;
     });
     return result;
@@ -52,8 +54,10 @@
   };
 
   async function loadTranslations() {
+    const language = window.localStorage.getItem("maze-game-language") === "he" ? "he" : "en";
     try {
-      const response = await fetch(`/static/translations.txt?version=${Date.now()}`, { cache: "no-store" });
+      const file = language === "he" ? "translations_he.txt" : "translations.txt";
+      const response = await fetch(`/static/${file}?version=${Date.now()}`, { cache: "no-store" });
       if (response.ok) translations = parseTranslations(await response.text());
     } catch (_) {
       translations = {};
@@ -62,6 +66,23 @@
     document.documentElement.dir = translations.__direction__ || "ltr";
     document.title = window.translateGameText(document.title);
     window.applyGameTranslations();
+    addLanguageSwitcher(language);
+  }
+
+  function addLanguageSwitcher(language) {
+    let button = document.getElementById("languageSwitcher");
+    if (!button) {
+      button = document.createElement("button");
+      button.id = "languageSwitcher";
+      button.type = "button";
+      button.style.cssText = "position:fixed;top:12px;right:12px;z-index:9999;padding:8px 12px;border:1px solid #65d8ff;border-radius:8px;background:#10233e;color:#fff;font-weight:700;cursor:pointer;";
+      document.body.appendChild(button);
+    }
+    button.textContent = language === "he" ? "English" : "עברית";
+    button.onclick = () => {
+      window.localStorage.setItem("maze-game-language", language === "he" ? "en" : "he");
+      window.location.reload();
+    };
   }
 
   if (document.readyState === "loading") {
