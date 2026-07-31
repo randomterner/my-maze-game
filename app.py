@@ -815,6 +815,15 @@ def current_player():
     return GAME["players"][sid]
 
 
+def prepare_player_turn(player):
+    """Remove the river tag only at the beginning of that player's turn."""
+    if not player.get("in_river"):
+        return
+    pos = (player.get("x"), player.get("y"))
+    if pos not in GAME["board"] or GAME["board"][pos] not in {"river", "river_start"}:
+        player["in_river"] = False
+
+
 def all_spawned():
     if len(GAME["players"]) < 2:
         return False
@@ -869,7 +878,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_outer_wall_bomb_clues": {},
         "lost_kind": None,
         "map_fusion_blocked_until_turn": 0,
-        "river_traveling": False,
+        "in_river": False,
         "lost_exit_visible_position": None,
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
@@ -991,6 +1000,7 @@ def end_turn():
     if player and player["alive"] and player["extra_turn"]:
         player["extra_turn"] = False
         GAME["turn_number"] += 1
+        prepare_player_turn(player)
         log(f"{player['name']} gets an extra turn.")
         emit_full_state()
         return
@@ -1005,6 +1015,9 @@ def end_turn():
         GAME["current_turn_index"] = 0
 
     GAME["turn_number"] += 1
+    next_player = current_player()
+    if next_player:
+        prepare_player_turn(next_player)
     emit_full_state()
 
 
@@ -1186,7 +1199,7 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
 
     # Being dragged to the river start begins a continuous river journey.
     # River tiles only map the journey until the player steps onto dry land.
-    if player.get("river_traveling") and raw_tile in {"river", "river_start"}:
+    if player.get("in_river") and raw_tile in {"river", "river_start"}:
         set_player_message(player, "You continue along the river.")
         return "continue"
 
@@ -1287,7 +1300,7 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
                 player_knows_river_start = river_start_key in player["known_tiles"]
 
                 player["x"], player["y"] = river_start
-                player["river_traveling"] = True
+                player["in_river"] = True
 
                 if player_knows_river_start:
                     remember_visited_tile(player, river_start)
@@ -1310,7 +1323,7 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
 
         if river_start is not None:
             player["x"], player["y"] = river_start
-            player["river_traveling"] = True
+            player["in_river"] = True
             start_lost_relative_map(player)
 
         set_player_message(player, "The river injured you, dragged you to the river start, and you are now lost.")
@@ -1378,6 +1391,7 @@ def validate_turn_action():
         return False, "You are dead."
     if current_turn_sid() != request.sid:
         return False, "It is not your turn."
+    prepare_player_turn(player)
     if GAME["pending_black_hole"] is not None:
         return False, "Waiting for manager to resolve a black hole."
 
@@ -1845,7 +1859,7 @@ def manager_start_game():
         player["lost"] = False
         player["lost_kind"] = None
         player["map_fusion_blocked_until_turn"] = 0
-        player["river_traveling"] = False
+        player["in_river"] = False
         player["lost_exit_visible_position"] = None
         player["known_tiles_before_lost"] = {}
         player["known_open_edges_before_lost"] = []
@@ -1871,6 +1885,7 @@ def manager_start_game():
     log("Game started.")
     turn_sid = current_turn_sid()
     if turn_sid in GAME["players"]:
+        prepare_player_turn(GAME["players"][turn_sid])
         log(f"First turn: {GAME['players'][turn_sid]['name']}")
 
     emit_full_state()
@@ -1928,7 +1943,7 @@ def player_spawn(data):
     player["lost_river_players"] = {}
     player["lost_kind"] = None
     player["map_fusion_blocked_until_turn"] = 0
-    player["river_traveling"] = False
+    player["in_river"] = False
     player["lost_exit_visible_position"] = None
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
@@ -2077,9 +2092,6 @@ def player_move(data):
     dx, dy = DIRECTIONS[direction]
     new_pos = (x + dx, y + dy)
 
-    if player.get("river_traveling") and GAME["board"][new_pos] not in {"river", "river_start"}:
-        player["river_traveling"] = False
-
     was_lost = player["lost"]
     if not was_lost:
         remember_open_edge(player, (x, y), new_pos)
@@ -2111,7 +2123,7 @@ def player_move(data):
         return
 
     continuing_river = (
-        player.get("river_traveling")
+        player.get("in_river")
         and GAME["board"][(player["x"], player["y"])] in {"river", "river_start"}
     )
     if not continuing_river:
