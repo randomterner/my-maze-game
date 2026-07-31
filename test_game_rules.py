@@ -623,6 +623,10 @@ class MazeGameSocketTests(unittest.TestCase):
         for x, y, tile in required_tiles:
             self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
         self.manager.emit("manager_start_game")
+        # This helper creates a neutral started-game fixture. Tests that need
+        # the delayed spawn behavior build their own board below.
+        for player in app.GAME["players"].values():
+            player["spawn_effect_pending"] = False
 
     def test_start_rejects_an_incomplete_board(self):
         self.one.emit("player_spawn", {"x": 0, "y": 0})
@@ -845,7 +849,7 @@ class MazeGameSocketTests(unittest.TestCase):
         app.remember_open_edge(player, (3, 3), (4, 3))
         self.assertNotIn(guessed_edge, player["manual_wall_edges"])
 
-    def test_starting_tile_activates_its_effect(self):
+    def test_starting_tile_effect_waits_for_that_players_first_turn(self):
         self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "devil"})
         self.manager.emit("manager_set_tile", {"x": 1, "y": 0, "tile": "treasure"})
         self.manager.emit("manager_set_tile", {"x": 0, "y": 9, "tile": "exit"})
@@ -864,9 +868,23 @@ class MazeGameSocketTests(unittest.TestCase):
         players = list(app.GAME["players"].values())
         devil_player = next(player for player in players if (player["x"], player["y"]) == (0, 0))
         treasure_player = next(player for player in players if (player["x"], player["y"]) == (1, 0))
+        first_player = app.current_player()
+        waiting_player = treasure_player if first_player["sid"] == devil_player["sid"] else devil_player
+
+        if first_player["sid"] == devil_player["sid"]:
+            self.assertEqual(devil_player["injuries"], 1)
+            self.assertFalse(treasure_player["items"]["treasure"])
+        else:
+            self.assertTrue(treasure_player["items"]["treasure"])
+            self.assertEqual(devil_player["injuries"], 0)
+        self.assertTrue(waiting_player["spawn_effect_pending"])
+
+        app.end_turn()
+
         self.assertEqual(devil_player["injuries"], 1)
         self.assertTrue(treasure_player["items"]["treasure"])
         self.assertIn((1, 0), app.GAME["consumed_tiles"])
+        self.assertFalse(waiting_player["spawn_effect_pending"])
 
 
 if __name__ == "__main__":
