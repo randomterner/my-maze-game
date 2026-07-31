@@ -83,6 +83,7 @@
       window.localStorage.setItem("maze-game-language", language === "he" ? "en" : "he");
       window.location.reload();
     };
+    button.textContent = language === "he" ? "English" : "\u05e2\u05d1\u05e8\u05d9\u05ea";
   }
 
   if (document.readyState === "loading") {
