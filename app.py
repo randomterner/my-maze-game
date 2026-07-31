@@ -655,7 +655,13 @@ def activate_map_fusion(player):
                 set_relative_player_visibility(a, b)
 
         if player["lost"]:
-            if any(player_is_on_your_map(player, other["sid"]) for other in same_tile_players):
+            # River loss is never cancelled by map fusion. River-lost players
+            # still share their river map and can see one another there, but
+            # must recover through the normal lost-map rules.
+            if (
+                player.get("lost_kind") != "river"
+                and any(player_is_on_your_map(player, other["sid"]) for other in same_tile_players)
+            ):
                 recover_from_lost(player, f"You met {', '.join([p['name'] for p in same_tile_players])} → MAP FUSION!")
         else:
             reveal_current_position(player)
@@ -663,7 +669,10 @@ def activate_map_fusion(player):
 
         for other in same_tile_players:
             if other["lost"]:
-                if player_is_on_your_map(other, player["sid"]):
+                if (
+                    other.get("lost_kind") != "river"
+                    and player_is_on_your_map(other, player["sid"])
+                ):
                     recover_from_lost(other, f"You met {player['name']} → MAP FUSION!")
             else:
                 reveal_current_position(other)
@@ -689,7 +698,10 @@ def activate_map_fusion(player):
             set_relative_player_visibility(player, other)
 
             if player["lost"]:
-                if player_is_on_your_map(player, other["sid"]):
+                if (
+                    player.get("lost_kind") != "river"
+                    and player_is_on_your_map(player, other["sid"])
+                ):
                     recover_from_lost(player, f"You found traces of {other['name']} → MAP FUSION")
                 else:
                     set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
@@ -699,32 +711,34 @@ def activate_map_fusion(player):
             return
 
 
-def check_birth_spot_discovery(player):
+def check_birth_spot_discovery(player, announce_visit=True):
     if player["x"] is None or player["y"] is None:
         return False
 
-    if (
-        player["birth_x"] is not None
-        and player["birth_y"] is not None
-        and player["x"] == player["birth_x"]
-        and player["y"] == player["birth_y"]
-    ):
+    owners = [
+        other for other in GAME["players"].values()
+        if other["birth_x"] is not None
+        and other["birth_y"] is not None
+        and player["x"] == other["birth_x"]
+        and player["y"] == other["birth_y"]
+    ]
+    if not owners:
+        return False
+
+    owner_names = ", ".join(other["name"] for other in owners)
+    if announce_visit:
+        log(f"{player['name']} visited the birth tile of {owner_names}.")
+
+    if any(other["sid"] == player["sid"] for other in owners):
         if player["lost"]:
             recover_from_lost(player, "You found your birth spot and are no longer lost.")
             return True
         return False
 
-    for other in GAME["players"].values():
-        if other["sid"] == player["sid"]:
-            continue
-        if other["birth_x"] is None or other["birth_y"] is None:
-            continue
-
-        if player["x"] == other["birth_x"] and player["y"] == other["birth_y"]:
-            set_player_message(player, f"You found {other['name']}'s birth spot.")
-            log(f"{player['name']} found {other['name']}'s birth spot")
-            return False
-
+    if len(owners) == 1:
+        set_player_message(player, f"You found {owners[0]['name']}'s birth spot.")
+    else:
+        set_player_message(player, f"You found birth spots belonging to {owner_names}.")
     return False
 
 
@@ -1820,7 +1834,7 @@ def manager_start_game():
         set_player_message(player, f"Spawned on {spawn_tile}. {player['last_message']}")
 
     for player in GAME["players"].values():
-        check_birth_spot_discovery(player)
+        check_birth_spot_discovery(player, announce_visit=False)
         check_previously_known_recovery(player)
         activate_map_fusion(player)
 
