@@ -426,6 +426,8 @@
   </div>
 </div>
 
+<button id="languageSwitcher" type="button" style="position:fixed;top:12px;right:12px;z-index:9999;padding:8px 12px;border:1px solid #65d8ff;border-radius:8px;background:#10233e;color:#fff;font-weight:700;cursor:pointer;">&#1506;&#1489;&#1512;&#1497;&#1514;</button>
+<script src="/static/translation.js?v=2"></script>
 <script>
   const socket = io();
   let state = null;
@@ -758,10 +760,11 @@
     updateTopInfo();
     updateLogs();
     scrollLogsToBottom();
+    window.applyGameTranslations?.();
   });
 
   socket.on("error_message", data => {
-    alert(data.message);
+    alert(window.translateGameText?.(data.message) ?? data.message);
   });
 </script>
 </body>
