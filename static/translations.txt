@@ -156,10 +156,10 @@ west = west
 east = east
 
 # Legends
-Black solid line = wall. = Black solid line = wall.
-Yellow dotted line = you know there is no wall there. = Yellow dotted line = you know there is no wall there.
-Blue line = broken wall. = Blue line = broken wall.
-Blue line = a wall was there and got broken. = Blue line = a wall was there and got broken.
+Black solid line = wall. => Black solid line = wall.
+Yellow dotted line = you know there is no wall there. => Yellow dotted line = you know there is no wall there.
+Blue line = broken wall. => Blue line = broken wall.
+Blue line = a wall was there and got broken. => Blue line = a wall was there and got broken.
 
 # Tile names and item names
 empty = empty
@@ -317,8 +317,10 @@ You reached a familiar tile and are no longer lost. = You reached a familiar til
 You found your birth spot and are no longer lost. = You found your birth spot and are no longer lost.
 You found traces of = You found traces of
 You found = You found
+You found birth spots belonging to = You found birth spots belonging to
 found you. = found you.
 birth spot. = birth spot.
+visited the birth tile of = visited the birth tile of
 MAP FUSION = MAP FUSION
 is no longer lost. = is no longer lost.
 gets an extra turn. = gets an extra turn.
