@@ -34,6 +34,14 @@
     return result;
   };
 
+  // Keep the maze's physical layout consistent in every language. Hebrew text
+  // is right-to-left, but reversing the grid would make its coordinates wrong.
+  function keepBoardsLeftToRight() {
+    document.querySelectorAll("#board, #colLabels, #rowLabels, .trailBoard").forEach(element => {
+      element.style.direction = "ltr";
+    });
+  }
+
   window.applyGameTranslations = (root = document.body) => {
     if (!root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -51,6 +59,7 @@
         }
       });
     });
+    keepBoardsLeftToRight();
   };
 
   async function loadTranslations() {
