@@ -397,7 +397,7 @@ class MazeGameRuleTests(unittest.TestCase):
         app.GAME["board"][(1, 0)] = "river"
         app.enter_lost_state(player, "river")
         app.start_lost_relative_map(player)
-        player["river_traveling"] = True
+        player["in_river"] = True
         player["injuries"] = 1
 
         app.apply_tile_effect(player)
@@ -415,8 +415,28 @@ class MazeGameRuleTests(unittest.TestCase):
 
         self.assertEqual(player["injuries"], 1)
         self.assertFalse(player["lost"])
-        self.assertFalse(player["river_traveling"])
+        self.assertFalse(player["in_river"])
         self.assertIn("stayed oriented", player["last_message"].lower())
+
+    def test_own_birth_spot_ends_lost_state(self):
+        player = self.add_player("one", "One", 4, 4)
+        player["birth_x"], player["birth_y"] = 0, 0
+        player["x"], player["y"] = 0, 0
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+
+        self.assertTrue(app.check_birth_spot_discovery(player))
+        self.assertFalse(player["lost"])
+
+    def test_in_river_tag_is_removed_only_at_the_next_turn_on_dry_land(self):
+        player = self.add_player("one", "One", 1, 0)
+        app.GAME["board"][(0, 0)] = "river"
+        player["in_river"] = True
+        player["x"], player["y"] = 1, 0
+
+        self.assertTrue(player["in_river"])
+        app.prepare_player_turn(player)
+        self.assertFalse(player["in_river"])
 
     def test_river_boat_and_raft_follow_their_rules(self):
         player = self.add_player("one", "One", 1, 0)
@@ -662,7 +682,7 @@ class MazeGameSocketTests(unittest.TestCase):
         app.apply_tile_effect(player)
         self.assertEqual((player["x"], player["y"]), (6, 3))
         self.assertTrue(player["lost"])
-        self.assertTrue(player["river_traveling"])
+        self.assertTrue(player["in_river"])
         injuries_after_drag = player["injuries"]
         app.GAME["current_turn_index"] = app.GAME["player_order"].index(player_sid)
 
@@ -670,7 +690,7 @@ class MazeGameSocketTests(unittest.TestCase):
 
         self.assertEqual((player["x"], player["y"]), (5, 3))
         self.assertEqual(player["injuries"], injuries_after_drag)
-        self.assertTrue(player["river_traveling"])
+        self.assertTrue(player["in_river"])
         self.assertEqual(player["last_message"], "You continue along the river.")
 
     def test_non_lost_player_can_continue_after_rafting_to_a_known_river_start(self):
@@ -685,14 +705,14 @@ class MazeGameSocketTests(unittest.TestCase):
         app.apply_tile_effect(player)
         self.assertEqual((player["x"], player["y"]), (6, 3))
         self.assertFalse(player["lost"])
-        self.assertTrue(player["river_traveling"])
+        self.assertTrue(player["in_river"])
         app.GAME["current_turn_index"] = app.GAME["player_order"].index(player_sid)
 
         self.one.emit("player_move", {"direction": "left"})
 
         self.assertEqual((player["x"], player["y"]), (5, 3))
         self.assertFalse(player["lost"])
-        self.assertTrue(player["river_traveling"])
+        self.assertTrue(player["in_river"])
         self.assertEqual(player["last_message"], "You continue along the river.")
 
     def test_player_can_add_and_clear_a_personal_map_note(self):
