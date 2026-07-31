@@ -378,6 +378,34 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertEqual(player["bombs"], 5)
         self.assertTrue(player["extra_turn"])
 
+    def test_monster_spawn_grants_resources_but_not_an_extra_turn(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(0, 0)] = "monster"
+        player["bullets"] = 0
+        player["bombs"] = 0
+
+        app.apply_tile_effect(player, "spawned on", grant_extra_turn=False)
+
+        self.assertEqual(player["bullets"], 1)
+        self.assertEqual(player["bombs"], 1)
+        self.assertFalse(player["extra_turn"])
+        self.assertNotIn("extra turn", player["last_message"].lower())
+
+    def test_river_lost_player_can_continue_through_river_without_new_effects(self):
+        player = self.add_player("one", "One", 1, 0)
+        app.GAME["board"][(0, 0)] = "river_start"
+        app.GAME["board"][(1, 0)] = "river"
+        app.enter_lost_state(player, "river")
+        app.start_lost_relative_map(player)
+        player["injuries"] = 1
+
+        app.apply_tile_effect(player)
+
+        self.assertTrue(player["lost"])
+        self.assertEqual(player["lost_kind"], "river")
+        self.assertEqual(player["injuries"], 1)
+        self.assertEqual(player["last_message"], "You continue along the river.")
+
     def test_river_boat_and_raft_follow_their_rules(self):
         player = self.add_player("one", "One", 1, 0)
         app.GAME["board"][(0, 0)] = "river_start"
@@ -393,6 +421,40 @@ class MazeGameRuleTests(unittest.TestCase):
         app.apply_tile_effect(player)
         self.assertEqual((player["x"], player["y"]), (0, 0))
         self.assertEqual(player["injuries"], 0)
+
+    def test_river_map_fusion_never_recovers_river_lost_players(self):
+        one = self.add_player("one", "One", 1, 0)
+        two = self.add_player("two", "Two", 1, 0)
+        app.GAME["game_started"] = True
+        app.GAME["board"][(0, 0)] = "river_start"
+
+        for player in (one, two):
+            app.enter_lost_state(player, "river")
+            player["x"], player["y"] = 0, 0
+            app.start_lost_relative_map(player)
+
+        app.activate_map_fusion(one)
+        app.activate_map_fusion(two)
+
+        self.assertTrue(one["lost"])
+        self.assertTrue(two["lost"])
+        self.assertEqual(one["lost_kind"], "river")
+        self.assertEqual(two["lost_kind"], "river")
+
+    def test_birth_tile_visits_log_every_owner_name(self):
+        visitor = self.add_player("visitor", "Visitor", 4, 4)
+        visitor["birth_x"], visitor["birth_y"] = 0, 0
+        one = self.add_player("one", "One", 4, 4)
+        two = self.add_player("two", "Two", 4, 4)
+
+        app.check_birth_spot_discovery(visitor)
+
+        self.assertIn("One", visitor["last_message"])
+        self.assertIn("Two", visitor["last_message"])
+        self.assertTrue(any(
+            "Visitor visited the birth tile of One, Two." in line
+            for line in app.GAME["logs"]
+        ))
 
     def test_players_keep_separate_maps_when_they_meet(self):
         one = self.add_player("one", "One", 3, 3)
