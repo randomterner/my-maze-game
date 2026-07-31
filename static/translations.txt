@@ -99,6 +99,7 @@ Game Over = Game Over
 Winner: = Winner:
 Unknown = Unknown
 Turn # = Turn #
+YOUR TURN = YOUR TURN
 It is your turn. = It is your turn.
 Wait for your turn. = Wait for your turn.
 Waiting for manager to start the game. = Waiting for manager to start the game.
@@ -225,6 +226,7 @@ Black hole destination must be an empty tile. = Black hole destination must be a
 
 # Spawn and map-note messages
 Spawn selected. Your starting tile will be revealed when the game begins. = Spawn selected. Your starting tile will be revealed when the game begins.
+Your starting-tile effect will apply when your first turn starts. = Your starting-tile effect will apply when your first turn starts.
 Spawned on = Spawned on
 Invalid spawn coordinates. = Invalid spawn coordinates.
 Spawn out of bounds. = Spawn out of bounds.
