@@ -887,12 +887,37 @@ def current_player():
 
 
 def prepare_player_turn(player):
-    """Remove the river tag only at the beginning of that player's turn."""
-    if not player.get("in_river"):
-        return
-    pos = (player.get("x"), player.get("y"))
-    if pos not in GAME["board"] or GAME["board"][pos] not in {"river", "river_start"}:
-        player["in_river"] = False
+    """Apply once-only start-of-turn work for the active player."""
+    if player.get("in_river"):
+        pos = (player.get("x"), player.get("y"))
+        if pos not in GAME["board"] or GAME["board"][pos] not in {"river", "river_start"}:
+            player["in_river"] = False
+
+    if not player.get("spawn_effect_pending"):
+        return "continue"
+
+    player["spawn_effect_pending"] = False
+    spawn_tile = GAME["board"][(player["x"], player["y"])]
+    result = apply_tile_effect(player, "started their first turn on", grant_extra_turn=False)
+    set_player_message(player, f"Spawned on {spawn_tile}. {player['last_message']}")
+    if result not in {"dead", "pending_black_hole"}:
+        check_birth_spot_discovery(player, announce_visit=False)
+        check_previously_known_recovery(player)
+    refresh_known_player_positions()
+    return result
+
+
+def start_current_turn():
+    """Run a pending spawn effect, skipping players killed by theirs."""
+    player = current_player()
+    if player is None:
+        return "continue"
+    result = prepare_player_turn(player)
+    if result == "dead" and not GAME["game_over"]:
+        # A dead player leaves the alive order, so this same index now points
+        # at the following living player.
+        return start_current_turn()
+    return result
 
 
 def all_spawned():
@@ -951,6 +976,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "map_fusion_blocked_until_turn": 0,
         "in_river": False,
         "lost_exit_visible_position": None,
+        "spawn_effect_pending": False,
         "last_message": "Choose a spawn tile by tapping the board.",
         "extra_turn": False,
         "lost": False,
@@ -1069,7 +1095,7 @@ def end_turn():
     if player and player["alive"] and player["extra_turn"]:
         player["extra_turn"] = False
         GAME["turn_number"] += 1
-        prepare_player_turn(player)
+        start_current_turn()
         log(f"{player['name']} gets an extra turn.")
         emit_full_state()
         return
@@ -1084,9 +1110,7 @@ def end_turn():
         GAME["current_turn_index"] = 0
 
     GAME["turn_number"] += 1
-    next_player = current_player()
-    if next_player:
-        prepare_player_turn(next_player)
+    start_current_turn()
     emit_full_state()
 
 
@@ -1953,21 +1977,15 @@ def manager_start_game():
         player["lost_known_open_edges"] = []
         player["lost_known_broken_walls"] = []
         player["lost_known_wall_edges"] = []
-        spawn_tile = GAME["board"][(player["x"], player["y"])]
-        apply_tile_effect(player, "spawned on", grant_extra_turn=False)
-        set_player_message(player, f"Spawned on {spawn_tile}. {player['last_message']}")
-
-    for player in GAME["players"].values():
-        check_birth_spot_discovery(player, announce_visit=False)
-        check_previously_known_recovery(player)
-        activate_map_fusion(player)
+        player["spawn_effect_pending"] = True
+        set_player_message(player, "Your starting-tile effect will apply when your first turn starts.")
 
     refresh_known_player_positions()
 
     log("Game started.")
+    start_current_turn()
     turn_sid = current_turn_sid()
     if turn_sid in GAME["players"]:
-        prepare_player_turn(GAME["players"][turn_sid])
         log(f"First turn: {GAME['players'][turn_sid]['name']}")
 
     emit_full_state()
@@ -2027,6 +2045,7 @@ def player_spawn(data):
     player["map_fusion_blocked_until_turn"] = 0
     player["in_river"] = False
     player["lost_exit_visible_position"] = None
+    player["spawn_effect_pending"] = False
 
     set_player_message(player, "Spawn selected. Your starting tile will be revealed when the game begins.")
     log(f"{player['name']} chose a spawn tile.")
