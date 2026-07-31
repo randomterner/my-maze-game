@@ -99,6 +99,7 @@ Game Over = המשחק נגמר
 Winner: = מנצח:
 Unknown = לא ידוע
 Turn # = תור מספר
+YOUR TURN = התור שלכם
 It is your turn. = זה התור שלכם.
 Wait for your turn. = המתינו לתורכם.
 Waiting for manager to start the game. = ממתין שהמנהל יתחיל את המשחק.
@@ -225,6 +226,7 @@ Black hole destination must be an empty tile. = יעד החור השחור חי�
 
 # Spawn and map-note messages
 Spawn selected. Your starting tile will be revealed when the game begins. = נקודת ההתחלה נבחרה. אריח ההתחלה שלכם ייחשף כשהמשחק יתחיל.
+Your starting-tile effect will apply when your first turn starts. = ההשפעה של אריח ההתחלה שלכם תופעל בתחילת התור הראשון שלכם.
 Spawned on = נוצר על
 Invalid spawn coordinates. = קואורדינטות התחלה לא תקינות.
 Spawn out of bounds. = נקודת ההתחלה מחוץ לגבולות.
@@ -360,5 +362,3 @@ Game started. = המשחק התחיל.
 First turn: = תור ראשון:
 chose a spawn tile. = בחר אריח התחלה.
 Server started. = השרת התחיל.
-
-
