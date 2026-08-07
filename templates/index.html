@@ -1110,7 +1110,17 @@
   });
 
   socket.on("resumed_as_player", data => {
+    window.localStorage.setItem("maze-player-reconnect-token", data.reconnect_token);
     document.getElementById("joinStatus").textContent = `Reconnected as ${data.name}. Your game was restored.`;
+  });
+
+  socket.on("reconnect_claim_pending", data => {
+    document.getElementById("joinStatus").textContent =
+      `Waiting for the manager to approve reconnecting as ${data.name}.`;
+  });
+
+  socket.on("reconnect_claim_rejected", data => {
+    document.getElementById("joinStatus").textContent = data.message;
   });
 
   socket.on("resume_failed", data => {
