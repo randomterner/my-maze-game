@@ -2,10 +2,17 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import random
 import copy
+import secrets
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "maze-secret-key"
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    ping_interval=25,
+    ping_timeout=90,
+)
 
 BOARD_SIZE = 10
 
@@ -50,6 +57,7 @@ DIRECTIONS = {
 }
 
 MANAGER_SID = None
+MANAGER_RECONNECT_TOKEN = None
 DEFAULT_PLAYER_COLOR = "#55e4ff"
 
 
@@ -867,7 +875,12 @@ def alive_players():
 
 
 def alive_player_sids_in_order():
-    return [sid for sid in GAME["player_order"] if sid in GAME["players"] and GAME["players"][sid]["alive"]]
+    return [
+        sid for sid in GAME["player_order"]
+        if sid in GAME["players"]
+        and GAME["players"][sid]["alive"]
+        and GAME["players"][sid].get("connected", True)
+    ]
 
 
 def current_turn_sid():
@@ -929,6 +942,8 @@ def all_spawned():
 def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
     return {
         "sid": sid,
+        "reconnect_token": secrets.token_urlsafe(32),
+        "connected": True,
         "name": name,
         "color": normalize_player_color(color),
         "x": None,
@@ -1511,6 +1526,7 @@ def serialize_player_public(player):
         "known_wall_edges": copy.deepcopy(player["known_wall_edges"]),
         "last_message": player["last_message"],
         "lost": player["lost"],
+        "connected": player.get("connected", True),
     }
 
 
@@ -1738,7 +1754,7 @@ def on_connect():
 
 
 @socketio.on("disconnect")
-def on_disconnect():
+def on_disconnect(reason=None):
     global MANAGER_SID
     sid = request.sid
 
@@ -1746,15 +1762,9 @@ def on_disconnect():
         MANAGER_SID = None
 
     if sid in GAME["players"]:
-        player_name = GAME["players"][sid]["name"]
-        del GAME["players"][sid]
-        GAME["player_order"] = [p_sid for p_sid in GAME["player_order"] if p_sid != sid]
-
-        if GAME["pending_black_hole"] and GAME["pending_black_hole"]["player_sid"] == sid:
-            GAME["pending_black_hole"] = None
-
-        log(f"{player_name} disconnected.")
-        check_last_player_win()
+        player = GAME["players"][sid]
+        player["connected"] = False
+        log(f"{player['name']} temporarily disconnected. Their game will be restored when they reconnect.")
 
     emit_full_state()
 
@@ -1783,18 +1793,77 @@ def join_player(data):
     else:
         GAME["players"][sid]["name"] = name
         GAME["players"][sid]["color"] = color
+        GAME["players"][sid]["connected"] = True
 
     socketio.server.enter_room(sid, sid)
-    emit("joined_as_player", {"sid": sid, "name": name})
+    emit("joined_as_player", {
+        "sid": sid,
+        "name": name,
+        "reconnect_token": GAME["players"][sid]["reconnect_token"],
+    })
+    emit_full_state()
+
+
+@socketio.on("resume_player")
+def resume_player(data):
+    sid = request.sid
+    token = (data or {}).get("reconnect_token")
+    old_sid = next(
+        (
+            player_sid for player_sid, player in GAME["players"].items()
+            if secrets.compare_digest(str(player.get("reconnect_token", "")), str(token or ""))
+        ),
+        None,
+    )
+    if old_sid is None:
+        emit("resume_failed", {"message": "Your saved game session is no longer available. Join again."})
+        return
+
+    active_sid = current_turn_sid()
+    player = GAME["players"].pop(old_sid)
+    player["sid"] = sid
+    player["connected"] = True
+    GAME["players"][sid] = player
+    GAME["player_order"] = [sid if player_sid == old_sid else player_sid for player_sid in GAME["player_order"]]
+    if GAME["pending_black_hole"] and GAME["pending_black_hole"]["player_sid"] == old_sid:
+        GAME["pending_black_hole"]["player_sid"] = sid
+    if GAME["winner_sid"] == old_sid:
+        GAME["winner_sid"] = sid
+    if active_sid and active_sid in GAME["players"]:
+        GAME["current_turn_index"] = alive_player_sids_in_order().index(active_sid)
+    else:
+        GAME["current_turn_index"] = 0
+
+    socketio.server.enter_room(sid, sid)
+    set_player_message(player, "You reconnected and your game was restored.")
+    log(f"{player['name']} reconnected.")
+    emit("resumed_as_player", {"sid": sid, "name": player["name"]})
     emit_full_state()
 
 
 @socketio.on("join_manager")
-def join_manager():
+def join_manager(data=None):
+    global MANAGER_SID, MANAGER_RECONNECT_TOKEN
+    MANAGER_SID = request.sid
+    if not MANAGER_RECONNECT_TOKEN:
+        MANAGER_RECONNECT_TOKEN = secrets.token_urlsafe(32)
+    socketio.server.enter_room(request.sid, "manager_room")
+    emit("joined_as_manager", {"sid": request.sid, "reconnect_token": MANAGER_RECONNECT_TOKEN})
+    emit_full_state()
+
+
+@socketio.on("resume_manager")
+def resume_manager(data):
     global MANAGER_SID
+    token = (data or {}).get("reconnect_token")
+    if not MANAGER_RECONNECT_TOKEN or not secrets.compare_digest(
+        MANAGER_RECONNECT_TOKEN, str(token or "")
+    ):
+        emit("resume_failed", {"message": "Your manager session is no longer available. Join as manager again."})
+        return
     MANAGER_SID = request.sid
     socketio.server.enter_room(request.sid, "manager_room")
-    emit("joined_as_manager", {"sid": request.sid})
+    emit("resumed_as_manager", {"sid": request.sid})
     emit_full_state()
 
 
