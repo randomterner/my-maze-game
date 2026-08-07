@@ -696,6 +696,37 @@ class MazeGameSocketTests(unittest.TestCase):
         finally:
             reconnected_client.disconnect()
 
+    def test_manager_can_approve_a_new_tab_for_a_disconnected_players_name(self):
+        old_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "One")
+        original_player = app.GAME["players"][old_sid]
+        original_player["items"]["raft"] = True
+        original_player["spawned"] = True
+        self.one.disconnect()
+
+        replacement_tab = app.socketio.test_client(app.app)
+        try:
+            replacement_tab.emit("join_player", {"name": "One", "color": "#123456"})
+            self.assertIn(old_sid, app.GAME["players"])
+            self.assertFalse(app.GAME["players"][old_sid]["connected"])
+            claim_sid = next(iter(app.GAME["pending_reconnect_claims"]))
+
+            self.manager.emit("manager_approve_reconnect", {"sid": claim_sid})
+
+            new_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "One")
+            restored_player = app.GAME["players"][new_sid]
+            self.assertNotEqual(new_sid, old_sid)
+            self.assertTrue(restored_player["connected"])
+            self.assertTrue(restored_player["items"]["raft"])
+            self.assertTrue(restored_player["spawned"])
+            self.assertEqual(restored_player["color"], "#123456")
+            self.assertEqual(app.GAME["pending_reconnect_claims"], {})
+            self.assertTrue(any(
+                event["name"] == "resumed_as_player"
+                for event in replacement_tab.get_received()
+            ))
+        finally:
+            replacement_tab.disconnect()
+
     def test_manager_can_resume_after_a_temporary_disconnect(self):
         reconnect_token = app.MANAGER_RECONNECT_TOKEN
         self.manager.disconnect()
