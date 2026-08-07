@@ -418,6 +418,12 @@
         <div id="playersTable">No players.</div>
       </div>
 
+      <div class="card" id="reconnectClaimsCard" hidden>
+        <h3 style="margin-top:0;">Reconnect requests</h3>
+        <div class="small">Approve only if the person is the player who lost their tab.</div>
+        <div id="reconnectClaims" style="margin-top:10px;"></div>
+      </div>
+
       <div class="card">
         <h3 style="margin-top:0;">Logs</h3>
         <div class="logs" id="logs"></div>
@@ -717,6 +723,27 @@
     `;
   }
 
+  function buildReconnectClaims() {
+    const card = document.getElementById("reconnectClaimsCard");
+    const container = document.getElementById("reconnectClaims");
+    const claims = state?.pending_reconnect_claims || [];
+    card.hidden = claims.length === 0;
+    container.innerHTML = claims.map(claim => `
+      <div class="trailCard">
+        <strong>${escapeHtml(claim.name)}</strong>
+        <div class="small" style="margin:6px 0 9px;">A new tab is asking to restore this disconnected player.</div>
+        <div class="row">
+          <button onclick='respondToReconnect(${JSON.stringify(claim.sid)}, true)'>Approve</button>
+          <button class="secondary" onclick='respondToReconnect(${JSON.stringify(claim.sid)}, false)'>Reject</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function respondToReconnect(sid, approved) {
+    socket.emit(approved ? "manager_approve_reconnect" : "manager_reject_reconnect", { sid });
+  }
+
   function updateTopInfo() {
     if (!state) return;
 
@@ -791,6 +818,7 @@
     buildBoardLabels();
     buildBoard();
     buildPlayersTable();
+    buildReconnectClaims();
     updateTopInfo();
     updateLogs();
     scrollLogsToBottom();
