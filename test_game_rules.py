@@ -595,6 +595,7 @@ class MazeGameSocketTests(unittest.TestCase):
     def setUp(self):
         app.GAME = app.new_game_state()
         app.MANAGER_SID = None
+        app.MANAGER_RECONNECT_TOKEN = None
         self.manager = app.socketio.test_client(app.app)
         self.one = app.socketio.test_client(app.app)
         self.two = app.socketio.test_client(app.app)
@@ -606,9 +607,9 @@ class MazeGameSocketTests(unittest.TestCase):
         self.two.get_received()
 
     def tearDown(self):
-        self.manager.disconnect()
-        self.one.disconnect()
-        self.two.disconnect()
+        for client in (self.manager, self.one, self.two):
+            if client.is_connected():
+                client.disconnect()
 
     def prepare_startable_game(self):
         self.one.emit("player_spawn", {"x": 0, "y": 0})
@@ -664,6 +665,50 @@ class MazeGameSocketTests(unittest.TestCase):
         messages = late_player.get_received()
         self.assertTrue(any(event["name"] == "error_message" for event in messages))
         late_player.disconnect()
+
+    def test_temporary_player_disconnect_restores_the_same_player_session(self):
+        old_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "One")
+        original_player = app.GAME["players"][old_sid]
+        reconnect_token = original_player["reconnect_token"]
+        original_player["items"]["boat"] = True
+        original_player["spawned"] = True
+
+        self.one.disconnect()
+
+        self.assertIn(old_sid, app.GAME["players"])
+        self.assertFalse(app.GAME["players"][old_sid]["connected"])
+        self.assertIn("temporarily disconnected", app.GAME["logs"][-1])
+
+        reconnected_client = app.socketio.test_client(app.app)
+        try:
+            reconnected_client.emit("resume_player", {"reconnect_token": reconnect_token})
+            new_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "One")
+            restored_player = app.GAME["players"][new_sid]
+
+            self.assertNotEqual(new_sid, old_sid)
+            self.assertTrue(restored_player["connected"])
+            self.assertTrue(restored_player["items"]["boat"])
+            self.assertTrue(restored_player["spawned"])
+            self.assertTrue(any(
+                event["name"] == "resumed_as_player"
+                for event in reconnected_client.get_received()
+            ))
+        finally:
+            reconnected_client.disconnect()
+
+    def test_manager_can_resume_after_a_temporary_disconnect(self):
+        reconnect_token = app.MANAGER_RECONNECT_TOKEN
+        self.manager.disconnect()
+        self.assertIsNone(app.MANAGER_SID)
+
+        reconnected_manager = app.socketio.test_client(app.app)
+        try:
+            reconnected_manager.emit("resume_manager", {"reconnect_token": reconnect_token})
+            received = reconnected_manager.get_received()
+            resumed = next(event for event in received if event["name"] == "resumed_as_manager")
+            self.assertEqual(app.MANAGER_SID, resumed["args"][0]["sid"])
+        finally:
+            reconnected_manager.disconnect()
 
     def test_black_hole_can_place_player_on_an_empty_tile_with_a_player(self):
         self.prepare_startable_game()
