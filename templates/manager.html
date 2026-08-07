@@ -429,7 +429,13 @@
 <button id="languageSwitcher" type="button" style="position:fixed;top:12px;right:12px;z-index:9999;padding:8px 12px;border:1px solid #65d8ff;border-radius:8px;background:#10233e;color:#fff;font-weight:700;cursor:pointer;">&#1506;&#1489;&#1512;&#1497;&#1514;</button>
 <script src="/static/translation.js?v=2"></script>
 <script>
-  const socket = io();
+  const socket = io({
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+  });
   let state = null;
   let toolMode = "tile";
 
@@ -676,6 +682,7 @@
     const rows = state.players.map(p => `
       <tr>
         <td>${escapeHtml(p.name)}</td>
+        <td>${p.connected ? "Connected" : "Reconnecting"}</td>
         <td>${p.alive ? "Yes" : "No"}</td>
         <td>${p.spawned ? "Yes" : "No"}</td>
         <td>${p.lost ? "Yes" : "No"}</td>
@@ -693,6 +700,7 @@
         <thead>
           <tr>
             <th>Name</th>
+            <th>Connection</th>
             <th>Alive</th>
             <th>Spawned</th>
             <th>Lost</th>
@@ -749,7 +757,33 @@
   }
 
   socket.on("joined_as_manager", data => {
+    window.localStorage.setItem("maze-manager-reconnect-token", data.reconnect_token);
     document.getElementById("managerStatus").textContent = `Joined as manager. SID: ${data.sid}`;
+  });
+
+  socket.on("connect", () => {
+    const reconnectToken = window.localStorage.getItem("maze-manager-reconnect-token");
+    if (reconnectToken) {
+      document.getElementById("managerStatus").textContent = "Reconnecting as manager...";
+      socket.emit("resume_manager", { reconnect_token: reconnectToken });
+    }
+  });
+
+  socket.on("disconnect", () => {
+    document.getElementById("managerStatus").textContent = "Manager connection lost. Reconnecting...";
+  });
+
+  socket.on("connect_error", () => {
+    document.getElementById("managerStatus").textContent = "Cannot reach the game. Retrying...";
+  });
+
+  socket.on("resumed_as_manager", data => {
+    document.getElementById("managerStatus").textContent = `Reconnected as manager. SID: ${data.sid}`;
+  });
+
+  socket.on("resume_failed", data => {
+    window.localStorage.removeItem("maze-manager-reconnect-token");
+    document.getElementById("managerStatus").textContent = data.message;
   });
 
   socket.on("manager_state", data => {
