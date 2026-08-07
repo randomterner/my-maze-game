@@ -620,7 +620,13 @@
 <button id="languageSwitcher" type="button" style="position:fixed;top:12px;right:12px;z-index:9999;padding:8px 12px;border:1px solid #65d8ff;border-radius:8px;background:#10233e;color:#fff;font-weight:700;cursor:pointer;">&#1506;&#1489;&#1512;&#1497;&#1514;</button>
 <script src="/static/translation.js?v=2"></script>
 <script>
-  const socket = io();
+  const socket = io({
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+  });
   let state = null;
   let currentMode = "move";
   let mapNoteMode = false;
@@ -1078,12 +1084,38 @@
     document.getElementById("socketInfo").textContent = `Socket ID: ${data.sid}`;
   });
 
+  socket.on("connect", () => {
+    const reconnectToken = window.localStorage.getItem("maze-player-reconnect-token");
+    if (reconnectToken) {
+      document.getElementById("joinStatus").textContent = "Reconnecting to your saved game...";
+      socket.emit("resume_player", { reconnect_token: reconnectToken });
+    }
+  });
+
+  socket.on("disconnect", () => {
+    document.getElementById("joinStatus").textContent = "Connection lost. Reconnecting...";
+  });
+
+  socket.on("connect_error", () => {
+    document.getElementById("joinStatus").textContent = "Cannot reach the game. Retrying...";
+  });
+
   socket.on("joined_as_player", data => {
+    window.localStorage.setItem("maze-player-reconnect-token", data.reconnect_token);
     document.getElementById("joinStatus").textContent = `Joined as ${data.name}`;
     const joined = window.translateGameText?.("Joined as") ?? "Joined as";
     const chooseSpawn = window.translateGameText?.("Choose a spawn tile by tapping the board.")
       ?? "Choose a spawn tile by tapping the board.";
     window.alert(`${joined} ${data.name}. ${chooseSpawn}`);
+  });
+
+  socket.on("resumed_as_player", data => {
+    document.getElementById("joinStatus").textContent = `Reconnected as ${data.name}. Your game was restored.`;
+  });
+
+  socket.on("resume_failed", data => {
+    window.localStorage.removeItem("maze-player-reconnect-token");
+    document.getElementById("joinStatus").textContent = data.message;
   });
 
   socket.on("player_state", data => {
