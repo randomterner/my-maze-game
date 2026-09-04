@@ -559,6 +559,55 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertIn("3,3", one["known_players"])
         self.assertIn("3,3", two["known_players"])
 
+    def test_map_fusion_keeps_maps_and_player_dots_shared_until_a_loss(self):
+        one = self.add_player("one", "One", 3, 3)
+        two = self.add_player("two", "Two", 3, 3)
+        app.GAME["game_started"] = True
+        one["known_tiles"] = {"0,0": "treasure"}
+        two["known_tiles"] = {"9,9": "exit"}
+
+        app.activate_map_fusion(one)
+
+        self.assertIsNotNone(one["fusion_group"])
+        self.assertEqual(one["fusion_group"], two["fusion_group"])
+        self.assertEqual(one["known_tiles"], two["known_tiles"])
+        self.assertIn("3,3", one["known_players"])
+        self.assertEqual(one["known_players"]["3,3"][0]["sid"], "two")
+
+        two["x"], two["y"] = 4, 3
+        two["known_tiles"]["4,3"] = "monster"
+        app.sync_all_map_fusion_groups()
+        app.refresh_known_player_positions()
+        self.assertEqual(one["known_tiles"]["4,3"], "monster")
+        self.assertEqual(one["known_players"]["4,3"][0]["sid"], "two")
+
+        app.enter_lost_state(one, "black_hole")
+        app.refresh_known_player_positions()
+        self.assertEqual(one["fusion_group"], two["fusion_group"])
+        self.assertNotIn("4,3", two["known_players"])
+
+    def test_recovery_shares_lost_discoveries_with_a_previous_fusion_partner(self):
+        one = self.add_player("one", "One", 3, 3)
+        two = self.add_player("two", "Two", 3, 3)
+        app.GAME["game_started"] = True
+        app.activate_map_fusion(one)
+
+        one["x"], one["y"] = 5, 5
+        app.enter_lost_state(one, "black_hole")
+        app.start_lost_relative_map(one)
+        one["x"], one["y"] = 6, 5
+        one["lost_relative_x"] = 1
+        app.remember_lost_tile(one, (6, 5))
+
+        app.recover_from_lost(one, "Recovered for test.")
+        app.sync_all_map_fusion_groups()
+        app.refresh_known_player_positions()
+
+        self.assertFalse(one["lost"])
+        self.assertEqual(two["known_tiles"]["6,5"], "empty")
+        self.assertEqual(one["fusion_group"], two["fusion_group"])
+        self.assertEqual(two["known_players"]["6,5"][0]["sid"], "one")
+
     def test_hidden_player_trail_uses_relative_coordinates_until_position_is_known(self):
         viewer = self.add_player("one", "One", 0, 0)
         other = self.add_player("two", "Two", 6, 5)
@@ -743,6 +792,21 @@ class MazeGameSocketTests(unittest.TestCase):
             ))
         finally:
             replacement_tab.disconnect()
+
+    def test_disconnected_players_keep_their_turn_until_manager_confirms_left(self):
+        self.prepare_startable_game()
+        one_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "One")
+        two_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "Two")
+        app.GAME["player_order"] = [one_sid, two_sid]
+        app.GAME["current_turn_index"] = 0
+
+        self.one.disconnect()
+
+        self.assertEqual(app.current_turn_sid(), one_sid)
+        self.manager.emit("manager_confirm_player_left", {"sid": one_sid})
+
+        self.assertNotIn(one_sid, app.GAME["players"])
+        self.assertEqual(app.current_turn_sid(), two_sid)
 
     def test_manager_can_resume_after_a_temporary_disconnect(self):
         reconnect_token = app.MANAGER_RECONNECT_TOKEN
