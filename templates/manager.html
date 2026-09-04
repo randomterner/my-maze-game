@@ -444,6 +444,7 @@
   });
   let state = null;
   let toolMode = "tile";
+  const handledReconnectClaims = new Set();
 
   const textureMap = {
     empty: "pixel_tiles/empty.png",
@@ -806,6 +807,14 @@
 
   socket.on("resumed_as_manager", data => {
     document.getElementById("managerStatus").textContent = `Reconnected as manager. SID: ${data.sid}`;
+  });
+
+  socket.on("reconnect_claim_requested", data => {
+    if (handledReconnectClaims.has(data.sid)) return;
+    handledReconnectClaims.add(data.sid);
+    const message = `Reconnect request: ${data.name}. Approve restoring this disconnected player to the new tab?`;
+    const approved = window.confirm(window.translateGameText?.(message) ?? message);
+    respondToReconnect(data.sid, approved);
   });
 
   socket.on("resume_failed", data => {
