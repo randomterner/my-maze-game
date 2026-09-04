@@ -92,6 +92,7 @@ def new_game_state():
         },
         "public_revealed_positions": {},
         "pending_reconnect_claims": {},
+        "next_fusion_group_id": 1,
     }
 
 
@@ -485,6 +486,65 @@ def share_lost_section_with_everyone(player):
     return overlaps_previous_section
 
 
+def share_recovered_map_with_linked_players(player):
+    """Share a recovered lost section only with people who can place it.
+
+    A player can place this section when they already know the recovery tile,
+    or when they previously shared a map-fusion group with the recovered
+    player.  The latter means they already know that player's path.
+    """
+    if player["x"] is None or player["y"] is None:
+        return
+
+    recovery_key = f"{player['x']},{player['y']}"
+    historical_partners = set(player.get("fusion_history", []))
+
+    def actual_position(relative_position):
+        return (
+            player["x"] + relative_position[0] - player["lost_relative_x"],
+            player["y"] + relative_position[1] - player["lost_relative_y"],
+        )
+
+    tiles = {}
+    for relative_key, tile in player["lost_known_tiles"].items():
+        relative = tuple(int(value) for value in relative_key.split(","))
+        actual = actual_position(relative)
+        if in_bounds(*actual):
+            tiles[f"{actual[0]},{actual[1]}"] = tile
+
+    def translate_edges(relative_edges):
+        translated = []
+        for edge in relative_edges:
+            actual_a = actual_position(tuple(edge[0]))
+            actual_b = actual_position(tuple(edge[1]))
+            if in_bounds(*actual_a) and in_bounds(*actual_b):
+                append_unique_edge(translated, serialize_edge(actual_a, actual_b))
+        return translated
+
+    open_edges = translate_edges(player["lost_known_open_edges"])
+    broken_walls = translate_edges(player["lost_known_broken_walls"])
+    wall_edges = translate_edges(player["lost_known_wall_edges"])
+    for recipient in GAME["players"].values():
+        if (
+            recipient["sid"] == player["sid"]
+            or not recipient["alive"]
+            or (
+                recovery_key not in recipient["known_tiles"]
+                and recipient["sid"] not in historical_partners
+            )
+        ):
+            continue
+        for key, tile in tiles.items():
+            pos = tuple(int(value) for value in key.split(","))
+            add_confirmed_map_tile(recipient, pos, tile)
+        for edge in open_edges:
+            append_unique_edge(recipient["known_open_edges"], edge)
+        for edge in broken_walls:
+            append_unique_edge(recipient["known_broken_walls"], edge)
+        for edge in wall_edges:
+            append_unique_edge(recipient["known_wall_edges"], edge)
+
+
 def merge_map_knowledge(receiver, donor):
     for key, value in donor["known_tiles"].items():
         if key not in receiver["known_tiles"]:
@@ -503,9 +563,72 @@ def merge_map_knowledge(receiver, donor):
         if edge not in receiver["known_wall_edges"]:
             receiver["known_wall_edges"].append(copy.deepcopy(edge))
 
-    for edge in donor["known_wall_edges"]:
-        if edge not in receiver["known_wall_edges"]:
-            receiver["known_wall_edges"].append(copy.deepcopy(edge))
+
+def fusion_group_members(group_id):
+    return [
+        player for player in GAME["players"].values()
+        if (
+            player["alive"]
+            and not player["lost"]
+            and player.get("fusion_group") == group_id
+        )
+    ]
+
+
+def sync_map_fusion_group(group_id):
+    """Keep every active member of one fusion on the same map."""
+    members = fusion_group_members(group_id)
+    for receiver in members:
+        for donor in members:
+            if receiver["sid"] != donor["sid"]:
+                merge_map_knowledge(receiver, donor)
+
+
+def sync_all_map_fusion_groups():
+    group_ids = {
+        player.get("fusion_group") for player in GAME["players"].values()
+        if player.get("fusion_group") is not None
+    }
+    for group_id in group_ids:
+        sync_map_fusion_group(group_id)
+
+
+def fuse_players_together(players):
+    """Join all non-lost participants (and their existing groups) together."""
+    participants = [player for player in players if player["alive"] and not player["lost"]]
+    if len(participants) < 2:
+        return
+
+    old_group_ids = {
+        player.get("fusion_group") for player in participants
+        if player.get("fusion_group") is not None
+    }
+    if old_group_ids:
+        group_id = min(old_group_ids)
+    else:
+        group_id = GAME["next_fusion_group_id"]
+        GAME["next_fusion_group_id"] += 1
+
+    members = list(participants)
+    for candidate in GAME["players"].values():
+        if candidate.get("fusion_group") in old_group_ids:
+            candidate["fusion_group"] = group_id
+            if candidate["alive"] and not candidate["lost"]:
+                members.append(candidate)
+    for player in participants:
+        player["fusion_group"] = group_id
+
+    unique_members = {player["sid"]: player for player in members}.values()
+    for first in unique_members:
+        for second in unique_members:
+            if first["sid"] != second["sid"] and second["sid"] not in first["fusion_history"]:
+                first["fusion_history"].append(second["sid"])
+    sync_map_fusion_group(group_id)
+
+
+def dissolve_map_fusion_group(player):
+    """Kept for compatibility; losses only hide the lost member temporarily."""
+    return
 
 
 def is_birth_spot(pos):
@@ -591,6 +714,7 @@ def set_relative_player_visibility(p1, p2):
         p1["known_players"][key2].append({
             "sid": p2["sid"],
             "name": p2["name"],
+            "color": p2.get("color", DEFAULT_PLAYER_COLOR),
             "x": p2["x"],
             "y": p2["y"],
         })
@@ -601,11 +725,7 @@ def clear_relative_player_visibility(player):
 
 
 def refresh_known_player_positions():
-    """Only show players who are currently sharing the viewer's tile.
-
-    Players have separate maps. Seeing somebody must not reveal their past
-    discoveries or let a player track them after they walk away.
-    """
+    """Refresh same-tile, recovered, and active map-fusion player dots."""
     for viewer in GAME["players"].values():
         viewer["known_players"] = {}
         if not viewer["alive"] or viewer["x"] is None or viewer["y"] is None:
@@ -617,6 +737,12 @@ def refresh_known_player_positions():
                 other.get("lost_exit_visible_position") == (other["x"], other["y"])
                 and current_key in viewer["visited_tiles"]
             )
+            sharing_a_fusion_map = (
+                not viewer["lost"]
+                and not other["lost"]
+                and viewer.get("fusion_group") is not None
+                and viewer.get("fusion_group") == other.get("fusion_group")
+            )
             if (
                 other["sid"] != viewer["sid"]
                 and other["alive"]
@@ -626,7 +752,9 @@ def refresh_known_player_positions():
                 other["sid"] != viewer["sid"]
                 and other["alive"]
                 and exited_lost_here
-            ):
+            ) or sharing_a_fusion_map:
+                if other["sid"] == viewer["sid"]:
+                    continue
                 set_relative_player_visibility(viewer, other)
 
 
@@ -696,6 +824,7 @@ def previously_known_tile_ends_lost(player, pos=None):
 
 
 def recover_from_lost(player, message, reveal_position_to_everyone=False):
+    share_recovered_map_with_linked_players(player)
     player["lost"] = False
     player["lost_kind"] = None
     player["lost_exit_visible_position"] = (player["x"], player["y"])
@@ -769,6 +898,8 @@ def activate_map_fusion(player):
                 reveal_current_position(other)
                 set_player_message(other, f"You met {player['name']} → MAP FUSION!")
 
+        fuse_players_together(involved)
+
         if len(involved) == 2:
             log(f"{player['name']} met {same_tile_players[0]['name']} → MAP FUSION")
         else:
@@ -799,6 +930,7 @@ def activate_map_fusion(player):
             else:
                 reveal_current_position(player)
                 set_player_message(player, f"You found traces of {other['name']} → MAP FUSION")
+            fuse_players_together([player, other])
             return
 
 
@@ -880,7 +1012,6 @@ def alive_player_sids_in_order():
         sid for sid in GAME["player_order"]
         if sid in GAME["players"]
         and GAME["players"][sid]["alive"]
-        and GAME["players"][sid].get("connected", True)
     ]
 
 
@@ -989,6 +1120,8 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_outer_wall_bomb_clues": {},
         "lost_kind": None,
         "map_fusion_blocked_until_turn": 0,
+        "fusion_group": None,
+        "fusion_history": [],
         "in_river": False,
         "lost_exit_visible_position": None,
         "spawn_effect_pending": False,
@@ -1043,6 +1176,7 @@ def update_known_players_for_viewer(viewer):
         new_map[key].append({
             "sid": other["sid"],
             "name": other["name"],
+            "color": other.get("color", DEFAULT_PLAYER_COLOR),
             "x": other["x"],
             "y": other["y"],
         })
@@ -1725,6 +1859,8 @@ def serialize_player_state_for(sid):
 
 
 def emit_full_state():
+    sync_all_map_fusion_groups()
+    refresh_known_player_positions()
     GAME["public_revealed_positions"] = {
         sid: {
             "sid": player["sid"],
@@ -1789,6 +1925,11 @@ def restore_player_connection(old_sid, new_sid, *, color=None):
         player["color"] = normalize_player_color(color)
     GAME["players"][new_sid] = player
     GAME["player_order"] = [new_sid if player_sid == old_sid else player_sid for player_sid in GAME["player_order"]]
+    for candidate in GAME["players"].values():
+        candidate["fusion_history"] = [
+            new_sid if historical_sid == old_sid else historical_sid
+            for historical_sid in candidate.get("fusion_history", [])
+        ]
     if GAME["pending_black_hole"] and GAME["pending_black_hole"]["player_sid"] == old_sid:
         GAME["pending_black_hole"]["player_sid"] = new_sid
     if GAME["winner_sid"] == old_sid:
@@ -1913,6 +2054,61 @@ def manager_reject_reconnect(data):
     socketio.emit("reconnect_claim_rejected", {
         "message": "The manager did not approve this reconnect request."
     }, to=claim_sid)
+    emit_full_state()
+
+
+@socketio.on("manager_confirm_player_left")
+def manager_confirm_player_left(data):
+    """Permanently remove a disconnected player so play can continue."""
+    if request.sid != MANAGER_SID:
+        emit("error_message", {"message": "Only the manager can confirm a player has left."})
+        return
+
+    player_sid = (data or {}).get("sid")
+    player = GAME["players"].get(player_sid)
+    if not player:
+        emit("error_message", {"message": "That player is no longer in this game."})
+        return
+    if player.get("connected", True):
+        emit("error_message", {"message": "A connected player cannot be removed as disconnected."})
+        return
+
+    old_order = alive_player_sids_in_order()
+    was_current = current_turn_sid() == player_sid
+    removed_index = old_order.index(player_sid) if player_sid in old_order else None
+    del GAME["players"][player_sid]
+    GAME["player_order"] = [sid for sid in GAME["player_order"] if sid != player_sid]
+    GAME["public_revealed_positions"].pop(player_sid, None)
+    for candidate in GAME["players"].values():
+        candidate["fusion_history"] = [
+            historical_sid for historical_sid in candidate.get("fusion_history", [])
+            if historical_sid != player_sid
+        ]
+        if candidate.get("fusion_group") is not None and not fusion_group_members(candidate["fusion_group"]):
+            candidate["fusion_group"] = None
+
+    for claim_sid, claim in list(GAME["pending_reconnect_claims"].items()):
+        if claim["player_sid"] == player_sid:
+            del GAME["pending_reconnect_claims"][claim_sid]
+            socketio.emit("reconnect_claim_rejected", {
+                "message": "The manager confirmed that this player left the game."
+            }, to=claim_sid)
+
+    if GAME["pending_black_hole"] and GAME["pending_black_hole"]["player_sid"] == player_sid:
+        GAME["pending_black_hole"] = None
+
+    new_order = alive_player_sids_in_order()
+    if new_order:
+        if was_current:
+            GAME["current_turn_index"] %= len(new_order)
+            start_current_turn()
+        elif removed_index is not None and removed_index < GAME["current_turn_index"]:
+            GAME["current_turn_index"] -= 1
+    else:
+        GAME["current_turn_index"] = 0
+
+    log(f"Manager confirmed that {player['name']} left the game.")
+    check_last_player_win()
     emit_full_state()
 
 
