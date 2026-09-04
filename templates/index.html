@@ -1084,14 +1084,6 @@
     document.getElementById("socketInfo").textContent = `Socket ID: ${data.sid}`;
   });
 
-  socket.on("connect", () => {
-    const reconnectToken = window.localStorage.getItem("maze-player-reconnect-token");
-    if (reconnectToken) {
-      document.getElementById("joinStatus").textContent = "Reconnecting to your saved game...";
-      socket.emit("resume_player", { reconnect_token: reconnectToken });
-    }
-  });
-
   socket.on("disconnect", () => {
     document.getElementById("joinStatus").textContent = "Connection lost. Reconnecting...";
   });
@@ -1101,7 +1093,6 @@
   });
 
   socket.on("joined_as_player", data => {
-    window.localStorage.setItem("maze-player-reconnect-token", data.reconnect_token);
     document.getElementById("joinStatus").textContent = `Joined as ${data.name}`;
     const joined = window.translateGameText?.("Joined as") ?? "Joined as";
     const chooseSpawn = window.translateGameText?.("Choose a spawn tile by tapping the board.")
@@ -1110,7 +1101,6 @@
   });
 
   socket.on("resumed_as_player", data => {
-    window.localStorage.setItem("maze-player-reconnect-token", data.reconnect_token);
     document.getElementById("joinStatus").textContent = `Reconnected as ${data.name}. Your game was restored.`;
   });
 
@@ -1124,7 +1114,6 @@
   });
 
   socket.on("resume_failed", data => {
-    window.localStorage.removeItem("maze-player-reconnect-token");
     document.getElementById("joinStatus").textContent = data.message;
   });
 
