@@ -943,7 +943,6 @@ def all_spawned():
 def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
     return {
         "sid": sid,
-        "reconnect_token": secrets.token_urlsafe(32),
         "connected": True,
         "name": name,
         "color": normalize_player_color(color),
@@ -1780,7 +1779,7 @@ def on_disconnect(reason=None):
     emit_full_state()
 
 
-def restore_player_connection(old_sid, new_sid, *, color=None, replace_token=False):
+def restore_player_connection(old_sid, new_sid, *, color=None):
     """Move one retained player session onto a newly connected socket."""
     active_sid = current_turn_sid()
     player = GAME["players"].pop(old_sid)
@@ -1788,8 +1787,6 @@ def restore_player_connection(old_sid, new_sid, *, color=None, replace_token=Fal
     player["connected"] = True
     if color is not None:
         player["color"] = normalize_player_color(color)
-    if replace_token:
-        player["reconnect_token"] = secrets.token_urlsafe(32)
     GAME["players"][new_sid] = player
     GAME["player_order"] = [new_sid if player_sid == old_sid else player_sid for player_sid in GAME["player_order"]]
     if GAME["pending_black_hole"] and GAME["pending_black_hole"]["player_sid"] == old_sid:
@@ -1819,10 +1816,6 @@ def join_player(data):
         emit("error_message", {"message": "Name is required."})
         return
 
-    if GAME["game_started"] and sid not in GAME["players"]:
-        emit("error_message", {"message": "A game is already in progress. Join the next game after a reset."})
-        return
-
     matching_player = next(
         (
             (player_sid, player) for player_sid, player in GAME["players"].items()
@@ -1845,7 +1838,15 @@ def join_player(data):
             "message": "Waiting for the manager to approve this reconnect request.",
         })
         log(f"A new tab requested manager approval to reconnect as {old_player['name']}.")
+        socketio.emit("reconnect_claim_requested", {
+            "sid": sid,
+            "name": old_player["name"],
+        }, to="manager_room")
         emit_full_state()
+        return
+
+    if GAME["game_started"] and sid not in GAME["players"]:
+        emit("error_message", {"message": "A game is already in progress. Join the next game after a reset."})
         return
 
     if sid not in GAME["players"]:
@@ -1860,35 +1861,18 @@ def join_player(data):
     emit("joined_as_player", {
         "sid": sid,
         "name": name,
-        "reconnect_token": GAME["players"][sid]["reconnect_token"],
     })
     emit_full_state()
 
 
 @socketio.on("resume_player")
 def resume_player(data):
-    sid = request.sid
-    token = (data or {}).get("reconnect_token")
-    old_sid = next(
-        (
-            player_sid for player_sid, player in GAME["players"].items()
-            if secrets.compare_digest(str(player.get("reconnect_token", "")), str(token or ""))
-        ),
-        None,
-    )
-    if old_sid is None:
-        emit("resume_failed", {"message": "Your saved game session is no longer available. Join again."})
-        return
-
-    player = restore_player_connection(old_sid, sid)
-    set_player_message(player, "You reconnected and your game was restored.")
-    log(f"{player['name']} reconnected.")
-    emit("resumed_as_player", {
-        "sid": sid,
-        "name": player["name"],
-        "reconnect_token": player["reconnect_token"],
+    # Player identity is deliberately restored only through a manager-approved
+    # claim. Browser storage is shared by tabs, so a token must never decide
+    # which player a newly opened tab becomes.
+    emit("resume_failed", {
+        "message": "Player reconnects require manager approval. Enter your name and ask the manager."
     })
-    emit_full_state()
 
 
 @socketio.on("manager_approve_reconnect")
@@ -1906,15 +1890,12 @@ def manager_approve_reconnect(data):
         emit("error_message", {"message": "That player is already connected."})
         return
 
-    player = restore_player_connection(
-        claim["player_sid"], claim_sid, color=claim["color"], replace_token=True
-    )
+    player = restore_player_connection(claim["player_sid"], claim_sid, color=claim["color"])
     set_player_message(player, "The manager approved your reconnect. Your game was restored.")
     log(f"Manager approved the reconnect for {player['name']}.")
     socketio.emit("resumed_as_player", {
         "sid": claim_sid,
         "name": player["name"],
-        "reconnect_token": player["reconnect_token"],
     }, to=claim_sid)
     emit_full_state()
 
