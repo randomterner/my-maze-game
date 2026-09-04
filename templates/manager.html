@@ -303,6 +303,10 @@
     .playerTag::after { content:""; position:absolute; left:50%; bottom:0; width:8px; height:8px; transform:translateX(-50%); border:2px solid #08101c; border-radius:50%; background:var(--player-color, #ffcc55); box-shadow:0 0 0 1px rgba(255,255,255,.28); }
     .topWall,.bottomWall,.leftWall,.rightWall { background:rgba(1,3,7,.98); } .brokenEdgeTop,.brokenEdgeBottom,.brokenEdgeLeft,.brokenEdgeRight { background:#52d8ff !important; }
     table { border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--border); border-radius:12px; } th,td { border-color:rgba(148,173,209,.13); } th { color:#ffd98e; background:rgba(160,101,43,.15); }
+    .reconnectApproval { margin-top:12px; border-color:rgba(255, 197, 91, .7); background:linear-gradient(135deg, rgba(108, 67, 17, .96), rgba(43, 28, 16, .96)); }
+    .reconnectApproval h3 { color:#ffe0a0; }
+    .reconnectRequest { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px; border:1px solid rgba(255, 220, 145, .25); border-radius:12px; background:rgba(7, 10, 19, .36); }
+    .reconnectRequest strong { color:#fff0c5; }
     @media (max-width:920px) { .layout { grid-template-columns:minmax(0,1fr); } }
     @media (max-width:640px) {
       :root { --board-size:min(calc(100vw - 82px), 420px); }
@@ -331,6 +335,12 @@
     </div>
     <div class="small" id="managerStatus">Not joined yet.</div>
   </div>
+
+  <section class="card reconnectApproval" id="reconnectClaimsCard" hidden aria-live="polite">
+    <h3 style="margin-top:0;">Reconnect requests</h3>
+    <div class="small">Approve only if the person is the player who lost their tab.</div>
+    <div id="reconnectClaims" style="margin-top:10px;"></div>
+  </section>
 
   <div class="layout">
     <div>
@@ -418,12 +428,6 @@
         <div id="playersTable">No players.</div>
       </div>
 
-      <div class="card" id="reconnectClaimsCard" hidden>
-        <h3 style="margin-top:0;">Reconnect requests</h3>
-        <div class="small">Approve only if the person is the player who lost their tab.</div>
-        <div id="reconnectClaims" style="margin-top:10px;"></div>
-      </div>
-
       <div class="card">
         <h3 style="margin-top:0;">Logs</h3>
         <div class="logs" id="logs"></div>
@@ -444,7 +448,6 @@
   });
   let state = null;
   let toolMode = "tile";
-  const handledReconnectClaims = new Set();
 
   const textureMap = {
     empty: "pixel_tiles/empty.png",
@@ -730,9 +733,11 @@
     const claims = state?.pending_reconnect_claims || [];
     card.hidden = claims.length === 0;
     container.innerHTML = claims.map(claim => `
-      <div class="trailCard">
-        <strong>${escapeHtml(claim.name)}</strong>
-        <div class="small" style="margin:6px 0 9px;">A new tab is asking to restore this disconnected player.</div>
+      <div class="reconnectRequest">
+        <div>
+          <strong>${escapeHtml(claim.name)}</strong>
+          <div class="small" style="margin-top:4px;">A new tab is asking to restore this disconnected player.</div>
+        </div>
         <div class="row">
           <button onclick='respondToReconnect(${JSON.stringify(claim.sid)}, true)'>Approve</button>
           <button class="secondary" onclick='respondToReconnect(${JSON.stringify(claim.sid)}, false)'>Reject</button>
@@ -810,11 +815,8 @@
   });
 
   socket.on("reconnect_claim_requested", data => {
-    if (handledReconnectClaims.has(data.sid)) return;
-    handledReconnectClaims.add(data.sid);
-    const message = `Reconnect request: ${data.name}. Approve restoring this disconnected player to the new tab?`;
-    const approved = window.confirm(window.translateGameText?.(message) ?? message);
-    respondToReconnect(data.sid, approved);
+    document.getElementById("managerStatus").textContent =
+      `Reconnect request waiting for ${data.name}.`;
   });
 
   socket.on("resume_failed", data => {
