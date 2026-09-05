@@ -966,6 +966,8 @@ def check_birth_spot_discovery(player, announce_visit=True):
 
 
 def check_previously_known_recovery(player, pos=None, discovered_by_flashlight=False):
+    if pos is not None and GAME["board"].get(pos) in {"river", "river_start"}:
+        return False
     if player["lost"] and previously_known_tile_ends_lost(player, pos):
         message = (
             "Your flashlight revealed a familiar tile and you are no longer lost."
@@ -1531,6 +1533,8 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
 
     if raw_tile == "river":
         river_start = find_river_start()
+        entered_own_birth_river = pos == (player["birth_x"], player["birth_y"])
+        was_lost_before_entering_river = player["lost"]
 
         if player["items"]["boat"]:
             set_player_message(player, "You crossed the river safely with the boat.")
@@ -1567,6 +1571,13 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
             player["x"], player["y"] = river_start
             player["in_river"] = True
             start_lost_relative_map(player)
+
+        if entered_own_birth_river and was_lost_before_entering_river:
+            recover_from_lost(
+                player,
+                "The river dragged you to its start, but your birth tile let you get oriented again.",
+            )
+            return "continue"
 
         set_player_message(player, "The river injured you, dragged you to the river start, and you are now lost.")
         return "continue"
@@ -2584,6 +2595,7 @@ def player_move(data):
         if not recovered_at_birth:
             check_previously_known_recovery(player)
         announce_players_on_tile(player)
+    activate_map_fusion(player)
     refresh_known_player_positions()
 
     emit_full_state()
