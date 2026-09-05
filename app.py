@@ -298,13 +298,82 @@ def remember_lost_tile(player, pos, source="revealed"):
 
     # A flashlight can reveal a special tile that is already drawn on the
     # persistent river map.  It still counts as discovering that tile now.
-    if tile_allows_map_fusion(pos):
+    if tile_allows_map_fusion(pos) or GAME["board"].get(pos) == "river_start":
         reveal_players_at_lost_special_tile(player, pos)
 
     log_special_tile_reveal(player, pos, source)
 
+    discover_lost_birth_tile(player, pos)
     check_lost_map_completion(player)
     return is_new
+
+
+def discover_lost_birth_tile(player, pos):
+    """Anchor another player's map to a birth tile in this lost section."""
+    if not player["lost"]:
+        return
+    for owner in GAME["players"].values():
+        if (
+            owner["sid"] == player["sid"]
+            or not owner["alive"] or owner["lost"]
+            or None in (owner["x"], owner["y"])
+            or pos != (owner["birth_x"], owner["birth_y"])
+        ):
+            continue
+        if owner["sid"] not in player["lost_birth_map_sources"]:
+            player["lost_birth_map_sources"].append(owner["sid"])
+            log(f"{player['name']} linked a relative map through the birth spot of {owner['name']}.")
+    sync_lost_birth_maps(player)
+
+
+def sync_lost_birth_maps(player):
+    """Copy confirmed maps in relative space; keep notes and coordinates private."""
+    if not player["lost"]:
+        return
+    familiar_position = None
+    for source_sid in player["lost_birth_map_sources"]:
+        owner = GAME["players"].get(source_sid)
+        for key in list(player["lost_known_players"]):
+            player["lost_known_players"][key] = [
+                entry for entry in player["lost_known_players"][key]
+                if entry["sid"] != source_sid
+            ]
+            if not player["lost_known_players"][key]:
+                del player["lost_known_players"][key]
+        if not owner or not owner["alive"] or owner["lost"] or None in (owner["x"], owner["y"]):
+            continue
+        for key, tile in owner["known_tiles"].items():
+            actual = tuple(int(value) for value in key.split(","))
+            relative = lost_relative_position_for(player, actual)
+            relative_key = f"{relative[0]},{relative[1]}"
+            if (
+                relative_key not in player["lost_known_tiles"]
+                and previously_known_tile_ends_lost(player, actual)
+                and GAME["board"].get(actual) not in {"empty", "river", "river_start"}
+            ):
+                familiar_position = actual
+            player["lost_known_tiles"].setdefault(relative_key, tile)
+            player["lost_manual_tiles"].pop(relative_key, None)
+        for field in ("known_open_edges", "known_broken_walls", "known_wall_edges"):
+            for edge in owner[field]:
+                relative = serialize_edge(
+                    lost_relative_position_for(player, tuple(edge[0])),
+                    lost_relative_position_for(player, tuple(edge[1])),
+                )
+                append_unique_edge(player["lost_" + field], relative)
+        relative = lost_relative_position_for(player, (owner["x"], owner["y"]))
+        key = f"{relative[0]},{relative[1]}"
+        player["lost_known_players"].setdefault(key, []).append({
+            "sid": owner["sid"], "name": owner["name"],
+            "color": owner.get("color", DEFAULT_PLAYER_COLOR),
+        })
+    if player.get("lost_kind") == "river":
+        GAME["river_lost_map"]["tiles"].update(player["lost_known_tiles"])
+        for field, river_field in (("known_open_edges", "open_edges"), ("known_broken_walls", "broken_walls"), ("known_wall_edges", "wall_edges")):
+            for edge in player["lost_" + field]:
+                append_unique_edge(GAME["river_lost_map"][river_field], edge)
+    if familiar_position is not None:
+        check_previously_known_recovery(player, familiar_position)
 
 
 def start_lost_relative_map(player):
@@ -487,7 +556,7 @@ def share_lost_section_with_everyone(player):
 
 
 def share_recovered_map_with_linked_players(player):
-    """Share a recovered lost section only with people who can place it.
+    """Restore the recovering player's section and share with linked players.
 
     A player can place this section when they already know the recovery tile,
     or when they previously shared a map-fusion group with the recovered
@@ -517,7 +586,7 @@ def share_recovered_map_with_linked_players(player):
         for edge in relative_edges:
             actual_a = actual_position(tuple(edge[0]))
             actual_b = actual_position(tuple(edge[1]))
-            if in_bounds(*actual_a) and in_bounds(*actual_b):
+            if in_bounds(*actual_a) or in_bounds(*actual_b):
                 append_unique_edge(translated, serialize_edge(actual_a, actual_b))
         return translated
 
@@ -526,11 +595,13 @@ def share_recovered_map_with_linked_players(player):
     wall_edges = translate_edges(player["lost_known_wall_edges"])
     for recipient in GAME["players"].values():
         if (
-            recipient["sid"] == player["sid"]
-            or not recipient["alive"]
-            or (
-                recovery_key not in recipient["known_tiles"]
-                and recipient["sid"] not in historical_partners
+            recipient["sid"] != player["sid"]
+            and (
+                not recipient["alive"]
+                or (
+                    recovery_key not in recipient["known_tiles"]
+                    and recipient["sid"] not in historical_partners
+                )
             )
         ):
             continue
@@ -640,7 +711,7 @@ def is_birth_spot(pos):
 
 def tile_allows_map_fusion(pos):
     tile = GAME["board"].get(pos, "empty")
-    return tile not in {"empty", "river"}
+    return tile not in {"empty", "river", "river_start"}
 
 
 def is_special_tile(pos):
@@ -743,6 +814,10 @@ def refresh_known_player_positions():
                 and viewer.get("fusion_group") is not None
                 and viewer.get("fusion_group") == other.get("fusion_group")
             )
+            anchored_by_birth = (
+                not viewer["lost"] and other["alive"]
+                and viewer["sid"] in other["lost_birth_map_sources"]
+            )
             if (
                 other["sid"] != viewer["sid"]
                 and other["alive"]
@@ -752,10 +827,12 @@ def refresh_known_player_positions():
                 other["sid"] != viewer["sid"]
                 and other["alive"]
                 and exited_lost_here
-            ) or sharing_a_fusion_map:
+            ) or sharing_a_fusion_map or anchored_by_birth:
                 if other["sid"] == viewer["sid"]:
                     continue
                 set_relative_player_visibility(viewer, other)
+                if anchored_by_birth:
+                    add_known_tile(viewer, (other["x"], other["y"]))
 
 
 def refresh_lost_river_player_positions():
@@ -766,6 +843,10 @@ def refresh_lost_river_player_positions():
     ]
 
     for viewer in river_lost_players:
+        viewer["lost_known_tiles"].update(copy.deepcopy(GAME["river_lost_map"]["tiles"]))
+        for field, river_field in (("known_open_edges", "open_edges"), ("known_broken_walls", "broken_walls"), ("known_wall_edges", "wall_edges")):
+            for edge in GAME["river_lost_map"][river_field]:
+                append_unique_edge(viewer["lost_" + field], edge)
         viewer["lost_river_players"] = {}
         for other in river_lost_players:
             if other["sid"] == viewer["sid"]:
@@ -798,6 +879,7 @@ def announce_players_on_tile(player):
 
 
 def enter_lost_state(player, lost_kind):
+    player["lost_birth_map_sources"] = []
     if not player["lost"]:
         player["known_tiles_before_lost"] = copy.deepcopy(player["known_tiles"])
         player["known_open_edges_before_lost"] = copy.deepcopy(player["known_open_edges"])
@@ -819,14 +901,18 @@ def previously_known_tile_ends_lost(player, pos=None):
         pos = (player["x"], player["y"])
     if pos is None:
         return False
+    if GAME["board"].get(pos, "empty") in {"empty", "river", "river_start"}:
+        return False
     key = f"{pos[0]},{pos[1]}"
     return key in player.get("known_tiles_before_lost", {})
 
 
 def recover_from_lost(player, message, reveal_position_to_everyone=False):
-    share_recovered_map_with_linked_players(player)
     player["lost"] = False
     player["lost_kind"] = None
+    # Anchor the lost section before revealing this position or checking map
+    # completion. The recovering player must receive their own discoveries.
+    share_recovered_map_with_linked_players(player)
     player["lost_exit_visible_position"] = (player["x"], player["y"])
     reveal_current_position(player)
     player["known_tiles_before_lost"] = {}
@@ -840,6 +926,9 @@ def activate_map_fusion(player):
     if not GAME["game_started"]:
         return
 
+    if player["lost"] and player["lost_birth_map_sources"]:
+        return
+
     if player.get("map_fusion_blocked_until_turn", 0) > GAME["turn_number"]:
         return
 
@@ -848,6 +937,8 @@ def activate_map_fusion(player):
 
     current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
+    if player["lost"] and not tile_allows_map_fusion(current_pos):
+        return
 
     same_tile_players = []
     for other in GAME["players"].values():
@@ -871,6 +962,8 @@ def activate_map_fusion(player):
             for b in involved:
                 if a["sid"] == b["sid"]:
                     continue
+                if (a["lost"] and a["lost_birth_map_sources"]) or (b["lost"] and b["lost_birth_map_sources"]):
+                    continue
                 merge_map_knowledge(a, b)
                 set_relative_player_visibility(a, b)
 
@@ -879,7 +972,8 @@ def activate_map_fusion(player):
             # still share their river map and can see one another there, but
             # must recover through the normal lost-map rules.
             if (
-                player.get("lost_kind") != "river"
+                tile_allows_map_fusion(current_pos)
+                and player.get("lost_kind") != "river"
                 and any(player_is_on_your_map(player, other["sid"]) for other in same_tile_players)
             ):
                 recover_from_lost(player, f"You met {', '.join([p['name'] for p in same_tile_players])} → MAP FUSION!")
@@ -890,7 +984,9 @@ def activate_map_fusion(player):
         for other in same_tile_players:
             if other["lost"]:
                 if (
-                    other.get("lost_kind") != "river"
+                    tile_allows_map_fusion(current_pos)
+                    and other.get("lost_kind") != "river"
+                    and not other["lost_birth_map_sources"]
                     and player_is_on_your_map(other, player["sid"])
                 ):
                     recover_from_lost(other, f"You met {player['name']} → MAP FUSION!")
@@ -966,8 +1062,6 @@ def check_birth_spot_discovery(player, announce_visit=True):
 
 
 def check_previously_known_recovery(player, pos=None, discovered_by_flashlight=False):
-    if pos is not None and GAME["board"].get(pos) in {"river", "river_start"}:
-        return False
     if player["lost"] and previously_known_tile_ends_lost(player, pos):
         message = (
             "Your flashlight revealed a familiar tile and you are no longer lost."
@@ -1115,6 +1209,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_manual_tiles": {},
         "lost_manual_wall_edges": [],
         "lost_known_players": {},
+        "lost_birth_map_sources": [],
         "lost_known_open_edges": [],
         "lost_known_broken_walls": [],
         "lost_known_wall_edges": [],
@@ -1785,13 +1880,106 @@ def serialize_hidden_player_maps_for(viewer):
             and not other.get("lost")
             and player_knows_river_start(other)
         )
+        origin = river_start if river_relative else None
+        if viewer["lost"] and not other["lost"] and other["sid"] in viewer["lost_birth_map_sources"]:
+            origin = (viewer["x"] - viewer["lost_relative_x"], viewer["y"] - viewer["lost_relative_y"])
         trails.append({
             "sid": other["sid"],
             "name": other["name"],
             "color": other.get("color", DEFAULT_PLAYER_COLOR),
-            **serialize_relative_trail(other, river_start if river_relative else None),
+            **serialize_relative_trail(other, origin),
         })
     return trails
+
+
+def serialize_known_birth_spots(viewer):
+    """Label discovered birth tiles in the coordinates of the displayed map."""
+    result = {}
+    for owner in GAME["players"].values():
+        pos = (owner["birth_x"], owner["birth_y"])
+        if None in pos:
+            continue
+        if viewer["lost"]:
+            relative = lost_relative_position_for(viewer, pos)
+            key = f"{relative[0]},{relative[1]}"
+            visible = key in viewer["lost_known_tiles"]
+        else:
+            key = f"{pos[0]},{pos[1]}"
+            visible = key in viewer["known_tiles"] or owner["sid"] == viewer["sid"]
+        if visible:
+            result.setdefault(key, []).append({"name": owner["name"]})
+    return result
+
+
+def serialize_public_player_stats():
+    fields = ("sid", "name", "color", "alive", "spawned", "injuries", "bullets", "bombs", "items", "lost", "connected")
+    return [{field: copy.deepcopy(player[field]) for field in fields} for player in GAME["players"].values()]
+
+
+def serialize_public_boards_state():
+    """Discovered maps during play; reveal the manager board only at game over."""
+    boards = []
+    seen_groups = set()
+    for player in GAME["players"].values():
+        if not player["spawned"] or None in (player["x"], player["y"]):
+            continue
+        if player["lost"] and player["lost_kind"] == "river":
+            continue
+        group = player.get("fusion_group") if not player["lost"] else None
+        if group is not None:
+            if group in seen_groups:
+                continue
+            seen_groups.add(group)
+        members = fusion_group_members(group) if group is not None else [player]
+        absolute = not player["lost"] and any(p["sid"] in GAME["public_revealed_positions"] for p in members)
+        origin = (0, 0) if absolute else (player["birth_x"], player["birth_y"])
+        trail = serialize_relative_trail(player, origin)
+        positions = []
+        for member in members:
+            member_trail = serialize_relative_trail(member, origin)
+            trail["tiles"].update(member_trail["tiles"])
+            for field in ("open_edges", "broken_walls", "wall_edges"):
+                for edge in member_trail[field]:
+                    append_unique_edge(trail[field], edge)
+            if member["alive"]:
+                positions.append({"sid": member["sid"], "name": member["name"], "color": member["color"], **member_trail["relative_position"]})
+        birth_spots = {}
+        for owner in GAME["players"].values():
+            birth = (owner["birth_x"], owner["birth_y"])
+            if None in birth:
+                continue
+            relative = lost_relative_position_for(player, birth) if player["lost"] else (birth[0] - origin[0], birth[1] - origin[1])
+            key = f"{relative[0]},{relative[1]}"
+            if key in trail["tiles"]:
+                birth_spots.setdefault(key, []).append({"name": owner["name"]})
+        boards.append({"name": ", ".join(p["name"] for p in members), "absolute": absolute, **trail, "players": positions, "birth_spots": birth_spots})
+    river_map = GAME["river_lost_map"]
+    if river_map["tiles"]:
+        positions = [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["lost_relative_x"], "y": p["lost_relative_y"]}
+                     for p in GAME["players"].values() if p["alive"] and p["lost"] and p["lost_kind"] == "river"]
+        boards.append({"name": "Shared river map", "absolute": False, "lost": True, **copy.deepcopy(river_map), "players": positions})
+    if GAME["game_over"]:
+        manager_births = {}
+        for p in GAME["players"].values():
+            if p["spawned"]:
+                manager_births.setdefault(f"{p['birth_x']},{p['birth_y']}", []).append({"name": p["name"]})
+        manager_walls = [serialize_edge(a, b) for a, b in GAME["inner_walls"]]
+        for n in range(10):
+            manager_walls.extend([
+                serialize_edge((n, 0), (n, -1)),
+                serialize_edge((n, 9), (n, 10)),
+                serialize_edge((0, n), (-1, n)),
+                serialize_edge((9, n), (10, n)),
+            ])
+        boards.insert(0, {
+            "name": "Manager map — game over", "absolute": True,
+            "manager_map": True,
+            "tiles": {f"{x},{y}": effective_tile_at((x, y)) for x, y in GAME["board"]},
+            "wall_edges": manager_walls,
+            "open_edges": [], "broken_walls": [], "birth_spots": manager_births,
+            "players": [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["x"], "y": p["y"]} for p in GAME["players"].values() if p["spawned"]],
+        })
+    return {"boards": boards, "players": serialize_public_player_stats(), "game_started": GAME["game_started"], "game_over": GAME["game_over"], "turn_number": GAME["turn_number"]}
 
 
 def serialize_player_state_for(sid):
@@ -1800,6 +1988,7 @@ def serialize_player_state_for(sid):
         return {}
 
     sync_river_lost_map_to_player(player)
+    refresh_lost_river_player_positions()
 
     turn_sid = current_turn_sid()
 
@@ -1815,6 +2004,13 @@ def serialize_player_state_for(sid):
             for other in players:
                 if not any(existing["sid"] == other["sid"] for existing in known_players[key]):
                     known_players[key].append(copy.deepcopy(other))
+        # Physical meetings are visible even when the map is still relative.
+        own_key = f"{player['lost_relative_x']},{player['lost_relative_y']}"
+        for other in GAME["players"].values():
+            if other["sid"] != sid and other["alive"] and (other["x"], other["y"]) == (player["x"], player["y"]):
+                entries = known_players.setdefault(own_key, [])
+                if not any(entry["sid"] == other["sid"] for entry in entries):
+                    entries.append({"sid": other["sid"], "name": other["name"], "color": other["color"]})
         known_open_edges = copy.deepcopy(player["lost_known_open_edges"])
         known_broken_walls = copy.deepcopy(player["lost_known_broken_walls"])
         known_wall_edges = copy.deepcopy(player["lost_known_wall_edges"])
@@ -1836,12 +2032,14 @@ def serialize_player_state_for(sid):
 
     return {
         "you": player_view,
+        "players": serialize_public_player_stats(),
         "public_revealed_players": list(GAME["public_revealed_positions"].values()),
         "lost_relative_position": {
             "x": player["lost_relative_x"],
             "y": player["lost_relative_y"],
         } if player["lost"] else None,
         "your_known_tiles": known_tiles,
+        "birth_spots": serialize_known_birth_spots(player),
         "your_manual_tiles": manual_tiles,
         "your_manual_wall_edges": manual_wall_edges,
         "your_known_players": known_players,
@@ -1870,6 +2068,10 @@ def serialize_player_state_for(sid):
 
 
 def emit_full_state():
+    for player in list(GAME["players"].values()):
+        if player["lost"] and player["lost_birth_map_sources"]:
+            sync_lost_birth_maps(player)
+            check_lost_map_completion(player)
     sync_all_map_fusion_groups()
     refresh_known_player_positions()
     GAME["public_revealed_positions"] = {
@@ -1891,6 +2093,7 @@ def emit_full_state():
     socketio.emit("manager_state", serialize_manager_state(), room="manager_room")
     for sid in list(GAME["players"].keys()):
         socketio.emit("player_state", serialize_player_state_for(sid), room=sid)
+    socketio.emit("public_boards_state", serialize_public_boards_state(), room="public_boards_room")
 
 
 @app.route("/")
@@ -1901,6 +2104,17 @@ def index():
 @app.route("/manager")
 def manager():
     return render_template("manager.html")
+
+
+@app.route("/boards")
+def public_boards():
+    return render_template("boards.html")
+
+
+@socketio.on("watch_public_boards")
+def watch_public_boards():
+    socketio.server.enter_room(request.sid, "public_boards_room")
+    emit("public_boards_state", serialize_public_boards_state())
 
 
 @socketio.on("connect")
@@ -1937,6 +2151,10 @@ def restore_player_connection(old_sid, new_sid, *, color=None):
     GAME["players"][new_sid] = player
     GAME["player_order"] = [new_sid if player_sid == old_sid else player_sid for player_sid in GAME["player_order"]]
     for candidate in GAME["players"].values():
+        candidate["lost_birth_map_sources"] = [
+            new_sid if source_sid == old_sid else source_sid
+            for source_sid in candidate["lost_birth_map_sources"]
+        ]
         candidate["fusion_history"] = [
             new_sid if historical_sid == old_sid else historical_sid
             for historical_sid in candidate.get("fusion_history", [])
