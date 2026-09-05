@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>Maze Game - Manager</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/socket.io.min.js"></script>
   <style>
     :root {
       --bg: #f2f3f7;
@@ -301,6 +301,7 @@
     .cell { border-radius:5px; background:#101a29; box-shadow:inset 0 0 0 1px rgba(237,206,154,.12); transition:transform 150ms ease,filter 150ms ease; } .cell:hover { transform:translateY(-1px); filter:brightness(1.14); } .cell img { transform:scale(1.02); }
     .playerTag { left:50%; right:auto; bottom:4px; transform:translateX(-50%); padding:0 0 11px; max-width:86px; overflow:visible; border:0; border-radius:0; background:transparent; color:#fff; font-size:9px; font-weight:800; text-align:center; text-shadow:1px 1px 0 #07101d,-1px -1px 0 #07101d,1px -1px 0 #07101d,-1px 1px 0 #07101d; box-shadow:none; }
     .playerTag::after { content:""; position:absolute; left:50%; bottom:0; width:8px; height:8px; transform:translateX(-50%); border:2px solid #08101c; border-radius:50%; background:var(--player-color, #ffcc55); box-shadow:0 0 0 1px rgba(255,255,255,.28); }
+    .birthLabel { position:absolute; bottom:1px; left:2px; right:2px; z-index:7; background:rgba(10,18,30,.9); color:#fff; font-size:9px; line-height:12px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
     .topWall,.bottomWall,.leftWall,.rightWall { background:#e53935; } .brokenEdgeTop,.brokenEdgeBottom,.brokenEdgeLeft,.brokenEdgeRight { background:#52d8ff !important; }
     table { border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--border); border-radius:12px; } th,td { border-color:rgba(148,173,209,.13); } th { color:#ffd98e; background:rgba(160,101,43,.15); }
     .reconnectApproval { margin-top:12px; border-color:rgba(255, 197, 91, .7); background:linear-gradient(135deg, rgba(108, 67, 17, .96), rgba(43, 28, 16, .96)); }
@@ -317,6 +318,8 @@
       .rowLabels { height:var(--board-size); }
     }
   </style>
+  <link rel="stylesheet" href="/static/game-ui.css">
+  <script src="/static/game-ui.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -388,12 +391,16 @@
           Exit must be on the edge.
         </div>
 
+        <a href="/boards" target="_blank" style="color:#ffe4a0;">Public boards</a>
+        <div class="pendingNotice" id="pendingNotice" hidden role="status"></div>
+
         <div class="boardOuter">
           <div class="cornerBox"></div>
           <div class="colLabels" id="colLabels"></div>
           <div class="rowLabels" id="rowLabels"></div>
           <div class="board" id="board"></div>
         </div>
+        <div id="birthLegend" class="birthLegend"></div>
       </div>
 
       <div class="card">
@@ -411,7 +418,7 @@
 
       <div class="card">
         <h3 style="margin-top:0;">Legend</h3>
-        <div class="small">Black solid line = wall.</div>
+        <div class="small">Red solid line = wall.</div>
         <div class="small" style="margin-top:8px;">Blue line = broken wall.</div>
       </div>
     </div>
@@ -605,6 +612,10 @@
     if (!state) return;
 
     const brokenEdges = getAllBrokenEdges();
+    const birthSpots = {};
+    (state.players || []).filter(p => p.spawned).forEach(p => { const key = `${p.birth_x},${p.birth_y}`; (birthSpots[key] ||= []).push(p); });
+    drawBirthLegend(document.getElementById('birthLegend'), birthSpots);
+    boardEl.classList.toggle('pendingBoard', Boolean(state.pending_black_hole));
 
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
@@ -613,6 +624,7 @@
 
         const cell = document.createElement("div");
         cell.className = "cell";
+        if (state.pending_black_hole && tile === 'empty') cell.classList.add('blackHoleTarget');
         cell.title = `${x},${y}: ${tile}`;
         cell.onclick = () => handleBoardClick(x, y);
 
@@ -625,14 +637,9 @@
         }
 
         const playersHere = (state.players || []).filter(p => p.alive && p.x === x && p.y === y);
-        playersHere.forEach((p, idx) => {
-          const tag = document.createElement("div");
-          tag.className = "playerTag";
-          tag.style.bottom = `${20 + idx * 12}px`;
-          tag.style.setProperty("--player-color", p.color || "#ffcc55");
-          tag.textContent = p.name;
-          cell.appendChild(tag);
-        });
+        const birthNames = (state.players || []).filter(p => p.spawned && p.birth_x === x && p.birth_y === y).map(p => p.name);
+        drawBirthLabel(cell, birthNames);
+        drawPlayerDots(cell, playersHere);
 
         if (y === 0) {
           const w = document.createElement("div");
@@ -782,6 +789,9 @@
     } else {
       document.getElementById("blackHoleStatus").textContent = "No pending black hole.";
     }
+    const notice = document.getElementById('pendingNotice');
+    notice.hidden = !state.pending_black_hole;
+    notice.textContent = document.getElementById('blackHoleStatus').textContent;
 
     if (state.river_validation) {
       document.getElementById("riverValidation").innerHTML = state.river_validation.ok
