@@ -176,6 +176,7 @@ Black solid line = wall. => Black solid line = wall.
 Yellow dotted line = you know there is no wall there. => Yellow dotted line = you know there is no wall there.
 Blue line = broken wall. => Blue line = broken wall.
 Blue line = a wall was there and got broken. => Blue line = a wall was there and got broken.
+Red solid line = wall. => Red solid line = wall.
 
 # Tile names and item names
 empty = empty
@@ -201,6 +202,16 @@ used boat = used boat
 used raft = used raft
 used flashlight = used flashlight
 used batteries = used batteries
+fake treasure = fake treasure
+river start = river start
+black hole = black hole
+used_treasure = used_treasure
+used_fake_treasure = used_fake_treasure
+used fake treasure = used fake treasure
+used_boat = used_boat
+used_raft = used_raft
+used_flashlight = used_flashlight
+used_batteries = used_batteries
 
 # River and board validation
 The board needs at least one river tile (river_start counts). = The board needs at least one river tile (river_start counts).
