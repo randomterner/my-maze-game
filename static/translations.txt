@@ -179,6 +179,8 @@ Blue line = a wall was there and got broken. => Blue line = a wall was there and
 Red solid line = wall. => Red solid line = wall.
 
 # Tile names and item names
+Birth spot = Birth spot
+linked a relative map through the birth spot of = linked a relative map through the birth spot of
 empty = empty
 treasure = treasure
 fake_treasure = fake_treasure
@@ -405,3 +407,29 @@ Manager confirmed that = Manager confirmed that
 left the game. = left the game.
 The manager confirmed that this player left the game. = The manager confirmed that this player left the game.
 A connected player cannot be removed as disconnected. = A connected player cannot be removed as disconnected.
+
+# Public boards and shared interface
+Public boards = Public boards
+Maze Game - Public boards = Maze Game - Public boards
+Read-only discovered maps. Hidden positions use relative coordinates. Private notes are not shown. = Read-only discovered maps. Hidden positions use relative coordinates. Private notes are not shown.
+Player page = Player page
+Manager page = Manager page
+Connecting... = Connecting...
+Live public boards = Live public boards
+Connection lost. Reconnecting... = Connection lost. Reconnecting...
+No public boards yet. = No public boards yet.
+Public coordinates = Public coordinates
+Relative map = Relative map
+Shared river map = Shared river map
+Manager map — game over = Manager map — game over
+Game over — the complete manager map is now revealed. = Game over — the complete manager map is now revealed.
+Birth spot = Birth spot
+Pending black hole = Pending black hole
+Waiting for manager placement = Waiting for manager placement
+Red solid = Red solid
+Relative trails appear here until you know a player's exact position. = Relative trails appear here until you know a player's exact position.
+Hidden player trails = Hidden player trails
+Pending black hole for = Pending black hole for
+Tap an empty tile. = Tap an empty tile.
+Your discovered map. Personal map notes are shown beside the board. = Your discovered map. Personal map notes are shown beside the board.
+Use this any time, even while another player is taking a turn. = Use this any time, even while another player is taking a turn.
