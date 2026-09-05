@@ -451,9 +451,9 @@
       background: var(--player-color, #ffcc55); box-shadow: 0 0 0 1px rgba(255,255,255,.28);
     }
     .youTag { background: transparent; }
-    .youTag::after { background: #55e4ff; }
-    .wallEdgeTop, .wallEdgeBottom { border-top-color: rgba(2, 5, 10, 0.98); }
-    .wallEdgeLeft, .wallEdgeRight { border-left-color: rgba(2, 5, 10, 0.98); }
+    .youTag::after { background: var(--player-color, #55e4ff); }
+    .wallEdgeTop, .wallEdgeBottom { border-top-color: #e53935; }
+    .wallEdgeLeft, .wallEdgeRight { border-left-color: #e53935; }
     .openEdgeTop, .openEdgeBottom { border-top-color: #f6c85a; }
     .openEdgeLeft, .openEdgeRight { border-left-color: #f6c85a; }
     .brokenEdgeTop, .brokenEdgeBottom { border-top-color: #52d8ff; }
@@ -516,7 +516,7 @@
 
       <div class="card">
         <h3 style="margin-top:0;">Line guide</h3>
-        <div class="small">Black solid line = wall.</div>
+        <div class="small">Red solid line = wall.</div>
         <div class="small" style="margin-top:8px;">Yellow dotted line = you know there is no wall there.</div>
         <div class="small" style="margin-top:8px;">Blue line = a wall was there and got broken.</div>
       </div>
