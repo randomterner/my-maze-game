@@ -329,6 +329,16 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertFalse(player["lost"])
         self.assertIn("flashlight revealed a familiar tile", player["last_message"].lower())
 
+    def test_known_river_tiles_do_not_end_lost_state_by_themselves(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"][(1, 0)] = "river"
+        player["known_tiles"] = {"1,0": "river"}
+        app.enter_lost_state(player, "black_hole")
+        player["x"], player["y"] = 1, 0
+
+        self.assertFalse(app.check_previously_known_recovery(player, (1, 0)))
+        self.assertTrue(player["lost"])
+
     def test_flashlight_visit_counts_for_lost_special_tile_information(self):
         observer = self.add_player("one", "One", 0, 0)
         lost_player = self.add_player("two", "Two", 1, 0)
@@ -808,6 +818,26 @@ class MazeGameSocketTests(unittest.TestCase):
         self.assertNotIn(one_sid, app.GAME["players"])
         self.assertEqual(app.current_turn_sid(), two_sid)
 
+    def test_moving_onto_another_player_starts_map_fusion_and_shows_both_dots(self):
+        self.prepare_startable_game()
+        one_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "One")
+        two_sid = next(sid for sid, player in app.GAME["players"].items() if player["name"] == "Two")
+        one = app.GAME["players"][one_sid]
+        two = app.GAME["players"][two_sid]
+        one["known_tiles"] = {"0,0": "empty"}
+        two["known_tiles"] = {"1,0": "empty", "9,9": "exit"}
+        app.GAME["player_order"] = [one_sid, two_sid]
+        app.GAME["current_turn_index"] = 0
+
+        self.one.emit("player_move", {"direction": "right"})
+
+        self.assertEqual((one["x"], one["y"]), (1, 0))
+        self.assertEqual(one["fusion_group"], two["fusion_group"])
+        self.assertIsNotNone(one["fusion_group"])
+        self.assertEqual(one["known_tiles"], two["known_tiles"])
+        self.assertEqual(one["known_players"]["1,0"][0]["sid"], two_sid)
+        self.assertEqual(two["known_players"]["1,0"][0]["sid"], one_sid)
+
     def test_manager_can_resume_after_a_temporary_disconnect(self):
         reconnect_token = app.MANAGER_RECONNECT_TOKEN
         self.manager.disconnect()
@@ -903,7 +933,7 @@ class MazeGameSocketTests(unittest.TestCase):
         self.assertTrue(player["in_river"])
         self.assertEqual(player["last_message"], "You continue along the river.")
 
-    def test_own_birth_tile_ends_river_lost_state_during_river_continuation(self):
+    def test_own_river_birth_tile_ends_lost_state_when_the_player_returns_to_it(self):
         self.prepare_startable_game()
         player_sid = next(sid for sid, candidate in app.GAME["players"].items() if candidate["name"] == "One")
         player = app.GAME["players"][player_sid]
@@ -921,7 +951,8 @@ class MazeGameSocketTests(unittest.TestCase):
         self.one.emit("player_move", {"direction": "left"})
 
         self.assertFalse(player["lost"])
-        self.assertIn("birth spot", player["last_message"].lower())
+        self.assertTrue(player["in_river"])
+        self.assertEqual((player["x"], player["y"]), (5, 3))
 
     def test_river_continuation_still_works_after_birth_spot_recovery(self):
         self.prepare_startable_game()
