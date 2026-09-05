@@ -176,6 +176,7 @@ Black solid line = wall. => קו שחור רציף מציין קיר.
 Yellow dotted line = you know there is no wall there. => קו צהוב מנוקד מציין שידוע לכם שאין שם קיר.
 Blue line = broken wall. => קו כחול מציין קיר שבור.
 Blue line = a wall was there and got broken. => קו כחול מציין שהיה שם קיר והוא נשבר.
+Red solid line = wall. => קו אדום רציף מציין קיר.
 
 # Tile names and item names
 empty = ריק
@@ -201,6 +202,16 @@ used boat = סירה שנלקחה
 used raft = רפסודה שנלקחה
 used flashlight = השתמש בפנס
 used batteries = סוללות שנלקחו
+fake treasure = אוצר מזויף
+river start = תחילת הנהר
+black hole = חור שחור
+used_treasure = אוצר שנלקח
+used_fake_treasure = אוצר מזויף שנלקח
+used fake treasure = אוצר מזויף שנלקח
+used_boat = סירה שנלקחה
+used_raft = רפסודה שנלקחה
+used_flashlight = פנס שנלקח
+used_batteries = סוללות שנלקחו
 
 # River and board validation
 The board needs at least one river tile (river_start counts). = הלוח זקוק ללפחות אריח נהר אחד (תחילת הנהר נחשבת).
