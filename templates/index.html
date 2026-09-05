@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>Maze Game - Player</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/socket.io.min.js"></script>
   <style>
     :root {
       --bg: #f2f3f7;
@@ -451,6 +451,7 @@
       background: var(--player-color, #ffcc55); box-shadow: 0 0 0 1px rgba(255,255,255,.28);
     }
     .youTag { background: transparent; }
+    .birthLabel { position:absolute; bottom:1px; left:2px; right:2px; z-index:7; background:rgba(10,18,30,.9); color:#fff; font-size:9px; line-height:12px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
     .youTag::after { background: var(--player-color, #55e4ff); }
     .wallEdgeTop, .wallEdgeBottom { border-top-color: #e53935; }
     .wallEdgeLeft, .wallEdgeRight { border-left-color: #e53935; }
@@ -469,6 +470,8 @@
       .logs { max-height: 220px; }
     }
   </style>
+  <link rel="stylesheet" href="/static/game-ui.css">
+  <script src="/static/game-ui.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -512,6 +515,12 @@
       <div class="card">
         <h3 style="margin-top:0;">Last message</h3>
         <div id="lastMessage">No messages yet.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Players</h3>
+        <div id="publicStats" class="publicStats"></div>
+        <a class="rulesBtn" href="/boards" target="_blank" style="margin-top:10px;">Public boards</a>
       </div>
 
       <div class="card">
@@ -837,6 +846,7 @@
     if (!state || !state.you) return;
 
     const you = state.you;
+    drawPlayerStats(document.getElementById('publicStats'), state.players || []);
     const items = Object.entries(you.items || {})
       .filter(([k, v]) => v)
       .map(([k]) => `<span class="pill">${escapeHtml(k)}</span>`)
@@ -914,6 +924,14 @@
     const knownWallEdges = state.your_known_wall_edges || [];
     const window = getMapWindow();
     const lostMap = Boolean(state.you.lost);
+    let legend = document.getElementById('birthLegend');
+    if (!legend) {
+      legend = document.createElement('div');
+      legend.id = 'birthLegend';
+      legend.className = 'birthLegend';
+      boardEl.closest('.boardWorkspace').after(legend);
+    }
+    drawBirthLegend(legend, state.birth_spots || {}, lostMap);
     const relativePosition = state.lost_relative_position || { x: 0, y: 0 };
     const publicPositions = state.public_revealed_players || [];
 
@@ -964,39 +982,12 @@
           ? []
           : publicPositions.filter(player => player.x === x && player.y === y);
 
-        if (state.game_started && (tile !== "unknown" || publicHere.length > 0)) {
-          let markerIndex = 0;
-          const displayedSids = new Set();
+        const birthNames = (state.birth_spots?.[key] || []).map(owner => owner.name);
+        drawBirthLabel(cell, birthNames);
 
-          if (
-            state.you &&
-            (lostMap
-              ? relativePosition.x === x && relativePosition.y === y
-              : state.you.x === x && state.you.y === y)
-          ) {
-            const selfTag = document.createElement("div");
-            selfTag.className = "playerTag youTag";
-            selfTag.style.bottom = `${20 + markerIndex * 12}px`;
-            selfTag.style.setProperty("--player-color", state.you.color || "#55e4ff");
-            selfTag.textContent = state.you.name || "YOU";
-            cell.appendChild(selfTag);
-            displayedSids.add(state.you.sid);
-            markerIndex++;
-          }
-
-          [...(knownPlayers[key] || []), ...publicHere].forEach((p) => {
-            if (displayedSids.has(p.sid)) return;
-
-            const tag = document.createElement("div");
-            tag.className = "playerTag";
-            tag.style.bottom = `${20 + markerIndex * 12}px`;
-            tag.style.setProperty("--player-color", p.color || "#ffcc55");
-            tag.textContent = p.name;
-            cell.appendChild(tag);
-            displayedSids.add(p.sid);
-            markerIndex++;
-          });
-        }
+        const occupants = [...(knownPlayers[key] || []), ...publicHere];
+        if (lostMap ? relativePosition.x === x && relativePosition.y === y : state.you.x === x && state.you.y === y) occupants.unshift(state.you);
+        drawPlayerDots(cell, occupants, state.you.sid);
 
         boardEl.appendChild(cell);
       }
@@ -1118,7 +1109,18 @@
   });
 
   socket.on("player_state", data => {
+    const newTurn = data.game_started && !data.game_over && data.is_your_turn &&
+      (!state?.is_your_turn || state.turn_number !== data.turn_number || state.you?.sid !== data.you?.sid);
     state = data;
+    if (newTurn) { setMode('move'); mapNoteMode = false; }
+    let notice = document.getElementById('pendingNotice');
+    if (!notice) {
+      notice = document.createElement('div'); notice.id = 'pendingNotice'; notice.className = 'pendingNotice';
+      notice.setAttribute('role', 'status'); document.getElementById('board').closest('.boardWorkspace').before(notice);
+    }
+    notice.hidden = !state.pending_black_hole;
+    const pendingPlayer = (state.players || []).find(p => p.sid === state.pending_black_hole?.player_sid);
+    notice.textContent = state.pending_black_hole ? `Pending black hole: ${pendingPlayer?.name || ''}. Waiting for manager placement.` : '';
     buildBoardLabels();
     updateInfo();
     buildBoard();
