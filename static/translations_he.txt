@@ -179,6 +179,8 @@ Blue line = a wall was there and got broken. => קו כחול מציין שהי�
 Red solid line = wall. => קו אדום רציף מציין קיר.
 
 # Tile names and item names
+Birth spot = נקודת לידה
+linked a relative map through the birth spot of = קישר מפה יחסית דרך נקודת הלידה של
 empty = ריק
 treasure = אוצר
 fake_treasure = אוצר מזויף
@@ -405,3 +407,29 @@ Manager confirmed that = המנהל אישר ש־
 left the game. = עזב את המשחק.
 The manager confirmed that this player left the game. = המנהל אישר שהשחקן הזה עזב את המשחק.
 A connected player cannot be removed as disconnected. = אי אפשר להסיר שחקן מחובר כשחקן מנותק.
+
+# Public boards and shared interface
+Public boards = מפות ציבוריות
+Maze Game - Public boards = משחק המבוך - מפות ציבוריות
+Read-only discovered maps. Hidden positions use relative coordinates. Private notes are not shown. = מפות שהתגלו, לצפייה בלבד. מיקומים נסתרים מוצגים בקואורדינטות יחסיות. הערות פרטיות אינן מוצגות.
+Player page = עמוד שחקן
+Manager page = עמוד מנהל
+Connecting... = מתחבר...
+Live public boards = מפות ציבוריות — עדכון חי
+Connection lost. Reconnecting... = החיבור נותק. מתחבר מחדש...
+No public boards yet. = עדיין אין מפות ציבוריות.
+Public coordinates = קואורדינטות גלויות
+Relative map = מפה יחסית
+Shared river map = מפת נהר משותפת
+Manager map — game over = מפת המנהל — המשחק הסתיים
+Game over — the complete manager map is now revealed. = המשחק הסתיים — מפת המנהל המלאה נחשפת כעת.
+Birth spot = נקודת התחלה
+Pending black hole = חור שחור ממתין
+Waiting for manager placement = ממתין להצבה על ידי המנהל
+Red solid = אדום רציף
+Relative trails appear here until you know a player's exact position. = מסלולים יחסיים מוצגים כאן עד שהמיקום המדויק של השחקן ידוע לך.
+Hidden player trails = מסלולי שחקנים נסתרים
+Pending black hole for = חור שחור ממתין עבור
+Tap an empty tile. = בחר אריח ריק.
+Your discovered map. Personal map notes are shown beside the board. = המפה שגילית. הערות מפה פרטיות מוצגות לצד הלוח.
+Use this any time, even while another player is taking a turn. = אפשר להשתמש בזה בכל זמן, גם במהלך תור של שחקן אחר.
