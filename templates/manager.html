@@ -301,7 +301,7 @@
     .cell { border-radius:5px; background:#101a29; box-shadow:inset 0 0 0 1px rgba(237,206,154,.12); transition:transform 150ms ease,filter 150ms ease; } .cell:hover { transform:translateY(-1px); filter:brightness(1.14); } .cell img { transform:scale(1.02); }
     .playerTag { left:50%; right:auto; bottom:4px; transform:translateX(-50%); padding:0 0 11px; max-width:86px; overflow:visible; border:0; border-radius:0; background:transparent; color:#fff; font-size:9px; font-weight:800; text-align:center; text-shadow:1px 1px 0 #07101d,-1px -1px 0 #07101d,1px -1px 0 #07101d,-1px 1px 0 #07101d; box-shadow:none; }
     .playerTag::after { content:""; position:absolute; left:50%; bottom:0; width:8px; height:8px; transform:translateX(-50%); border:2px solid #08101c; border-radius:50%; background:var(--player-color, #ffcc55); box-shadow:0 0 0 1px rgba(255,255,255,.28); }
-    .topWall,.bottomWall,.leftWall,.rightWall { background:rgba(1,3,7,.98); } .brokenEdgeTop,.brokenEdgeBottom,.brokenEdgeLeft,.brokenEdgeRight { background:#52d8ff !important; }
+    .topWall,.bottomWall,.leftWall,.rightWall { background:#e53935; } .brokenEdgeTop,.brokenEdgeBottom,.brokenEdgeLeft,.brokenEdgeRight { background:#52d8ff !important; }
     table { border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--border); border-radius:12px; } th,td { border-color:rgba(148,173,209,.13); } th { color:#ffd98e; background:rgba(160,101,43,.15); }
     .reconnectApproval { margin-top:12px; border-color:rgba(255, 197, 91, .7); background:linear-gradient(135deg, rgba(108, 67, 17, .96), rgba(43, 28, 16, .96)); }
     .reconnectApproval h3 { color:#ffe0a0; }
@@ -692,7 +692,7 @@
     const rows = state.players.map(p => `
       <tr>
         <td>${escapeHtml(p.name)}</td>
-        <td>${p.connected ? "Connected" : "Reconnecting"}</td>
+        <td>${p.connected ? "Connected" : "Disconnected — turn waits"}</td>
         <td>${p.alive ? "Yes" : "No"}</td>
         <td>${p.spawned ? "Yes" : "No"}</td>
         <td>${p.lost ? "Yes" : "No"}</td>
@@ -702,6 +702,7 @@
         <td>${p.bombs}</td>
         <td>${Object.entries(p.items).filter(([k,v]) => v).map(([k]) => escapeHtml(k)).join(", ") || "-"}</td>
         <td>${escapeHtml(p.last_message || "")}</td>
+        <td>${p.connected ? "—" : `<button class="secondary" onclick='confirmPlayerLeft(${JSON.stringify(p.sid)})'>Confirm left</button>`}</td>
       </tr>
     `).join("");
 
@@ -720,6 +721,7 @@
             <th>Bombs</th>
             <th>Items</th>
             <th>Last message</th>
+            <th>Leave</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -748,6 +750,10 @@
 
   function respondToReconnect(sid, approved) {
     socket.emit(approved ? "manager_approve_reconnect" : "manager_reject_reconnect", { sid });
+  }
+
+  function confirmPlayerLeft(sid) {
+    socket.emit("manager_confirm_player_left", { sid });
   }
 
   function updateTopInfo() {
