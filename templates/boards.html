@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maze Game - Public boards</title>
+  <script src="/static/socket.io.min.js"></script>
+  <link rel="stylesheet" href="/static/game-ui.css">
+  <style>
+    :root { --border:#31445d; --muted:#b8c7dd; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#0a1220; color:#f3f7ff; font-family:system-ui,sans-serif; }
+    main { max-width:1500px; margin:auto; padding:65px 20px 32px; }
+    h1 { margin:0 0 8px; }
+    p { color:var(--muted); }
+    a { color:#78deff; }
+    #boardsList { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:20px; align-items:start; }
+    .publicBoardCard { min-width:0; padding:16px; background:#142136; border:1px solid var(--border); border-radius:16px; }
+    .publicBoardCard h2 { margin:0; font-size:20px; overflow-wrap:anywhere; }
+    .boardScroll { overflow:auto; max-height:650px; margin-top:12px; border-radius:8px; direction:ltr; }
+    .publicBoardGrid { display:grid; gap:2px; direction:ltr; width:max-content; min-width:100%; }
+    .publicBoardGrid .cell { position:relative; width:42px; height:42px; background:#253449; overflow:hidden; border-radius:3px; }
+    .publicBoardGrid img { width:100%; height:100%; image-rendering:pixelated; }
+    .publicBoardGrid .playerTag { color:white; text-shadow:0 1px 2px black; font-weight:800; }
+    .publicBoardGrid .playerTag::after { content:''; position:absolute; left:50%; transform:translateX(-50%); border-radius:50%; background:var(--player-color); border:1px solid #07101c; }
+    .publicEdge { position:absolute; z-index:6; pointer-events:none; }
+    .publicEdge.top { top:0; left:0; right:0; border-top:3px solid #e53935; }
+    .publicEdge.left { top:0; left:0; bottom:0; border-left:3px solid #e53935; }
+    .publicEdge.bottom { bottom:0; left:0; right:0; border-bottom:3px solid #e53935; }
+    .publicEdge.right { right:0; top:0; bottom:0; border-right:3px solid #e53935; }
+    .managerMapCard { grid-column:1 / -1; width:100%; max-width:650px; justify-self:center; border:2px solid #ffd66b; }
+    .managerMapCard .cell { width:56px; height:56px; }
+    .publicCoordinates { display:grid; grid-template-columns:22px max-content; grid-template-rows:22px auto; direction:ltr; width:max-content; }
+    .publicColumns { grid-column:2; display:grid; grid-template-columns:repeat(10,56px); gap:2px; text-align:center; }
+    .publicRows { grid-row:2; display:grid; grid-template-rows:repeat(10,56px); gap:2px; align-items:center; text-align:center; }
+    .publicCoordinates .publicBoardGrid { grid-column:2; grid-row:2; }
+    .publicEdge.open { border-color:#f6c85a; border-style:dotted; }
+    .publicEdge.broken { border-color:#52d8ff; }
+    .statsPanel { margin:20px 0; padding:16px; background:#142136; border:1px solid var(--border); border-radius:16px; }
+    .publicStats { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+    .connection { color:#ffe3a1; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Public boards</h1>
+  <p>Read-only discovered maps. Hidden positions use relative coordinates. Private notes are not shown.</p>
+  <p><a href="/">Player page</a> · <a href="/manager">Manager page</a></p>
+  <p id="connectionStatus" class="connection" role="status">Connecting...</p>
+  <p id="gameOverNotice" hidden>Game over — the complete manager map is now revealed.</p>
+  <div id="boardsList"></div>
+  <section class="statsPanel"><h2>Players</h2><div class="publicStats" id="publicStats"></div></section>
+</main>
+<script src="/static/game-ui.js"></script>
+<script src="/static/translation.js"></script>
+<script>
+const socket = io();
+function renderBoards(data) {
+  const root = document.getElementById('boardsList');
+  root.replaceChildren();
+  document.getElementById('gameOverNotice').hidden = !data.game_over;
+  if (!data.boards.length) root.textContent = 'No public boards yet.';
+  data.boards.forEach(board => {
+    const card = document.createElement('section'); card.className = 'publicBoardCard';
+    if (board.manager_map) card.classList.add('managerMapCard');
+    const title = document.createElement('h2'); title.textContent = board.name; card.appendChild(title);
+    const caption = document.createElement('p'); caption.textContent = board.absolute ? 'Public coordinates' : 'Relative map'; card.appendChild(caption);
+    const scroll = document.createElement('div'); scroll.className = 'boardScroll'; card.appendChild(scroll);
+    const grid = document.createElement('div'); grid.className = 'publicBoardGrid'; scroll.appendChild(grid);
+    if(board.manager_map) {
+      const axes=document.createElement('div'); axes.className='publicCoordinates'; scroll.appendChild(axes);
+      const columns=document.createElement('div'); columns.className='publicColumns';
+      const rows=document.createElement('div'); rows.className='publicRows';
+      for(let n=0;n<10;n++) {
+        const col=document.createElement('span');col.textContent=String.fromCharCode(65+n);columns.appendChild(col);
+        const row=document.createElement('span');row.textContent=n+1;rows.appendChild(row);
+      }
+      axes.append(columns,rows,grid);
+    }
+    const coordinates = [...Object.keys(board.tiles).map(key => key.split(',').map(Number)), ...(board.players || []).map(p => [p.x,p.y])];
+    const minX = Math.min(0,...coordinates.map(p=>p[0])), minY = Math.min(0,...coordinates.map(p=>p[1]));
+    const maxX = Math.max(minX+9,...coordinates.map(p=>p[0])), maxY = Math.max(minY+9,...coordinates.map(p=>p[1]));
+    grid.style.gridTemplateColumns = `repeat(${maxX-minX+1},${board.manager_map?56:42}px)`;
+    const edgeSets = [['wall',board.wall_edges],['open',board.open_edges],['broken',board.broken_walls]].map(([kind,edges])=>[kind,new Set((edges||[]).map(edge=>edge.map(p=>p.join(',')).sort().join('|')))]);
+    const edgeKey = (a,b)=>[a.join(','),b.join(',')].sort().join('|');
+    for (let y=minY;y<=maxY;y++) for(let x=minX;x<=maxX;x++) {
+      const cell=document.createElement('div'); cell.className='cell'; const tile=board.tiles[`${x},${y}`];
+      cell.title=`${board.absolute?'':'relative '}${x},${y}${tile?': '+tile:''}`;
+      if(tile) {const img=document.createElement('img');img.src=`/static/pixel_tiles/${tile.replace(/^used_/,'')}.png`;img.alt=tile;cell.appendChild(img);}
+      const sides = [['top',[x,y-1]],['left',[x-1,y]]];
+      if (x===maxX) sides.push(['right',[x+1,y]]);
+      if (y===maxY) sides.push(['bottom',[x,y+1]]);
+      for(const [kind,edges] of edgeSets) for(const [side,neighbor] of sides) {
+        if(edges.has(edgeKey([x,y],neighbor))) {const line=document.createElement('div');line.className=`publicEdge ${side} ${kind}`;cell.appendChild(line);}
+      }
+      drawBirthLabel(cell,(board.birth_spots?.[`${x},${y}`]||[]).map(p=>p.name));
+      drawPlayerDots(cell,(board.players||[]).filter(p=>p.x===x&&p.y===y)); grid.appendChild(cell);
+    }
+    const legend = document.createElement('div'); legend.className='birthLegend'; drawBirthLegend(legend,board.birth_spots||{},!board.absolute); card.appendChild(legend);
+    root.appendChild(card);
+  });
+  drawPlayerStats(document.getElementById('publicStats'),data.players);
+  window.applyGameTranslations?.();
+}
+socket.on('connect',()=>{document.getElementById('connectionStatus').textContent='Live public boards';socket.emit('watch_public_boards');});
+socket.on('disconnect',()=>{document.getElementById('connectionStatus').textContent='Connection lost. Reconnecting...';});
+socket.on('public_boards_state',renderBoards);
+</script>
+</body>
+</html>
