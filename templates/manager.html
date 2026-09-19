@@ -308,6 +308,13 @@
     .reconnectApproval h3 { color:#ffe0a0; }
     .reconnectRequest { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px; border:1px solid rgba(255, 220, 145, .25); border-radius:12px; background:rgba(7, 10, 19, .36); }
     .reconnectRequest strong { color:#fff0c5; }
+    #reconnectClaimsCard { position:fixed; right:16px; bottom:16px; z-index:10000; width:min(600px,calc(100vw - 32px)); max-height:55dvh; overflow:auto; margin:0; padding:18px; box-sizing:border-box; box-shadow:0 12px 50px #000b; border:2px solid #ffd166; }
+    #reconnectClaimsCard[hidden] { display:none; }
+    #reconnectClaims { display:grid; gap:10px; }
+    #reconnectClaimsCard .reconnectRequest { flex-wrap:wrap; }
+    #reconnectClaimsCard .reconnectRequest > div:first-child { flex:1 1 200px; min-width:0; overflow-wrap:anywhere; }
+    #reconnectClaimsCard .row { display:flex; flex-direction:row; flex-wrap:wrap; width:auto; }
+    #reconnectClaimsCard button { width:auto; min-height:44px; font-size:17px; }
     @media (max-width:920px) { .layout { grid-template-columns:minmax(0,1fr); } }
     @media (max-width:640px) {
       :root { --board-size:min(calc(100vw - 82px), 420px); }
@@ -341,7 +348,7 @@
   </div>
 
   <section class="card reconnectApproval" id="reconnectClaimsCard" hidden aria-live="polite">
-    <h3 style="margin-top:0;">Reconnect requests</h3>
+    <h3 style="margin-top:0;">Reconnect requests <span id="reconnectClaimsCount"></span></h3>
     <div class="small">Approve only if the person is the player who lost their tab.</div>
     <div id="reconnectClaims" style="margin-top:10px;"></div>
   </section>
@@ -455,6 +462,7 @@
     timeout: 20000
   });
   let state = null;
+  let reconnectClaims = [];
   let toolMode = "tile";
 
   const textureMap = {
@@ -738,23 +746,36 @@
     `;
   }
 
-  function buildReconnectClaims() {
+  function buildReconnectClaims(claims = state?.pending_reconnect_claims || []) {
     const card = document.getElementById("reconnectClaimsCard");
     const container = document.getElementById("reconnectClaims");
-    const claims = state?.pending_reconnect_claims || [];
+    reconnectClaims = claims;
     card.hidden = claims.length === 0;
-    container.innerHTML = claims.map(claim => `
-      <div class="reconnectRequest">
-        <div>
-          <strong>${escapeHtml(claim.name)}</strong>
-          <div class="small" style="margin-top:4px;">A new tab is asking to restore this disconnected player.</div>
-        </div>
-        <div class="row">
-          <button onclick='respondToReconnect(${JSON.stringify(claim.sid)}, true)'>Approve</button>
-          <button class="secondary" onclick='respondToReconnect(${JSON.stringify(claim.sid)}, false)'>Reject</button>
-        </div>
-      </div>
-    `).join("");
+    document.getElementById('reconnectClaimsCount').textContent=claims.length?`(${claims.length})`:'';
+    container.replaceChildren();
+    for(const claim of claims){
+      const row=document.createElement('div');row.className='reconnectRequest';
+      const info=document.createElement('div');
+      const name=document.createElement('strong');name.textContent=claim.name;
+      const hint=document.createElement('div');hint.className='small';hint.textContent='A new tab is asking to restore this disconnected player.';
+      info.append(name,hint);
+      const actions=document.createElement('div');actions.className='row';
+      for(const [label,approved] of [['Approve',true],['Reject',false]]){
+        const button=document.createElement('button');button.textContent=label;
+        if(!approved)button.className='secondary';
+        button.dataset.claimSid=claim.sid;
+        button.onclick=()=>respondToReconnect(claim.sid,approved);
+        actions.appendChild(button);
+      }
+      row.append(info,actions);container.appendChild(row);
+    }
+    // Manager controls must remain reachable if a treasure reveal is open.
+    if(claims.length){
+      const treasure=document.getElementById('treasureReveal');
+      const pending=state?.treasure_reveal;
+      if(treasure&&pending){treasure.dataset.dismissed=`${pending.player_sid}:${pending.phase}`;if(treasure.open)treasure.close();}
+    }
+    window.applyGameTranslations?.(card);
   }
 
   function respondToReconnect(sid, approved) {
@@ -835,6 +856,7 @@
   socket.on("reconnect_claim_requested", data => {
     document.getElementById("managerStatus").textContent =
       `Reconnect request waiting for ${data.name}.`;
+    buildReconnectClaims([...reconnectClaims.filter(claim=>claim.sid!==data.sid),data]);
   });
 
   socket.on("resume_failed", data => {
@@ -844,13 +866,13 @@
 
   socket.on("manager_state", data => {
     state = data;
+    buildReconnectClaims();
     document.getElementById('boardReadyBtn').disabled=state.board_ready||state.game_started;
     document.getElementById('startGameBtn').disabled=!state.board_ready||state.game_started;
-    updateTreasureReveal(state.treasure_reveal);
+    updateTreasureReveal(reconnectClaims.length ? null : state.treasure_reveal);
     buildBoardLabels();
     buildBoard();
     buildPlayersTable();
-    buildReconnectClaims();
     updateTopInfo();
     updateLogs();
     scrollLogsToBottom();
