@@ -332,7 +332,8 @@
     </div>
     <div class="row">
       <button onclick="joinManager()">Join as manager</button>
-      <button onclick="startGame()">Start game</button>
+      <button id="boardReadyBtn" onclick="socket.emit('manager_board_ready')">Board ready — allow spawning</button>
+      <button id="startGameBtn" onclick="startGame()">Start game</button>
       <button class="secondary" onclick="resetGame()">Reset game</button>
       <button class="danger" onclick="clearBoard()">Clear board</button>
     </div>
@@ -563,6 +564,7 @@
   }
 
   function getAllBrokenEdges() {
+    if (state?.broken_walls) return state.broken_walls;
     if (!state || !state.players) return [];
     const all = [];
 
@@ -842,6 +844,9 @@
 
   socket.on("manager_state", data => {
     state = data;
+    document.getElementById('boardReadyBtn').disabled=state.board_ready||state.game_started;
+    document.getElementById('startGameBtn').disabled=!state.board_ready||state.game_started;
+    updateTreasureReveal(state.treasure_reveal);
     buildBoardLabels();
     buildBoard();
     buildPlayersTable();
