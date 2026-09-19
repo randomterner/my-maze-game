@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import app
 
@@ -46,6 +47,86 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertEqual(stats["injuries"], 2)
         self.assertTrue(stats["items"]["boat"])
         self.assertFalse({"x", "y", "known_tiles", "manual_tiles", "last_message", "birth_x"} & set(stats))
+
+    def test_lost_maps_are_retained_on_player_and_public_pages_without_position(self):
+        for kind in ("river", "black_hole"):
+            with self.subTest(kind=kind):
+                app.GAME = app.new_game_state()
+                player = self.add_player("one", "One", 1, 1)
+                player["known_tiles"] = {"1,1": "empty", "2,1": "boat"}
+                player["manual_tiles"] = {"9,9": "secret_guess"}
+                player["x"], player["y"] = 6, 7
+                app.enter_lost_state(player, kind)
+                app.start_lost_relative_map(player)
+                saved = app.serialize_player_state_for("one")["saved_maps"][0]
+                self.assertEqual(saved["tiles"]["1,0"], "boat")
+                self.assertEqual(saved["players"], [])
+                self.assertNotIn("relative_position", saved)
+                public = app.serialize_public_boards_state()
+                self.assertTrue(any(b.get("id") == "saved-one" for b in public["boards"]))
+                self.assertNotIn("secret_guess", str(public))
+                app.enter_lost_state(player, "black_hole")
+                player["x"], player["y"] = 8, 8
+                app.start_lost_relative_map(player)
+                self.assertEqual(len(app.serialize_saved_maps(player)), 2)
+
+    def test_full_public_log_is_not_trimmed_after_400_messages(self):
+        for index in range(520):
+            app.log(f"Event {index}")
+        logs = app.serialize_public_boards_state()["logs"]
+        self.assertEqual(len(logs), 520)
+        self.assertEqual(logs[0], "Event 0")
+        self.assertEqual(logs[-1], "Event 519")
+
+    def test_birth_tile_activates_persistent_fusion_for_oriented_players(self):
+        owner = self.add_player("owner", "Owner", 2, 2)
+        owner["x"], owner["y"] = 8, 8
+        owner["visited_tiles"] = ["2,2"]
+        owner["known_tiles"] = {"2,2": "empty", "8,8": "clinic"}
+        visitor = self.add_player("visitor", "Visitor", 0, 0)
+        visitor["x"], visitor["y"] = 2, 2
+        app.GAME["game_started"] = True
+        app.activate_map_fusion(visitor)
+        self.assertEqual(owner["fusion_group"], visitor["fusion_group"])
+        self.assertIsNotNone(visitor["fusion_group"])
+        self.assertEqual(visitor["known_tiles"]["8,8"], "clinic")
+
+    def test_shared_river_find_recovers_only_eligible_member(self):
+        app.GAME["board"][(5, 5)] = "river_start"
+        app.GAME["board"][(7, 5)] = "clinic"
+        for sid in ("finder", "familiar", "stranger"):
+            p = self.add_player(sid, sid, 0, 0)
+            if sid == "familiar":
+                p["known_tiles"] = {"7,5": "clinic"}
+            p["x"], p["y"] = 5, 5
+            app.enter_lost_state(p, "river")
+            app.start_lost_relative_map(p)
+        app.GAME["turn_number"] += 1
+        app.remember_lost_tile(app.GAME["players"]["finder"], (7, 5))
+        app.emit_full_state()
+        self.assertFalse(app.GAME["players"]["familiar"]["lost"])
+        self.assertTrue(app.GAME["players"]["finder"]["lost"])
+        self.assertTrue(app.GAME["players"]["stranger"]["lost"])
+        app.emit_full_state()
+        self.assertTrue(app.GAME["players"]["stranger"]["lost"])
+        self.assertEqual(app.GAME["players"]["stranger"]["lost_known_tiles"]["2,0"], "clinic")
+
+    def test_river_fusion_can_recover_at_qualifying_special_tile_after_cooldown(self):
+        p = self.add_player("one", "One", 0, 0)
+        other = self.add_player("two", "Two", 8, 8)
+        app.GAME["board"][(4, 4)] = "clinic"
+        other["visited_tiles"] = ["4,4"]
+        other["known_tiles"] = {"4,4": "clinic"}
+        p["x"], p["y"] = 4, 4
+        app.GAME["game_started"] = True
+        app.enter_lost_state(p, "river")
+        app.start_lost_relative_map(p)
+        app.activate_map_fusion(p)
+        self.assertTrue(p["lost"])
+        app.GAME["turn_number"] += 1
+        app.activate_map_fusion(p)
+        self.assertFalse(p["lost"])
+        self.assertEqual(p["fusion_group"], other["fusion_group"])
 
     def test_empty_and_river_tiles_do_not_trigger_familiar_recovery(self):
         for tile in ("empty", "river", "river_start"):
@@ -859,8 +940,6 @@ class MazeGameSocketTests(unittest.TestCase):
                 client.disconnect()
 
     def prepare_startable_game(self):
-        self.one.emit("player_spawn", {"x": 0, "y": 0})
-        self.two.emit("player_spawn", {"x": 1, "y": 0})
         required_tiles = [
             (2, 2, "treasure"), (3, 2, "fake_treasure"), (0, 9, "exit"),
             (4, 2, "boat"), (5, 2, "raft"), (6, 2, "clinic"),
@@ -870,6 +949,9 @@ class MazeGameSocketTests(unittest.TestCase):
         ]
         for x, y, tile in required_tiles:
             self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
+        self.manager.emit("manager_board_ready")
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        self.two.emit("player_spawn", {"x": 1, "y": 0})
         self.manager.emit("manager_start_game")
         # This helper creates a neutral started-game fixture. Tests that need
         # the delayed spawn behavior build their own board below.
@@ -883,9 +965,95 @@ class MazeGameSocketTests(unittest.TestCase):
         messages = self.manager.get_received()
         self.assertFalse(app.GAME["game_started"])
         self.assertTrue(any(
-            event["name"] == "error_message" and "river" in event["args"][0]["message"].lower()
+            event["name"] == "error_message" and "board ready" in event["args"][0]["message"].lower()
             for event in messages
         ))
+
+    def test_spawning_requires_valid_manager_approval_and_cannot_be_repeated(self):
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        self.assertFalse(any(p["spawned"] for p in app.GAME["players"].values()))
+        self.manager.emit("manager_board_ready")
+        self.assertFalse(app.GAME["board_ready"])
+        for index, tile in enumerate(sorted(app.REQUIRED_SINGLE_TILES)):
+            app.GAME["board"][(index % 10, index // 10)] = tile
+        app.GAME["board"][(9, 9)] = "river_start"
+        self.one.emit("manager_board_ready")
+        self.assertFalse(app.GAME["board_ready"])
+        self.manager.emit("manager_board_ready")
+        self.assertTrue(app.GAME["board_ready"])
+        self.one.emit("player_spawn", {"x": 0, "y": 0})
+        player = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        self.one.emit("player_spawn", {"x": 5, "y": 5})
+        self.assertEqual((player["x"], player["y"], player["birth_x"], player["birth_y"]), (0, 0, 0, 0))
+        before = dict(app.GAME["board"])
+        self.manager.emit("manager_set_tile", {"x": 0, "y": 0, "tile": "empty"})
+        self.manager.emit("manager_clear_board")
+        self.assertEqual(app.GAME["board"], before)
+
+    def test_manager_sees_walls_broken_while_lost_even_without_player_map(self):
+        self.prepare_startable_game()
+        p = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        p["x"], p["y"] = 4, 4
+        app.enter_lost_state(p, "black_hole")
+        app.start_lost_relative_map(p)
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(p["sid"])
+        edge = app.edge_key((4, 4), (5, 4))
+        app.GAME["inner_walls"].add(edge)
+        self.one.emit("player_bomb", {"direction": "right"})
+        self.assertIn(app.serialize_edge(*edge), app.serialize_manager_state()["broken_walls"])
+        self.assertNotIn(edge, app.GAME["inner_walls"])
+        p["lost_known_broken_walls"] = []
+        self.assertIn(app.serialize_edge(*edge), app.serialize_manager_state()["broken_walls"])
+
+    def test_fake_treasure_holds_turn_until_reveal_and_finder_confirmation(self):
+        self.prepare_startable_game()
+        p = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        p["x"], p["y"] = 2, 2
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(p["sid"])
+        with patch.object(app.socketio, "start_background_task") as delayed:
+            self.one.emit("player_move", {"direction": "right"})
+        pending=app.GAME["pending_treasure"]
+        self.assertEqual(pending["phase"], "hype")
+        self.assertEqual(app.current_turn_sid(), p["sid"])
+        self.assertTrue(pending["end_turn_requested"])
+        public=app.serialize_public_boards_state()
+        self.assertFalse(any("fake" in line.lower() for line in public["logs"]))
+        self.assertEqual(delayed.call_count, 1)
+        self.one.emit("acknowledge_treasure")
+        self.assertIs(app.GAME["pending_treasure"], pending)
+        app.finish_fake_treasure_reveal(app.GAME, pending)
+        self.assertTrue(p["items"]["fake_treasure"])
+        self.assertEqual(app.current_turn_sid(), p["sid"])
+        self.two.emit("acknowledge_treasure")
+        self.assertIs(app.GAME["pending_treasure"], pending)
+        self.one.emit("acknowledge_treasure")
+        self.assertIsNone(app.GAME["pending_treasure"])
+        self.assertNotEqual(app.current_turn_sid(), p["sid"])
+
+    def test_fake_treasure_spawn_reveal_does_not_consume_first_turn(self):
+        self.prepare_startable_game()
+        p = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        p["x"], p["y"] = 3, 2
+        p["spawn_effect_pending"] = True
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(p["sid"])
+        with patch.object(app.socketio, "start_background_task"):
+            app.start_current_turn()
+        pending=app.GAME["pending_treasure"]
+        self.assertFalse(pending["end_turn_requested"])
+        app.finish_fake_treasure_reveal(app.GAME, pending)
+        self.one.emit("acknowledge_treasure")
+        self.assertEqual(app.current_turn_sid(), p["sid"])
+
+    def test_stale_treasure_timer_cannot_modify_reset_game(self):
+        self.prepare_startable_game()
+        p=next(iter(app.GAME["players"].values()))
+        with patch.object(app.socketio,"start_background_task"):
+            app.begin_treasure_reveal(p,(3,2))
+        previous,pending=app.GAME,app.GAME["pending_treasure"]
+        self.manager.emit("manager_reset_game")
+        app.finish_fake_treasure_reveal(previous,pending)
+        self.assertIsNone(app.GAME["pending_treasure"])
+        self.assertFalse(any(p["items"]["fake_treasure"] for p in app.GAME["players"].values()))
 
     def test_public_boards_live_game_over_and_reset_without_joining(self):
         observer = app.socketio.test_client(app.app)
@@ -1309,6 +1477,7 @@ class MazeGameSocketTests(unittest.TestCase):
             (3, 3, "armory"), (4, 3, "river_start"),
         ]:
             self.manager.emit("manager_set_tile", {"x": x, "y": y, "tile": tile})
+        self.manager.emit("manager_board_ready")
         self.one.emit("player_spawn", {"x": 0, "y": 0})
         self.two.emit("player_spawn", {"x": 1, "y": 0})
 
