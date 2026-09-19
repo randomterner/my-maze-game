@@ -593,7 +593,7 @@
             </aside>
             <aside class="otherMapsPanel">
               <h4>Hidden player trails</h4>
-              <div class="small" id="otherMapsHint">Relative trails appear here until you know a player’s exact position.</div>
+              <div class="small" id="otherMapsHint">Relative trails appear here until you know a player's exact position.</div>
               <div id="otherMaps"></div>
             </aside>
           </div>
@@ -740,6 +740,7 @@
   }
 
   function handleBoardClick(x, y) {
+    if (!state?.game_started && (!state?.board_ready || state?.you?.spawned)) return;
     if (!state || !state.you) return;
     if (!state.game_started) {
       const label = `${String.fromCharCode(65 + x)}${y + 1}`;
@@ -768,13 +769,16 @@
   }
 
   function getMapWindow() {
-    if (!state?.you?.lost) return { startX: 0, startY: 0 };
+    if (!state?.you?.lost) return { startX: 0, startY: 0, size:10 };
 
     const current = state.lost_relative_position || { x: 0, y: 0 };
-    const boardSize = state.board_size || 10;
+    const riverPlayers=state.you.lost_kind==='river' ? state.river_map?.players||[] : [];
+    const xs=[current.x,...riverPlayers.map(p=>p.x)],ys=[current.y,...riverPlayers.map(p=>p.y)];
+    const boardSize = Math.max(10,Math.max(...xs)-Math.min(...xs)+3,Math.max(...ys)-Math.min(...ys)+3);
+    const centerX=Math.floor((Math.max(...xs)+Math.min(...xs))/2),centerY=Math.floor((Math.max(...ys)+Math.min(...ys))/2);
     return {
-      startX: current.x - Math.floor(boardSize / 2),
-      startY: current.y - Math.floor(boardSize / 2),
+      startX: centerX - Math.floor(boardSize / 2),
+      startY: centerY - Math.floor(boardSize / 2), size:boardSize,
     };
   }
 
@@ -787,7 +791,7 @@
     rowLabels.innerHTML = "";
 
     const columns = state?.you?.lost
-      ? Array.from({ length: 10 }, (_, index) => window.startX + index)
+      ? Array.from({ length: window.size }, (_, index) => window.startX + index)
       : ["A","B","C","D","E","F","G","H","I","J"];
     columns.forEach(label => {
       const div = document.createElement("div");
@@ -795,7 +799,9 @@
       colLabels.appendChild(div);
     });
 
-    for (let index = 0; index < 10; index++) {
+    colLabels.style.gridTemplateColumns=`repeat(${window.size},1fr)`;
+    rowLabels.style.gridTemplateRows=`repeat(${window.size},1fr)`;
+    for (let index = 0; index < window.size; index++) {
       const div = document.createElement("div");
       div.className = "rowLabel";
       div.textContent = state?.you?.lost ? window.startY + index : index + 1;
@@ -820,13 +826,13 @@
     cell.appendChild(div);
   }
 
-  function addUniqueEdgeMarkers(cell, edgeList, kind, x, y, displayX, displayY) {
+  function addUniqueEdgeMarkers(cell, edgeList, kind, x, y, displayX, displayY, size=10) {
     // Every shared edge is drawn by exactly one cell. Top/left own an edge
     // inside the visible grid; bottom/right are only needed at its boundary.
     if (edgeExists(edgeList, [x, y], [x, y - 1])) addEdgeMarker(cell, "Top", kind);
     if (edgeExists(edgeList, [x, y], [x - 1, y])) addEdgeMarker(cell, "Left", kind);
-    if (displayY === 9 && edgeExists(edgeList, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", kind);
-    if (displayX === 9 && edgeExists(edgeList, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", kind);
+    if (displayY === size-1 && edgeExists(edgeList, [x, y], [x, y + 1])) addEdgeMarker(cell, "Bottom", kind);
+    if (displayX === size-1 && edgeExists(edgeList, [x, y], [x + 1, y])) addEdgeMarker(cell, "Right", kind);
   }
 
   function escapeHtml(str) {
@@ -906,7 +912,9 @@
       document.getElementById("boardTitle").textContent = "Your board";
       document.getElementById("boardHint").textContent = state.game_started
         ? "Your discovered map. Personal map notes are shown beside the board."
-        : "Before the game starts, tap a tile to choose your spawn.";
+        : you.spawned ? "Your spawn is locked in. Waiting for the game to start."
+        : state.board_ready ? "Before the game starts, tap a tile to choose your spawn."
+        : "Wait for the manager to mark the board ready.";
     }
   }
 
@@ -924,6 +932,8 @@
     const knownWallEdges = state.your_known_wall_edges || [];
     const window = getMapWindow();
     const lostMap = Boolean(state.you.lost);
+    boardEl.style.gridTemplateColumns=`repeat(${window.size},minmax(0,1fr))`;
+    boardEl.style.gridTemplateRows=`repeat(${window.size},minmax(0,1fr))`;
     let legend = document.getElementById('birthLegend');
     if (!legend) {
       legend = document.createElement('div');
@@ -935,8 +945,8 @@
     const relativePosition = state.lost_relative_position || { x: 0, y: 0 };
     const publicPositions = state.public_revealed_players || [];
 
-    for (let displayY = 0; displayY < 10; displayY++) {
-      for (let displayX = 0; displayX < 10; displayX++) {
+    for (let displayY = 0; displayY < window.size; displayY++) {
+      for (let displayX = 0; displayX < window.size; displayX++) {
         const x = window.startX + displayX;
         const y = window.startY + displayY;
         const key = `${x},${y}`;
@@ -972,10 +982,10 @@
           if (!lostMap && x === 0) addEdgeMarker(cell, "Left", "wall");
           if (!lostMap && x === 9) addEdgeMarker(cell, "Right", "wall");
 
-          addUniqueEdgeMarkers(cell, knownWallEdges, "wall", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, manualWallEdges, "manualWall", x, y, displayX, displayY);
+          addUniqueEdgeMarkers(cell, knownWallEdges, "wall", x, y, displayX, displayY,window.size);
+          addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY,window.size);
+          addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY,window.size);
+          addUniqueEdgeMarkers(cell, manualWallEdges, "manualWall", x, y, displayX, displayY,window.size);
         }
 
         const publicHere = lostMap
@@ -995,80 +1005,27 @@
   }
 
   function buildOtherPlayerMaps() {
-    const container = document.getElementById("otherMaps");
-    if (!container) return;
-    container.innerHTML = "";
-    const trails = [...(state?.hidden_player_maps || [])];
-    const riverTiles = state?.river_map?.tiles || {};
-    if (Object.keys(riverTiles).length) {
-      trails.unshift({
-        name: "Shared river map",
-        riverMap: true,
-        tiles: riverTiles,
-        open_edges: state.river_map.open_edges || [],
-        broken_walls: state.river_map.broken_walls || [],
-        wall_edges: state.river_map.wall_edges || [],
-        relative_position: { x: 0, y: 0 },
-        showPosition: false
-      });
+    const container=document.getElementById('otherMaps');
+    container.replaceChildren();
+    const trails=[...(state?.hidden_player_maps||[])];
+    if(Object.keys(state?.river_map?.tiles||{}).length)trails.unshift({...state.river_map,name:'Shared river map'});
+    for(const trail of trails){
+      const card=document.createElement('div');card.className='trailCard';
+      const title=document.createElement('h3');title.textContent=trail.name;card.appendChild(title);
+      const players=trail.players || (trail.relative_position&&trail.showPosition!==false?[{sid:trail.sid,name:trail.name,color:trail.color,...trail.relative_position}]:[]);
+      card.appendChild(createMapView({...trail,players}));container.appendChild(card);
     }
-    if (!trails.length) {
-      container.innerHTML = '<div class="small">No hidden player trails right now.</div>';
-      return;
+    if(!trails.length)container.textContent='No hidden player trails right now.';
+    let saved=document.getElementById('savedMaps');
+    if(!saved){saved=document.createElement('div');saved.id='savedMaps';document.getElementById('board').closest('.boardWorkspace').parentElement.appendChild(saved);}
+    const openIds=new Set([...saved.querySelectorAll('details[open]')].map(e=>e.dataset.mapId));
+    const firstRender=!saved.children.length;
+    saved.replaceChildren();
+    for(const map of state.saved_maps||[]){
+      const section=document.createElement('details');section.className='savedMapCard';section.dataset.mapId=map.id;section.open=firstRender||openIds.has(map.id);
+      const title=document.createElement('summary');title.textContent=map.name;section.appendChild(title);
+      section.appendChild(createMapView(map,true));saved.appendChild(section);
     }
-
-    trails.forEach(trail => {
-      const card = document.createElement("div");
-      card.className = "trailCard";
-      const title = document.createElement("div");
-      title.className = "trailTitle";
-      title.innerHTML = `<span>${escapeHtml(trail.name)}</span><span>${trail.riverMap ? "river map" : (trail.lost ? "lost map" : "relative trail")}</span>`;
-      card.appendChild(title);
-
-      const board = document.createElement("div");
-      board.className = "trailBoard";
-      const current = trail.relative_position || { x: 0, y: 0 };
-      const startX = current.x - 5;
-      const startY = current.y - 5;
-      const tiles = trail.tiles || {};
-      const openEdges = trail.open_edges || [];
-      const brokenEdges = trail.broken_walls || [];
-      const wallEdges = trail.wall_edges || [];
-
-      for (let displayY = 0; displayY < 10; displayY++) {
-        for (let displayX = 0; displayX < 10; displayX++) {
-          const x = startX + displayX;
-          const y = startY + displayY;
-          const key = `${x},${y}`;
-          const confirmedTile = tiles[key];
-          const tile = confirmedTile || "unknown";
-          const cell = document.createElement("div");
-          cell.className = "trailCell" + (tile === "unknown" ? " unknown" : "");
-          cell.title = `relative trail ${x},${y}`;
-
-          const texture = textureMap[tile];
-          if (texture) {
-            const img = document.createElement("img");
-            img.src = `/static/${texture}`;
-            img.alt = tile;
-            cell.appendChild(img);
-          }
-          addUniqueEdgeMarkers(cell, wallEdges, "wall", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY);
-          addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY);
-          if (trail.showPosition !== false && current.x === x && current.y === y) {
-            const dot = document.createElement("div");
-            dot.className = "trailDot";
-            dot.style.setProperty("--trail-color", trail.color || "#ffcc55");
-            dot.title = `${trail.name}'s relative position`;
-            cell.appendChild(dot);
-          }
-          board.appendChild(cell);
-        }
-      }
-      card.appendChild(board);
-      container.appendChild(card);
-    });
   }
 
   socket.on("connected", data => {
@@ -1112,6 +1069,7 @@
     const newTurn = data.game_started && !data.game_over && data.is_your_turn &&
       (!state?.is_your_turn || state.turn_number !== data.turn_number || state.you?.sid !== data.you?.sid);
     state = data;
+    updateTreasureReveal(state.treasure_reveal,state.you?.sid,()=>socket.emit('acknowledge_treasure'));
     if (newTurn) { setMode('move'); mapNoteMode = false; }
     let notice = document.getElementById('pendingNotice');
     if (!notice) {
