@@ -1,3 +1,4 @@
+import copy
 import unittest
 from unittest.mock import patch
 
@@ -1273,6 +1274,136 @@ class MazeGameSocketTests(unittest.TestCase):
             self.assertEqual(app.MANAGER_SID, resumed["args"][0]["sid"])
         finally:
             reconnected_manager.disconnect()
+
+    def test_pending_rejoin_survives_manager_disconnect_and_refresh(self):
+        token = app.MANAGER_RECONNECT_TOKEN
+        self.one.disconnect()
+        self.manager.disconnect()
+        claimant = app.socketio.test_client(app.app)
+        manager = app.socketio.test_client(app.app)
+        try:
+            claimant.emit("join_player", {"name": "One"})
+            manager.emit("resume_manager", {"reconnect_token": token})
+            states = [e["args"][0] for e in manager.get_received() if e["name"] == "manager_state"]
+            claims = states[-1]["pending_reconnect_claims"]
+            self.assertEqual(len(claims), 1)
+            self.assertEqual(claims[0]["name"], "One")
+            manager.emit("manager_approve_reconnect", {"sid": claims[0]["sid"]})
+            self.assertTrue(any(e["name"] == "resumed_as_player" for e in claimant.get_received()))
+            self.assertFalse(app.GAME["pending_reconnect_claims"])
+        finally:
+            claimant.disconnect()
+            manager.disconnect()
+
+    def test_complete_three_player_game_with_rejoin_and_special_tiles(self):
+        third = app.socketio.test_client(app.app)
+        replacement = None
+        try:
+            third.emit("join_player", {"name": "Three"})
+            layout = {
+                (1,0):"devil", (2,0):"clinic", (3,0):"armory", (4,0):"treasure",
+                (5,0):"monster", (6,0):"raft", (7,0):"boat", (8,0):"batteries", (9,0):"exit",
+                (1,1):"fake_treasure", (2,1):"flashlight", (3,1):"black_hole", (4,1):"er",
+                (0,5):"river_start", (1,5):"river", (2,5):"river",
+            }
+            for (x,y),tile in layout.items():
+                self.manager.emit("manager_set_tile", {"x":x,"y":y,"tile":tile})
+            self.manager.emit("manager_toggle_inner_wall", {"x":1,"y":2,"direction":"right"})
+            self.manager.emit("manager_board_ready")
+            self.assertTrue(app.GAME["board_ready"])
+            self.one.emit("player_spawn", {"x":0,"y":0})
+            self.two.emit("player_spawn", {"x":0,"y":1})
+            third.emit("player_spawn", {"x":0,"y":2})
+            with patch.object(app.random,"shuffle",lambda order:None):
+                self.manager.emit("manager_start_game")
+            clients={"One":self.one,"Two":self.two,"Three":third}
+            def player(name):
+                return next(p for p in app.GAME["players"].values() if p["name"]==name)
+            def act(name,event,direction):
+                self.assertEqual(app.current_player()["name"],name)
+                clients[name].get_received()
+                clients[name].emit(event,{"direction":direction})
+                errors=[e for e in clients[name].get_received() if e["name"]=="error_message"]
+                self.assertEqual(errors,[],f"{name}: {event} {direction}")
+            one, two, three = player("One"), player("Two"), player("Three")
+            act("One","player_move","right")
+            self.assertEqual(one["injuries"],1)
+            act("Two","player_move","right")
+            self.assertEqual(app.GAME["pending_treasure"]["phase"],"hype")
+            self.assertEqual(app.current_player()["name"],"Two")
+            # Exercise the real delayed reveal, not a mocked timer.
+            import time
+            deadline=time.monotonic()+5
+            while app.GAME["pending_treasure"]["phase"]=="hype" and time.monotonic()<deadline:
+                app.socketio.sleep(.05)
+            self.assertEqual(app.GAME["pending_treasure"]["phase"],"revealed")
+            self.two.emit("acknowledge_treasure")
+            act("Three","player_move","right")
+            act("One","player_move","right")
+            self.assertEqual(one["injuries"],0)
+            act("Two","player_move","down")
+            self.assertIsNotNone(two["fusion_group"])
+            self.assertEqual(two["fusion_group"],three["fusion_group"])
+            act("Three","player_move","down")
+            old_sid=one["sid"]
+            previous_map=copy.deepcopy(one["known_tiles"])
+            self.one.disconnect()
+            self.assertEqual(app.current_turn_sid(),old_sid)
+            replacement=app.socketio.test_client(app.app)
+            replacement.emit("join_player",{"name":"One","color":one["color"]})
+            claim_sid=next(iter(app.GAME["pending_reconnect_claims"]))
+            self.assertEqual(app.current_turn_sid(),old_sid)
+            self.manager.emit("manager_approve_reconnect",{"sid":claim_sid})
+            clients["One"]=replacement
+            self.assertEqual(one["known_tiles"],previous_map)
+            act("One","player_move","right")
+            act("Two","player_bomb","right")
+            self.assertIn(app.serialize_edge((1,2),(2,2)),app.serialize_manager_state()["broken_walls"])
+            act("Three","player_move","down")
+            act("One","player_move","right")
+            self.assertTrue(one["items"]["treasure"])
+            act("Two","player_move","up")
+            act("Three","player_move","down")
+            self.assertTrue(three["lost"])
+            act("One","player_move","right")
+            self.assertEqual(app.current_player()["name"],"One")
+            act("One","player_move","right")
+            self.assertTrue(one["items"]["raft"])
+            act("Two","player_move","right")
+            self.assertTrue(two["items"]["flashlight"])
+            act("Three","player_move","right")
+            act("One","player_move","right")
+            self.assertTrue(one["items"]["boat"])
+            act("Two","player_move","right")
+            self.assertIsNotNone(app.GAME["pending_black_hole"])
+            self.manager.emit("manager_resolve_black_hole",{"x":3,"y":5})
+            self.assertTrue(two["lost"])
+            act("Three","player_move","right")
+            act("One","player_move","right")
+            act("Two","player_move","left")
+            self.assertEqual(two["lost_kind"],"river")
+            river_injuries=two["injuries"]
+            act("Three","player_move","left")
+            act("One","player_shoot","down")
+            act("Two","player_move","right")
+            self.assertEqual(two["injuries"],river_injuries)
+            self.assertEqual((two["x"],two["y"]),(1,5))
+            act("Three","player_move","left")
+            act("One","player_move","right")
+            self.assertTrue(app.GAME["game_over"])
+            self.assertEqual(app.GAME["winner_sid"],one["sid"])
+            public=app.serialize_public_boards_state()
+            self.assertTrue(public["boards"][0]["manager_map"])
+            self.assertEqual(len(public["boards"][0]["tiles"]),100)
+            self.assertGreater(len(public["logs"]),30)
+            self.manager.emit("manager_reset_game")
+            self.assertFalse(app.GAME["board_ready"])
+            self.assertFalse(app.GAME["game_over"])
+            self.assertFalse(any(p["spawned"] for p in app.GAME["players"].values()))
+        finally:
+            third.disconnect()
+            if replacement is not None:
+                replacement.disconnect()
 
     def test_black_hole_can_place_player_on_an_empty_tile_with_a_player(self):
         self.prepare_startable_game()
