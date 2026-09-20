@@ -10,6 +10,11 @@ __language__ = he
 __direction__ = rtl
 
 # Page titles and headings
+# September rule fixes
+Manager map = מפת המנהל
+You died. You can now watch the complete manager map. = מתת. כעת אפשר לצפות במפת המנהל המלאה.
+You reached the exit with the treasure. Survive until your next turn to escape. = הגעת ליציאה עם האוצר. עליך לשרוד עד לתחילת התור הבא שלך כדי לברוח.
+Could not display boards. Retrying... = לא ניתן להציג את הלוחות. מנסה שוב...
 Maze Game - Player = משחק המבוך - שחקן
 Maze Game - Manager = משחק המבוך - מנהל
 PRIVATE EXPEDITION LOG = יומן מסע פרטי
