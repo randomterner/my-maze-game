@@ -470,8 +470,8 @@
       .logs { max-height: 220px; }
     }
   </style>
-  <link rel="stylesheet" href="/static/game-ui.css">
-  <script src="/static/game-ui.js"></script>
+  <link rel="stylesheet" href="/static/game-ui.css?v=20260920">
+  <script src="/static/game-ui.js?v=20260920"></script>
 </head>
 <body>
 <div class="wrap">
@@ -769,16 +769,17 @@
   }
 
   function getMapWindow() {
-    if (!state?.you?.lost) return { startX: 0, startY: 0, size:10 };
+    if (state?.spectator_map || !state?.you?.lost) return { startX: 0, startY: 0, size:10 };
 
     const current = state.lost_relative_position || { x: 0, y: 0 };
     const riverPlayers=state.you.lost_kind==='river' ? state.river_map?.players||[] : [];
-    const xs=[current.x,...riverPlayers.map(p=>p.x)],ys=[current.y,...riverPlayers.map(p=>p.y)];
-    const boardSize = Math.max(10,Math.max(...xs)-Math.min(...xs)+3,Math.max(...ys)-Math.min(...ys)+3);
+    const visiblePositions=Object.entries(state.your_known_players||{}).filter(([,players])=>players.length).map(([key])=>parseCoordinate(key));
+    const xs=[current.x,...riverPlayers.map(p=>p.x),...visiblePositions.map(p=>p[0])],ys=[current.y,...riverPlayers.map(p=>p.y),...visiblePositions.map(p=>p[1])];
+    const boardSize = Math.max(10,Math.max(...xs)-Math.min(...xs)+1,Math.max(...ys)-Math.min(...ys)+1);
     const centerX=Math.floor((Math.max(...xs)+Math.min(...xs))/2),centerY=Math.floor((Math.max(...ys)+Math.min(...ys))/2);
     return {
-      startX: centerX - Math.floor(boardSize / 2),
-      startY: centerY - Math.floor(boardSize / 2), size:boardSize,
+      startX: state.lost_map_bounds?.x ?? Math.min(Math.min(...xs),Math.max(Math.max(...xs)-boardSize+1,centerX-Math.floor(boardSize/2))),
+      startY: state.lost_map_bounds?.y ?? Math.min(Math.min(...ys),Math.max(Math.max(...ys)-boardSize+1,centerY-Math.floor(boardSize/2))), size:boardSize,
     };
   }
 
@@ -790,8 +791,9 @@
     colLabels.innerHTML = "";
     rowLabels.innerHTML = "";
 
-    const columns = state?.you?.lost
-      ? Array.from({ length: window.size }, (_, index) => window.startX + index)
+    const lost = state?.you?.lost && !state.spectator_map;
+    const columns = lost
+      ? Array.from({ length: window.size }, (_, index) => state.lost_map_bounds?.x != null ? String.fromCharCode(65 + window.startX + index - state.lost_map_bounds.x) : window.startX + index)
       : ["A","B","C","D","E","F","G","H","I","J"];
     columns.forEach(label => {
       const div = document.createElement("div");
@@ -804,7 +806,7 @@
     for (let index = 0; index < window.size; index++) {
       const div = document.createElement("div");
       div.className = "rowLabel";
-      div.textContent = state?.you?.lost ? window.startY + index : index + 1;
+      div.textContent = lost ? (state.lost_map_bounds?.y != null ? window.startY + index - state.lost_map_bounds.y + 1 : window.startY + index) : index + 1;
       rowLabels.appendChild(div);
     }
   }
@@ -821,6 +823,11 @@
   }
 
   function addEdgeMarker(cell, side, kind) {
+    const existing = cell.querySelector(`.edge${side}`);
+    if (existing) {
+      if (kind !== 'broken') return;
+      existing.remove();
+    }
     const div = document.createElement("div");
     div.className = `edgeLine edge${side} ${kind}Edge${side}`;
     cell.appendChild(div);
@@ -901,10 +908,13 @@
       (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
     updateMapNoteControls();
 
-    if (you.lost) {
+    if (state.spectator_map) {
+      document.getElementById("boardTitle").textContent = "Manager map";
+      document.getElementById("boardHint").textContent = "You died. You can now watch the complete manager map.";
+    } else if (you.lost) {
       const tiles = Object.keys(state.your_known_tiles || {}).map(parseCoordinate);
-      const columns = new Set(tiles.map(([x]) => x)).size;
-      const rows = new Set(tiles.map(([, y]) => y)).size;
+      const columns = state.map_progress?.columns ?? new Set(tiles.map(([x]) => x)).size;
+      const rows = state.map_progress?.rows ?? new Set(tiles.map(([, y]) => y)).size;
       document.getElementById("boardTitle").textContent = "Lost-path map";
       document.getElementById("boardHint").textContent =
         `Relative coordinates only — mapped columns: ${columns}/10, rows: ${rows}/10. Map all 10 of each to recover.`;
@@ -923,15 +933,17 @@
     boardEl.innerHTML = "";
     if (!state || !state.you) return;
 
-    const knownTiles = state.your_known_tiles || {};
-    const manualTiles = state.your_manual_tiles || {};
-    const manualWallEdges = state.your_manual_wall_edges || [];
-    const knownPlayers = state.your_known_players || {};
-    const openEdges = state.your_known_open_edges || [];
-    const brokenEdges = state.your_known_broken_walls || [];
-    const knownWallEdges = state.your_known_wall_edges || [];
+    const spectator = state.spectator_map;
+    const knownTiles = spectator?.tiles || state.your_known_tiles || {};
+    const manualTiles = spectator ? {} : state.your_manual_tiles || {};
+    const manualWallEdges = spectator ? [] : state.your_manual_wall_edges || [];
+    const knownPlayers = spectator ? spectator.players.reduce((all,p)=>{(all[`${p.x},${p.y}`] ||= []).push(p);return all;},{}) : state.your_known_players || {};
+    const openEdges = spectator?.open_edges || state.your_known_open_edges || [];
+    const brokenEdges = spectator?.broken_walls || state.your_known_broken_walls || [];
+    const knownWallEdges = spectator?.wall_edges || state.your_known_wall_edges || [];
+    const birthSpots = spectator?.birth_spots || state.birth_spots || {};
     const window = getMapWindow();
-    const lostMap = Boolean(state.you.lost);
+    const lostMap = Boolean(state.you.lost && !spectator);
     boardEl.style.gridTemplateColumns=`repeat(${window.size},minmax(0,1fr))`;
     boardEl.style.gridTemplateRows=`repeat(${window.size},minmax(0,1fr))`;
     let legend = document.getElementById('birthLegend');
@@ -941,7 +953,7 @@
       legend.className = 'birthLegend';
       boardEl.closest('.boardWorkspace').after(legend);
     }
-    drawBirthLegend(legend, state.birth_spots || {}, lostMap);
+    drawBirthLegend(legend, birthSpots, lostMap);
     const relativePosition = state.lost_relative_position || { x: 0, y: 0 };
     const publicPositions = state.public_revealed_players || [];
 
@@ -958,7 +970,7 @@
         const cell = document.createElement("div");
         cell.className = "cell" + (tile === "unknown" ? " unknown" : "") + (isManualTile ? " manual" : "");
         cell.title = `${lostMap ? `relative ${x},${y}` : `${x},${y}`}${isManualTile ? `: unconfirmed ${manualTile}` : ""}`;
-        cell.onclick = () => handleBoardClick(x, y);
+        if (!spectator) cell.onclick = () => handleBoardClick(x, y);
 
         const texture = textureMap[tile];
         if (texture) {
@@ -992,7 +1004,7 @@
           ? []
           : publicPositions.filter(player => player.x === x && player.y === y);
 
-        const birthNames = (state.birth_spots?.[key] || []).map(owner => owner.name);
+        const birthNames = (birthSpots[key] || []).map(owner => owner.name);
         drawBirthLabel(cell, birthNames);
 
         const occupants = [...(knownPlayers[key] || []), ...publicHere];
