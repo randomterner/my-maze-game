@@ -1,5 +1,6 @@
-const socket = io();
+const socket = typeof io === 'function' ? io() : null;
 let publicState = null, selectedBoardId = null;
+let lastUpdate = 0, lastRealtime = 0, snapshotPending = false;
 const detail = document.getElementById('boardDetail');
 
 function fitBoards() {
@@ -57,6 +58,35 @@ function renderBoards(data) {
 
 document.getElementById('closeBoardDetail').onclick=()=>detail.close();
 window.addEventListener('resize',fitBoards);
-socket.on('connect',()=>{document.getElementById('connectionStatus').textContent='Live public boards';socket.emit('watch_public_boards');});
-socket.on('disconnect',()=>{document.getElementById('connectionStatus').textContent='Connection lost. Reconnecting...';});
-socket.on('public_boards_state',renderBoards);
+function receiveBoards(data) {
+  try {
+    if(!Array.isArray(data?.boards))throw new Error('Invalid public boards snapshot');
+    renderBoards(data);
+    lastUpdate=Date.now();
+    document.getElementById('connectionStatus').textContent='Live public boards';
+  } catch(error) {
+    console.error(error);
+    document.getElementById('connectionStatus').textContent='Could not display boards. Retrying...';
+  }
+}
+
+async function refreshSnapshot() {
+  if(snapshotPending || document.visibilityState==='hidden')return;
+  snapshotPending=true;
+  const started=Date.now();
+  try {
+    const response=await fetch('/api/public-boards',{cache:'no-store',signal:AbortSignal.timeout(8000)});
+    if(!response.ok)throw new Error('Public board request failed');
+    const data=await response.json();
+    if(lastRealtime<=started)receiveBoards(data);
+  } catch(error) {
+    if(!publicState)document.getElementById('connectionStatus').textContent='Cannot reach the game. Retrying...';
+  } finally {snapshotPending=false;}
+}
+socket?.on('connect',()=>{socket.emit('watch_public_boards');});
+socket?.on('disconnect',()=>{document.getElementById('connectionStatus').textContent='Connection lost. Reconnecting...';refreshSnapshot();});
+socket?.on('connect_error',refreshSnapshot);
+socket?.on('public_boards_state',data=>{lastRealtime=Date.now();receiveBoards(data);});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){socket?.emit('watch_public_boards');refreshSnapshot();}});
+setInterval(()=>{if(Date.now()-lastUpdate>10000)refreshSnapshot();},5000);
+refreshSnapshot();
