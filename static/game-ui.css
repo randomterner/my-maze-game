@@ -63,6 +63,13 @@ button, input, select, textarea { font-size:17px; }
 .cell .playerTag::after { width:11px; height:11px; }
 .cell .birthLabel { font-size:12px; line-height:15px; }
 .cell.birthCell .occupants { bottom:15px; }
+/* Leave room for both the player dots and the birth label on small tiles. */
+@media (max-width:640px) {
+  #board .cell .playerTag { font-size:9px; line-height:9px; height:18px; padding-bottom:9px; }
+  #board .cell .playerTag::after { width:8px; height:8px; }
+  #board .cell .birthLabel { font-size:8px; line-height:9px; }
+  #board .cell.birthCell .occupants { bottom:9px; }
+}
 .mapNotesPanel { overflow:auto; }
 .hero { padding-top:78px; }
 #wakeLockButton { position:fixed; top:12px; left:12px; z-index:9998; max-width:calc(100vw - 125px); padding:8px 12px; border:1px solid #7acaff; border-radius:8px; background:#10233e; color:white; font-size:14px; cursor:pointer; }
