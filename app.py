@@ -216,6 +216,29 @@ def lost_outer_wall_axes(player):
     }
 
 
+def lost_map_bounds(player):
+    """Only disclose the axis established by a bomb-confirmed outer wall."""
+    bounds = {"x": None, "y": None}
+    for key, directions in player["lost_outer_wall_bomb_clues"].items():
+        x, y = map(int, key.split(","))
+        for direction in directions:
+            if direction in {"left", "right"}:
+                bounds["x"] = x if direction == "left" else x - BOARD_SIZE + 1
+            else:
+                bounds["y"] = y if direction == "up" else y - BOARD_SIZE + 1
+    return bounds
+
+
+def map_completion_progress(player):
+    tiles = player["lost_known_tiles"] if player["lost"] else player["known_tiles"]
+    points = [tuple(map(int, key.split(","))) for key in tiles]
+    axes = lost_outer_wall_axes(player) if player["lost"] else {"x": False, "y": False}
+    return {
+        "columns": BOARD_SIZE if axes["x"] else min(BOARD_SIZE, len({x for x, _ in points})),
+        "rows": BOARD_SIZE if axes["y"] else min(BOARD_SIZE, len({y for _, y in points})),
+    }
+
+
 def lost_map_completion_message(player, known_x, known_y):
     """Apply the 10x10 escape rule, including information from outer-wall bombs."""
     has_all_columns = len(known_x) >= BOARD_SIZE
@@ -702,6 +725,31 @@ def sync_all_map_fusion_groups():
     }
     for group_id in group_ids:
         sync_map_fusion_group(group_id)
+    sync_saved_fusion_maps()
+
+
+def sync_saved_fusion_maps():
+    """A lost member receives live discoveries on their old, anchored map.
+
+    Partners may receive only the frozen pre-loss section, never the player's
+    new relative trail (or discoveries relayed through that trail).
+    """
+    for lost in GAME["players"].values():
+        if not lost["alive"] or not lost["lost"]:
+            continue
+        frozen = {"known_" + suffix: lost["known_" + suffix + "_before_lost"]
+                  for suffix in ("tiles", "open_edges", "broken_walls", "wall_edges")}
+        for donor in GAME["players"].values():
+            if donor is lost or not donor["alive"] or donor["lost"] or not donor["spawned"]:
+                continue
+            same_group = lost["fusion_group"] is not None and lost["fusion_group"] == donor["fusion_group"]
+            matching_anchor = any(
+                key in donor["known_tiles"] and tile_allows_map_fusion(tuple(map(int, key.split(","))))
+                for key in frozen["known_tiles"]
+            )
+            if same_group or matching_anchor:
+                merge_map_knowledge(donor, frozen)
+                merge_map_knowledge(lost, donor)
 
 
 def fuse_players_together(players):
@@ -985,7 +1033,7 @@ def activate_map_fusion(player):
         discover_lost_birth_tile(player, current_pos)
         if player["lost"] and player["lost_birth_map_sources"]:
             return
-    if player["lost"] and not tile_allows_map_fusion(current_pos):
+    if not tile_allows_map_fusion(current_pos):
         return
 
     same_tile_players = []
@@ -1175,6 +1223,14 @@ def current_player():
 
 def prepare_player_turn(player):
     """Apply once-only start-of-turn work for the active player."""
+    if (player["alive"] and player["spawned"] and player["items"]["treasure"]
+            and GAME["board"].get((player["x"], player["y"])) == "exit"):
+        GAME["game_over"] = True
+        GAME["winner_sid"] = player["sid"]
+        GAME["winner_reason"] = "treasure_exit"
+        set_player_message(player, "You escaped with the real treasure and won!")
+        log(f"{player['name']} escaped through the exit with the real treasure.")
+        return "game_over"
     if player.get("in_river"):
         pos = (player.get("x"), player.get("y"))
         if pos not in GAME["board"] or GAME["board"][pos] not in {"river", "river_start"}:
@@ -1655,13 +1711,9 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
 
     if raw_tile == "exit":
         if player["items"]["treasure"]:
-            GAME["game_over"] = True
-            GAME["winner_sid"] = player["sid"]
-            GAME["winner_reason"] = "treasure_exit"
-            set_player_message(player, "You escaped with the real treasure and won!")
-            log(f"{player['name']} escaped through the exit with the real treasure.")
-            return "game_over"
-        set_player_message(player, "You found the exit, but you do not have the real treasure.")
+            set_player_message(player, "You reached the exit with the treasure. Survive until your next turn to escape.")
+        else:
+            set_player_message(player, "You found the exit, but you do not have the real treasure.")
         return "continue"
 
     if raw_tile == "clinic":
@@ -2038,6 +2090,27 @@ def serialize_saved_maps(player):
     return saved
 
 
+def serialize_manager_map():
+    births = {}
+    for player in GAME["players"].values():
+        if player["spawned"]:
+            births.setdefault(f"{player['birth_x']},{player['birth_y']}", []).append({"name": player["name"]})
+    walls = [serialize_edge(a, b) for a, b in GAME["inner_walls"]]
+    for n in range(BOARD_SIZE):
+        walls.extend([serialize_edge((n, 0), (n, -1)), serialize_edge((n, 9), (n, 10)),
+                      serialize_edge((0, n), (-1, n)), serialize_edge((9, n), (10, n))])
+    return {
+        "name": "Manager map", "absolute": True, "manager_map": True,
+        "id": "manager", "member_sids": list(GAME["players"]),
+        "tiles": {f"{x},{y}": effective_tile_at((x, y)) for x, y in GAME["board"]},
+        "wall_edges": walls, "open_edges": [],
+        "broken_walls": [serialize_edge(a, b) for a, b in GAME["broken_walls"]],
+        "birth_spots": births,
+        "players": [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["x"], "y": p["y"]}
+                    for p in GAME["players"].values() if p["spawned"]],
+    }
+
+
 def serialize_public_boards_state():
     """Discovered maps during play; reveal the manager board only at game over."""
     boards = []
@@ -2083,27 +2156,7 @@ def serialize_public_boards_state():
                      for p in GAME["players"].values() if p["alive"] and p["lost"] and p["lost_kind"] == "river"]
         boards.append({"id": "river", "member_sids": [p["sid"] for p in positions], "name": "Shared river map", "absolute": False, "lost": True, **copy.deepcopy(river_map), "players": positions})
     if GAME["game_over"]:
-        manager_births = {}
-        for p in GAME["players"].values():
-            if p["spawned"]:
-                manager_births.setdefault(f"{p['birth_x']},{p['birth_y']}", []).append({"name": p["name"]})
-        manager_walls = [serialize_edge(a, b) for a, b in GAME["inner_walls"]]
-        for n in range(10):
-            manager_walls.extend([
-                serialize_edge((n, 0), (n, -1)),
-                serialize_edge((n, 9), (n, 10)),
-                serialize_edge((0, n), (-1, n)),
-                serialize_edge((9, n), (10, n)),
-            ])
-        boards.insert(0, {
-            "name": "Manager map — game over", "absolute": True,
-            "manager_map": True,
-            "id": "manager", "member_sids": list(GAME["players"]),
-            "tiles": {f"{x},{y}": effective_tile_at((x, y)) for x, y in GAME["board"]},
-            "wall_edges": manager_walls,
-            "open_edges": [], "broken_walls": [serialize_edge(a, b) for a, b in GAME["broken_walls"]], "birth_spots": manager_births,
-            "players": [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["x"], "y": p["y"]} for p in GAME["players"].values() if p["spawned"]],
-        })
+        boards.insert(0, serialize_manager_map())
     return mask_treasure_suspense({"boards": boards, "players": serialize_public_player_stats(), "logs": list(GAME["logs"]), "treasure_reveal": treasure_reveal_state(), "game_started": GAME["game_started"], "game_over": GAME["game_over"], "turn_number": GAME["turn_number"]})
 
 
@@ -2147,6 +2200,15 @@ def serialize_player_state_for(sid):
         known_open_edges = copy.deepcopy(player["known_open_edges"])
         known_broken_walls = copy.deepcopy(player["known_broken_walls"])
         known_wall_edges = copy.deepcopy(player["known_wall_edges"])
+        if player["fusion_group"] is not None:
+            # Derive live fused positions on every snapshot, including rejoin.
+            for member in fusion_group_members(player["fusion_group"]):
+                if member["sid"] == sid or None in (member["x"], member["y"]):
+                    continue
+                for entries in known_players.values():
+                    entries[:] = [p for p in entries if p["sid"] != member["sid"]]
+                key = f"{member['x']},{member['y']}"
+                known_players.setdefault(key, []).append({field: member[field] for field in ("sid", "name", "color", "x", "y")})
     player_view = serialize_player_public(player)
 
     # The manager remains the only client who receives a lost player's actual
@@ -2175,6 +2237,9 @@ def serialize_player_state_for(sid):
         "your_known_wall_edges": known_wall_edges,
         "hidden_player_maps": serialize_hidden_player_maps_for(player),
         "saved_maps": serialize_saved_maps(player),
+        "spectator_map": serialize_manager_map() if not player["alive"] else None,
+        "map_progress": map_completion_progress(player),
+        "lost_map_bounds": lost_map_bounds(player) if player["lost"] else None,
         "river_map": {
             "players": [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["lost_relative_x"], "y": p["lost_relative_y"]}
                         for p in GAME["players"].values() if p["alive"] and p["lost"] and p["lost_kind"] == "river"],
@@ -2240,6 +2305,11 @@ def manager():
 @app.route("/boards")
 def public_boards():
     return render_template("boards.html")
+
+
+@app.route("/api/public-boards")
+def public_boards_snapshot():
+    return serialize_public_boards_state(), 200, {"Cache-Control": "no-store"}
 
 
 @socketio.on("watch_public_boards")
