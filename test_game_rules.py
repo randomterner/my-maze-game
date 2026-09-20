@@ -920,6 +920,153 @@ class MazeGameRuleTests(unittest.TestCase):
         labels = app.serialize_player_state_for("viewer")["birth_spots"]
         self.assertEqual(labels, {"1,0": [{"name": "One"}, {"name": "Two"}]})
 
+    def test_plain_empty_and_river_meetings_show_dots_but_never_fuse(self):
+        for tile in ("empty", "river", "river_start"):
+            with self.subTest(tile=tile):
+                app.GAME = app.new_game_state()
+                one = self.add_player("one", "One", 1, 1)
+                two = self.add_player("two", "Two", 2, 2)
+                one.update(x=5, y=5)
+                two.update(x=5, y=5)
+                app.GAME["board"][(5, 5)] = tile
+                app.GAME["game_started"] = True
+                app.activate_map_fusion(one)
+                app.refresh_known_player_positions()
+                self.assertIsNone(one["fusion_group"])
+                self.assertIsNone(two["fusion_group"])
+                self.assertEqual(one["known_players"]["5,5"][0]["sid"], "two")
+                self.assertFalse(any("MAP FUSION" in line for line in app.GAME["logs"]))
+
+    def test_fused_snapshot_always_has_current_partner_dots_and_color(self):
+        one = self.add_player("one", "One", 1, 1)
+        two = self.add_player("two", "Two", 2, 2)
+        app.fuse_players_together([one, two])
+        two.update(x=7, y=8, color="#ff0000")
+        one["known_players"] = {"2,2": [{"sid": "two"}]}
+        view = app.serialize_player_state_for("one")
+        self.assertEqual(view["your_known_players"]["7,8"][0]["color"], "#ff0000")
+        self.assertFalse(view["your_known_players"]["2,2"])
+        self.assertEqual(app.serialize_player_state_for("two")["your_known_players"]["1,1"][0]["sid"], "one")
+
+    def test_saved_fusion_map_receives_live_updates_without_sending_lost_trail(self):
+        one = self.add_player("one", "One", 1, 1)
+        two = self.add_player("two", "Two", 2, 2)
+        one["known_tiles"] = {"1,1": "empty"}
+        two["known_tiles"] = {"2,2": "clinic"}
+        app.fuse_players_together([one, two])
+        app.enter_lost_state(one, "black_hole")
+        app.start_lost_relative_map(one)
+        one["lost_known_tiles"]["3,3"] = "devil"
+        two["known_tiles"]["8,8"] = "monster"
+        edge = app.serialize_edge((8, 8), (9, 8))
+        two["known_broken_walls"].append(edge)
+        app.sync_all_map_fusion_groups()
+        self.assertEqual(one["known_tiles"]["8,8"], "monster")
+        self.assertIn(edge, one["known_broken_walls"])
+        self.assertNotIn("4,4", two["known_tiles"])
+        self.assertNotIn("8,8", one["known_tiles_before_lost"])
+        self.assertNotIn("monster", one["lost_known_tiles"].values())
+        saved = app.serialize_saved_maps(one)[0]
+        self.assertEqual(saved["tiles"]["7,7"], "monster")
+        self.assertEqual(saved["players"], [])
+        self.assertTrue(one["lost"])
+
+    def test_new_saved_map_match_exchanges_only_pre_loss_section_outward(self):
+        one = self.add_player("one", "One", 1, 1)
+        two = self.add_player("two", "Two", 2, 2)
+        app.GAME["board"][(3, 3)] = "clinic"
+        one["known_tiles"] = {"3,3": "clinic", "4,4": "empty"}
+        app.enter_lost_state(one, "black_hole")
+        app.start_lost_relative_map(one)
+        one["lost_known_tiles"]["6,6"] = "devil"
+        two["known_tiles"] = {"3,3": "clinic", "8,8": "monster"}
+        app.sync_all_map_fusion_groups()
+        self.assertIn("4,4", two["known_tiles"])
+        self.assertNotIn("7,7", two["known_tiles"])
+        self.assertIn("8,8", one["known_tiles"])
+        self.assertTrue(one["lost"])
+        self.assertIsNone(one["fusion_group"])
+
+    def test_saved_maps_do_not_match_through_plain_empty_or_river_tiles(self):
+        one = self.add_player("one", "One", 1, 1)
+        two = self.add_player("two", "Two", 2, 2)
+        app.GAME["board"][(3, 3)] = "river"
+        one["known_tiles"] = {"3,3": "river", "4,4": "empty", "5,5": "devil"}
+        app.enter_lost_state(one, "black_hole")
+        two["known_tiles"] = {"3,3": "river", "4,4": "empty", "8,8": "monster"}
+        app.sync_all_map_fusion_groups()
+        self.assertNotIn("8,8", one["known_tiles"])
+        self.assertNotIn("5,5", two["known_tiles"])
+
+    def test_player_killed_at_exit_cannot_win_on_the_next_turn(self):
+        player = self.add_player("one", "One", 9, 9)
+        self.add_player("two", "Two", 2, 2)
+        self.add_player("three", "Three", 3, 3)
+        app.GAME["board"][(9, 9)] = "exit"
+        player["items"]["treasure"] = True
+        app.apply_tile_effect(player)
+        player["injuries"] = 5
+        app.check_death(player)
+        app.prepare_player_turn(player)
+        self.assertFalse(app.GAME["game_over"])
+
+    def test_wall_anchor_counts_ten_and_exposes_only_the_confirmed_axis(self):
+        for direction, position, expected in (("left", (0, 6), {"x": 0, "y": None}),
+                                               ("right", (9, 6), {"x": -9, "y": None}),
+                                               ("up", (6, 0), {"x": None, "y": 0}),
+                                               ("down", (6, 9), {"x": None, "y": -9})):
+            with self.subTest(direction=direction):
+                app.GAME = app.new_game_state()
+                player = self.add_player("one", "One", 4, 4)
+                player.update(x=position[0], y=position[1])
+                app.enter_lost_state(player, "black_hole")
+                app.start_lost_relative_map(player)
+                app.remember_lost_tile(player, position)
+                app.remember_lost_outer_wall_bomb(player, direction)
+                view = app.serialize_player_state_for("one")
+                self.assertEqual(view["lost_map_bounds"], expected)
+                self.assertEqual(view["map_progress"], {"columns": 10 if direction in ("left", "right") else 1,
+                                                        "rows": 10 if direction in ("up", "down") else 1})
+                self.assertIsNone(view["you"]["x"])
+                self.assertIsNone(view["you"]["y"])
+                self.assertTrue(player["lost"])
+
+    def test_dead_player_sees_manager_map_without_revealing_it_publicly(self):
+        dead = self.add_player("dead", "Dead", 1, 1)
+        self.add_player("one", "One", 2, 2)
+        self.add_player("two", "Two", 3, 3)
+        app.GAME["game_started"] = True
+        dead["injuries"] = 5
+        app.check_death(dead)
+        self.assertFalse(app.GAME["game_over"])
+        view = app.serialize_player_state_for("dead")
+        self.assertEqual(len(view["spectator_map"]["tiles"]), 100)
+        self.assertEqual(len(view["spectator_map"]["players"]), 3)
+        self.assertIsNone(app.serialize_player_state_for("one")["spectator_map"])
+        self.assertFalse(any(b.get("manager_map") for b in app.serialize_public_boards_state()["boards"]))
+
+    def test_exit_requires_start_of_turn_and_treasure_still_in_inventory(self):
+        player = self.add_player("one", "One", 9, 9)
+        app.GAME["board"][(9, 9)] = "exit"
+        player["items"]["treasure"] = True
+        self.assertEqual(app.apply_tile_effect(player), "continue")
+        self.assertFalse(app.GAME["game_over"])
+        player["items"]["treasure"] = False
+        app.prepare_player_turn(player)
+        self.assertFalse(app.GAME["game_over"])
+        player["items"]["treasure"] = True
+        self.assertEqual(app.prepare_player_turn(player), "game_over")
+        self.assertEqual(app.GAME["winner_sid"], "one")
+
+    def test_public_http_snapshot_matches_socket_payload_and_is_not_cached(self):
+        player = self.add_player("one", "One", 1, 1)
+        player["known_tiles"] = {"1,1": "empty"}
+        response = app.app.test_client().get("/api/public-boards")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(response.json, app.serialize_public_boards_state())
+
+
 class MazeGameSocketTests(unittest.TestCase):
     def setUp(self):
         app.GAME = app.new_game_state()
@@ -1303,7 +1450,7 @@ class MazeGameSocketTests(unittest.TestCase):
             layout = {
                 (1,0):"devil", (2,0):"clinic", (3,0):"armory", (4,0):"treasure",
                 (5,0):"monster", (6,0):"raft", (7,0):"boat", (8,0):"batteries", (9,0):"exit",
-                (1,1):"fake_treasure", (2,1):"flashlight", (3,1):"black_hole", (4,1):"er",
+                (1,1):"fake_treasure", (2,1):"flashlight", (3,1):"black_hole", (1,2):"er",
                 (0,5):"river_start", (1,5):"river", (2,5):"river",
             }
             for (x,y),tile in layout.items():
@@ -1390,6 +1537,10 @@ class MazeGameSocketTests(unittest.TestCase):
             self.assertEqual((two["x"],two["y"]),(1,5))
             act("Three","player_move","left")
             act("One","player_move","right")
+            self.assertFalse(app.GAME["game_over"])
+            act("Two","player_move","right")
+            self.assertFalse(app.GAME["game_over"])
+            act("Three","player_move","right")
             self.assertTrue(app.GAME["game_over"])
             self.assertEqual(app.GAME["winner_sid"],one["sid"])
             public=app.serialize_public_boards_state()
