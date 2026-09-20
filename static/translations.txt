@@ -10,6 +10,11 @@ __language__ = en
 __direction__ = ltr
 
 # Page titles and headings
+# September rule fixes
+Manager map = Manager map
+You died. You can now watch the complete manager map. = You died. You can now watch the complete manager map.
+You reached the exit with the treasure. Survive until your next turn to escape. = You reached the exit with the treasure. Survive until your next turn to escape.
+Could not display boards. Retrying... = Could not display boards. Retrying...
 Maze Game - Player = Maze Game - Player
 Maze Game - Manager = Maze Game - Manager
 PRIVATE EXPEDITION LOG = PRIVATE EXPEDITION LOG
