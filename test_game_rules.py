@@ -920,7 +920,7 @@ class MazeGameRuleTests(unittest.TestCase):
         labels = app.serialize_player_state_for("viewer")["birth_spots"]
         self.assertEqual(labels, {"1,0": [{"name": "One"}, {"name": "Two"}]})
 
-    def test_plain_empty_and_river_meetings_show_dots_but_never_fuse(self):
+    def test_physical_meetings_fuse_even_on_plain_empty_and_river_tiles(self):
         for tile in ("empty", "river", "river_start"):
             with self.subTest(tile=tile):
                 app.GAME = app.new_game_state()
@@ -932,10 +932,10 @@ class MazeGameRuleTests(unittest.TestCase):
                 app.GAME["game_started"] = True
                 app.activate_map_fusion(one)
                 app.refresh_known_player_positions()
-                self.assertIsNone(one["fusion_group"])
-                self.assertIsNone(two["fusion_group"])
+                self.assertIsNotNone(one["fusion_group"])
+                self.assertEqual(one["fusion_group"], two["fusion_group"])
                 self.assertEqual(one["known_players"]["5,5"][0]["sid"], "two")
-                self.assertFalse(any("MAP FUSION" in line for line in app.GAME["logs"]))
+                self.assertTrue(any("MAP FUSION" in line for line in app.GAME["logs"]))
 
     def test_fused_snapshot_always_has_current_partner_dots_and_color(self):
         one = self.add_player("one", "One", 1, 1)
@@ -968,7 +968,8 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertNotIn("monster", one["lost_known_tiles"].values())
         saved = app.serialize_saved_maps(one)[0]
         self.assertEqual(saved["tiles"]["7,7"], "monster")
-        self.assertEqual(saved["players"], [])
+        self.assertEqual(saved["players"][0]["sid"], "two")
+        self.assertNotIn("one", [p["sid"] for p in saved["players"]])
         self.assertTrue(one["lost"])
 
     def test_new_saved_map_match_exchanges_only_pre_loss_section_outward(self):
@@ -1067,6 +1068,74 @@ class MazeGameRuleTests(unittest.TestCase):
         self.assertEqual(response.json, app.serialize_public_boards_state())
 
 
+    def test_two_lost_players_fuse_relative_maps_without_coordinates_or_notes(self):
+        one = self.add_player("one", "One", 0, 0)
+        two = self.add_player("two", "Two", 9, 9)
+        one.update(x=4, y=4)
+        two.update(x=5, y=4)
+        for player in (one, two):
+            app.enter_lost_state(player, "black_hole")
+            app.start_lost_relative_map(player)
+        one["lost_known_tiles"]["0,-1"] = "empty"
+        one["lost_manual_tiles"]["8,8"] = "treasure"
+        two["lost_known_tiles"]["1,0"] = "empty"
+        one.update(x=5, lost_relative_x=1)
+        app.GAME.update(game_started=True, turn_number=3)
+        app.activate_map_fusion(one)
+        self.assertTrue(one["lost"] and two["lost"])
+        self.assertEqual(one["lost_fusion_links"], ["two"])
+        self.assertIn("2,0", one["lost_known_tiles"])
+        self.assertIn("-1,-1", two["lost_known_tiles"])
+        self.assertNotIn("7,8", two["lost_known_tiles"])
+        view = app.serialize_player_state_for("one")
+        self.assertIsNone(view["you"]["x"])
+        self.assertEqual(view["your_known_players"]["1,0"][0]["sid"], "two")
+        combined = next(b for b in app.serialize_public_boards_state()["boards"] if b["id"].startswith("group-lost-"))
+        self.assertFalse(combined["absolute"])
+        self.assertEqual(len(combined["players"]), 2)
+        self.assertEqual({(p["x"], p["y"]) for p in combined["players"]}, {(1, 0)})
+        two.update(x=6, lost_relative_x=1)
+        app.sync_lost_fusion_maps()
+        self.assertEqual(app.serialize_player_state_for("one")["your_known_players"]["2,0"][0]["sid"], "two")
+        app.enter_lost_state(two, "river")
+        self.assertEqual(one["lost_fusion_links"], [])
+
+    def test_relative_fusion_recovery_is_checked_separately_for_each_player(self):
+        one = self.add_player("one", "One", 0, 0)
+        two = self.add_player("two", "Two", 9, 9)
+        app.GAME["board"][(6, 4)] = "clinic"
+        one["known_tiles"] = {"6,4": "clinic"}
+        for player in (one, two):
+            player.update(x=5, y=4)
+            app.enter_lost_state(player, "black_hole")
+            app.start_lost_relative_map(player)
+        two["lost_known_tiles"]["1,0"] = "clinic"
+        app.GAME.update(game_started=True, turn_number=3)
+        app.activate_map_fusion(one)
+        self.assertFalse(one["lost"])
+        self.assertTrue(two["lost"])
+
+    def test_raft_entered_while_black_hole_lost_reanchors_river_and_continues(self):
+        player = self.add_player("one", "One", 0, 0)
+        app.GAME["board"].update({(5, 5): "river_start", (6, 5): "river", (7, 5): "river"})
+        player["items"]["raft"] = True
+        player["known_tiles"] = {"5,5": "river_start"}
+        player.update(x=8, y=5)
+        app.enter_lost_state(player, "black_hole")
+        app.start_lost_relative_map(player)
+        player.update(x=7, lost_relative_x=-1)
+        app.apply_tile_effect(player)
+        self.assertEqual((player["x"], player["y"]), (5, 5))
+        self.assertEqual(player["lost_kind"], "river")
+        self.assertEqual(player["lost_relative_x"], 0)
+        app.prepare_player_turn(player)
+        player.update(x=6, lost_relative_x=1)
+        app.apply_tile_effect(player)
+        self.assertEqual(player["x"], 6)
+        self.assertEqual(player["injuries"], 0)
+        self.assertTrue(player["in_river"])
+
+
 class MazeGameSocketTests(unittest.TestCase):
     def setUp(self):
         app.GAME = app.new_game_state()
@@ -1116,6 +1185,116 @@ class MazeGameSocketTests(unittest.TestCase):
             event["name"] == "error_message" and "board ready" in event["args"][0]["message"].lower()
             for event in messages
         ))
+
+    def test_bullet_hits_everyone_on_first_occupied_tile_and_stops(self):
+        self.prepare_startable_game()
+        shooter = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        target = next(p for p in app.GAME["players"].values() if p["name"] == "Two")
+        extra = app.create_player("extra", "Extra")
+        behind = app.create_player("behind", "Behind")
+        for player, x in ((shooter, 0), (target, 2), (extra, 2), (behind, 4)):
+            player.update(x=x, y=0, spawned=True, birth_x=x, birth_y=0)
+            app.GAME["players"][player["sid"]] = player
+        app.GAME["player_order"] = [target["sid"], "extra", shooter["sid"], "behind"]
+        app.GAME["current_turn_index"] = 2
+        bullets = shooter["bullets"]
+        self.one.emit("player_shoot", {"direction": "right"})
+        self.assertEqual((target["injuries"], extra["injuries"], behind["injuries"]), (1, 1, 0))
+        self.assertEqual(shooter["bullets"], bullets - 1)
+        target["injuries"] = extra["injuries"] = 4
+        app.GAME["current_turn_index"] = 2
+        self.one.emit("player_shoot", {"direction": "right"})
+        self.assertFalse(target["alive"] or extra["alive"])
+        self.assertFalse(app.GAME["game_over"])
+        self.assertEqual(app.current_turn_sid(), "behind")
+
+    def test_permanent_departure_drops_items_once_and_next_visitor_collects(self):
+        self.prepare_startable_game()
+        one = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        two = next(p for p in app.GAME["players"].values() if p["name"] == "Two")
+        third = app.create_player("third", "Third")
+        third.update(x=8, y=8, birth_x=8, birth_y=8, spawned=True)
+        app.GAME["players"]["third"] = third
+        one.update(x=2, y=0)
+        two.update(x=1, y=0)
+        one["items"]["treasure"] = one["items"]["boat"] = True
+        app.GAME["player_order"] = [one["sid"], two["sid"], "third"]
+        app.GAME["current_turn_index"] = 0
+        self.one.disconnect()
+        self.assertTrue(one["alive"])
+        self.assertFalse(app.GAME["dropped_items"])
+        self.manager.emit("manager_confirm_player_left", {"sid": one["sid"]})
+        self.assertFalse(one["alive"])
+        self.assertEqual(app.GAME["dropped_items"][(2, 0)], {"treasure", "boat"})
+        self.assertFalse(any(one["items"].values()))
+        self.assertEqual(app.current_turn_sid(), two["sid"])
+        self.assertFalse(app.GAME["game_over"])
+        self.two.emit("player_move", {"direction": "right"})
+        self.assertTrue(two["items"]["treasure"] and two["items"]["boat"])
+        self.assertNotIn((2, 0), app.GAME["dropped_items"])
+        self.assertEqual(app.GAME["board"][(2, 0)], "empty")
+        self.manager.emit("manager_confirm_player_left", {"sid": one["sid"]})
+        self.assertFalse(app.GAME["dropped_items"])
+
+    def test_starting_pickups_are_reserved_before_any_player_moves(self):
+        self.prepare_startable_game()
+        app.GAME["game_started"] = False
+        one = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        two = next(p for p in app.GAME["players"].values() if p["name"] == "Two")
+        one.update(x=3, y=2, birth_x=3, birth_y=2)
+        # Put the first player on plain ground next to the second's boat.
+        app.GAME["board"][(3, 2)] = "empty"
+        app.GAME["board"][(3, 4)] = "fake_treasure"
+        two.update(x=4, y=2, birth_x=4, birth_y=2)
+        with patch.object(app.random, "shuffle", lambda order: None):
+            self.manager.emit("manager_start_game")
+        self.assertTrue(two["items"]["boat"])
+        self.assertFalse(two["spawn_effect_pending"])
+        self.one.emit("player_move", {"direction": "right"})
+        self.assertFalse(one["items"]["boat"])
+        self.assertTrue(two["items"]["boat"])
+
+    def test_both_starting_treasures_reveal_in_queue_without_losing_a_turn(self):
+        self.prepare_startable_game()
+        app.GAME["game_started"] = False
+        one = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        two = next(p for p in app.GAME["players"].values() if p["name"] == "Two")
+        one.update(x=2, y=2, birth_x=2, birth_y=2)
+        two.update(x=3, y=2, birth_x=3, birth_y=2)
+        with patch.object(app.random, "shuffle", lambda order: None):
+            self.manager.emit("manager_start_game")
+        self.assertTrue(one["items"]["treasure"])
+        self.assertTrue(two["items"]["fake_treasure"])
+        self.assertEqual(len(app.GAME["treasure_queue"]), 1)
+        self.assertIsNone(app.treasure_reveal_state()["kind"])
+        for client, kind in ((self.one, "treasure"), (self.two, "fake_treasure")):
+            app.finish_fake_treasure_reveal(app.GAME, app.GAME["pending_treasure"])
+            self.assertEqual(app.treasure_reveal_state()["kind"], kind)
+            client.emit("acknowledge_treasure")
+        self.assertIsNone(app.GAME["pending_treasure"])
+        self.assertEqual(app.current_turn_sid(), one["sid"])
+        self.assertEqual(app.GAME["turn_number"], 1)
+
+    def test_river_continuation_survives_approved_rejoin(self):
+        self.prepare_startable_game()
+        one = next(p for p in app.GAME["players"].values() if p["name"] == "One")
+        app.GAME["board"][(7, 3)] = "river"
+        one.update(x=6, y=3, in_river=True)
+        app.enter_lost_state(one, "river")
+        app.start_lost_relative_map(one)
+        app.GAME["current_turn_index"] = app.GAME["player_order"].index(one["sid"])
+        injury_count = one["injuries"]
+        self.one.disconnect()
+        replacement = app.socketio.test_client(app.app)
+        try:
+            replacement.emit("join_player", {"name": "One"})
+            self.manager.emit("manager_approve_reconnect", {"sid": next(iter(app.GAME["pending_reconnect_claims"]))})
+            replacement.emit("player_move", {"direction": "right"})
+            self.assertEqual((one["x"], one["y"]), (7, 3))
+            self.assertEqual(one["injuries"], injury_count)
+            self.assertTrue(one["in_river"])
+        finally:
+            replacement.disconnect()
 
     def test_spawning_requires_valid_manager_approval_and_cannot_be_repeated(self):
         self.one.emit("player_spawn", {"x": 0, "y": 0})
@@ -1385,8 +1564,10 @@ class MazeGameSocketTests(unittest.TestCase):
         self.assertEqual(app.current_turn_sid(), one_sid)
         self.manager.emit("manager_confirm_player_left", {"sid": one_sid})
 
-        self.assertNotIn(one_sid, app.GAME["players"])
+        self.assertFalse(app.GAME["players"][one_sid]["alive"])
         self.assertEqual(app.current_turn_sid(), two_sid)
+        self.assertTrue(app.GAME["game_over"])
+        self.assertEqual(app.GAME["winner_sid"], two_sid)
 
     def test_moving_onto_another_player_starts_map_fusion_and_shows_both_dots(self):
         self.prepare_startable_game()
@@ -1509,6 +1690,10 @@ class MazeGameSocketTests(unittest.TestCase):
             act("Three","player_move","down")
             act("One","player_move","right")
             self.assertTrue(one["items"]["treasure"])
+            pending = app.GAME["pending_treasure"]
+            self.assertEqual(pending["kind"], "treasure")
+            app.finish_fake_treasure_reveal(app.GAME, pending)
+            replacement.emit("acknowledge_treasure")
             act("Two","player_move","up")
             act("Three","player_move","down")
             self.assertTrue(three["lost"])
@@ -1771,13 +1956,12 @@ class MazeGameSocketTests(unittest.TestCase):
         first_player = app.current_player()
         waiting_player = treasure_player if first_player["sid"] == devil_player["sid"] else devil_player
 
-        if first_player["sid"] == devil_player["sid"]:
-            self.assertEqual(devil_player["injuries"], 1)
-            self.assertFalse(treasure_player["items"]["treasure"])
-        else:
-            self.assertTrue(treasure_player["items"]["treasure"])
-            self.assertEqual(devil_player["injuries"], 0)
-        self.assertTrue(waiting_player["spawn_effect_pending"])
+        self.assertTrue(treasure_player["items"]["treasure"])
+        self.assertEqual(devil_player["injuries"], 0)
+        self.assertFalse(treasure_player["spawn_effect_pending"])
+        app.finish_fake_treasure_reveal(app.GAME, app.GAME["pending_treasure"])
+        self.two.emit("acknowledge_treasure")
+        self.assertEqual(devil_player["injuries"], int(first_player["sid"] == devil_player["sid"]))
 
         app.end_turn()
 
