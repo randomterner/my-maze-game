@@ -73,6 +73,7 @@ def new_game_state():
     return {
         "board": {(x, y): "empty" for y in range(BOARD_SIZE) for x in range(BOARD_SIZE)},
         "consumed_tiles": set(),
+        "dropped_items": {},
         "inner_walls": set(),
         "broken_walls": set(),
         "players": {},
@@ -87,6 +88,8 @@ def new_game_state():
         "logs": [],
         "pending_black_hole": None,
         "pending_treasure": None,
+        "treasure_queue": [],
+        "start_turn_after_treasure": False,
         "river_lost_map": {
             "tiles": {},
             "open_edges": [],
@@ -968,6 +971,9 @@ def announce_players_on_tile(player):
 
 
 def enter_lost_state(player, lost_kind):
+    for other in GAME["players"].values():
+        other["lost_fusion_links"] = [sid for sid in other["lost_fusion_links"] if sid != player["sid"]]
+    player["lost_fusion_links"] = []
     if player["lost"] and player["lost_known_tiles"]:
         archived = serialize_relative_trail(player)
         archived.pop("relative_position", None)
@@ -1029,11 +1035,27 @@ def activate_map_fusion(player):
 
     current_pos = (player["x"], player["y"])
     current_key = f"{player['x']},{player['y']}"
-    if player["lost"] and is_birth_spot(current_pos):
+    if player["lost"]:
+        peers = [other for other in GAME["players"].values() if other is not player and other["alive"] and other["lost"]
+                 and (other["x"], other["y"]) == current_pos
+                 and other["map_fusion_blocked_until_turn"] <= GAME["turn_number"]]
+        if peers:
+            members = {p["sid"] for p in [player, *peers]}
+            for p in [player, *peers]:
+                members.update(sid for sid in p["lost_fusion_links"] if sid in GAME["players"] and GAME["players"][sid]["lost"] and GAME["players"][sid]["alive"])
+            changed = any(set(GAME["players"][sid]["lost_fusion_links"]) != members - {sid} for sid in members)
+            for sid in members:
+                GAME["players"][sid]["lost_fusion_links"] = sorted(members - {sid})
+            if changed:
+                log("Lost players met — their relative maps are now shared.")
+            sync_lost_fusion_maps()
+    meeting = any(other["sid"] != player["sid"] and other["alive"] and not other["lost"]
+                  and (other["x"], other["y"]) == current_pos for other in GAME["players"].values())
+    if player["lost"] and is_birth_spot(current_pos) and not meeting:
         discover_lost_birth_tile(player, current_pos)
         if player["lost"] and player["lost_birth_map_sources"]:
             return
-    if not tile_allows_map_fusion(current_pos):
+    if not tile_allows_map_fusion(current_pos) and not meeting:
         return
 
     same_tile_players = []
@@ -1066,8 +1088,7 @@ def activate_map_fusion(player):
         if player["lost"]:
             # A non-lost participant can anchor a qualifying special tile.
             if (
-                tile_allows_map_fusion(current_pos)
-                and any(player_is_on_your_map(player, other["sid"]) for other in same_tile_players)
+                any(player_is_on_your_map(player, other["sid"]) for other in same_tile_players)
             ):
                 recover_from_lost(player, f"You met {', '.join([p['name'] for p in same_tile_players])} → MAP FUSION!")
         else:
@@ -1316,6 +1337,7 @@ def create_player(sid, name, color=DEFAULT_PLAYER_COLOR):
         "lost_manual_wall_edges": [],
         "lost_known_players": {},
         "lost_birth_map_sources": [],
+        "lost_fusion_links": [],
         "lost_known_open_edges": [],
         "lost_known_broken_walls": [],
         "lost_known_wall_edges": [],
@@ -1408,7 +1430,7 @@ def reveal_current_position(player, source="revealed"):
     reveal_position(player, pos, source)
 
 
-def check_death(player, reason=""):
+def check_death(player, reason="", check_winner=True):
     if player["alive"] and player["injuries"] >= 5:
         player["alive"] = False
         set_player_message(player, "You died.")
@@ -1416,7 +1438,8 @@ def check_death(player, reason=""):
             log(f"{player['name']} died. {reason}")
         else:
             log(f"{player['name']} died.")
-        check_last_player_win()
+        if check_winner:
+            check_last_player_win()
         return True
     return False
 
@@ -1590,6 +1613,30 @@ def required_tile_validation():
     return {"ok": True, "message": "All required tile types are placed exactly once."}
 
 
+def drop_held_items(player):
+    pos = (player["x"], player["y"])
+    items = [name for name, held in player["items"].items() if held]
+    if None not in pos and items:
+        ground = GAME["dropped_items"].setdefault(pos, set())
+        ground.update(items)
+        log(f"{player['name']} dropped: {', '.join(items)}.")
+    for name in items:
+        player["items"][name] = False
+
+
+def collect_dropped_items(player):
+    pos = (player["x"], player["y"])
+    items = GAME["dropped_items"].get(pos, set())
+    collected = sorted(name for name in items if not player["items"].get(name))
+    for name in collected:
+        player["items"][name] = True
+        items.remove(name)
+    if not items:
+        GAME["dropped_items"].pop(pos, None)
+    if collected:
+        log(f"{player['name']} picked up dropped items: {', '.join(collected)}.")
+
+
 def handle_pickup(player, pos, tile):
     if pos in GAME["consumed_tiles"]:
         if tile == "treasure":
@@ -1642,10 +1689,19 @@ def handle_pickup(player, pos, tile):
 
 def begin_treasure_reveal(player, pos):
     pending = {"player_sid": player["sid"], "name": player["name"], "phase": "hype",
-               "end_turn_requested": False, "token": secrets.token_hex(16)}
-    GAME["pending_treasure"] = pending
+               "kind": GAME["board"][pos], "end_turn_requested": False, "token": secrets.token_hex(16)}
     GAME["consumed_tiles"].add(pos)
+    player["items"][pending["kind"]] = True
+    GAME["treasure_queue"].append(pending)
     set_player_message(player, "TREASURE FOUND! Could this be the winning treasure?")
+    advance_treasure_queue()
+
+
+def advance_treasure_queue():
+    if GAME["pending_treasure"] or not GAME["treasure_queue"]:
+        return
+    pending = GAME["treasure_queue"].pop(0)
+    GAME["pending_treasure"] = pending
     socketio.start_background_task(reveal_fake_treasure_after_delay, GAME, pending)
 
 
@@ -1662,14 +1718,19 @@ def finish_fake_treasure_reveal(game, pending):
         GAME["pending_treasure"] = None
         return
     pending["phase"] = "revealed"
-    player["items"]["fake_treasure"] = True
-    set_player_message(player, "Plot twist! The treasure is fake. Confirm the reveal to continue.")
+    kind = pending.get("kind", "fake_treasure")
+    player["items"][kind] = True
+    set_player_message(player, "The treasure is real! Confirm the reveal to continue." if kind == "treasure"
+                       else "Plot twist! The treasure is fake. Confirm the reveal to continue.")
     emit_full_state()
 
 
 def treasure_reveal_state():
     pending = GAME["pending_treasure"]
-    return {key: pending[key] for key in ("player_sid", "name", "phase")} if pending else None
+    if not pending:
+        return None
+    return {**{key: pending[key] for key in ("player_sid", "name", "phase")},
+            "kind": pending.get("kind", "fake_treasure") if pending["phase"] == "revealed" else None}
 
 
 def mask_treasure_suspense(value):
@@ -1681,6 +1742,8 @@ def mask_treasure_suspense(value):
     if isinstance(value, list):
         return [mask_treasure_suspense(item) for item in value]
     if isinstance(value, dict):
+        if "treasure" in value and "fake_treasure" in value:
+            value = {**value, "treasure": bool(value["treasure"] or value["fake_treasure"]), "fake_treasure": False}
         return {key: mask_treasure_suspense(item) for key, item in value.items()}
     return value
 
@@ -1688,10 +1751,11 @@ def mask_treasure_suspense(value):
 def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=True):
     pos = (player["x"], player["y"])
     raw_tile = GAME["board"][pos]
+    collect_dropped_items(player)
 
     reveal_current_position(player, discovery_source)
 
-    if raw_tile == "fake_treasure" and pos not in GAME["consumed_tiles"]:
+    if raw_tile in {"treasure", "fake_treasure"} and pos not in GAME["consumed_tiles"]:
         begin_treasure_reveal(player, pos)
         return "pending_treasure"
 
@@ -1798,7 +1862,7 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
                 player["x"], player["y"] = river_start
                 player["in_river"] = True
 
-                if player_knows_river_start:
+                if player_knows_river_start and not player["lost"]:
                     remember_visited_tile(player, river_start)
                     reveal_current_position(player, "arrived at")
                     remember_open_edge(player, pos, river_start)
@@ -2084,8 +2148,18 @@ def serialize_saved_maps(player):
         snapshot = dict(player, lost=False)
         trail = serialize_relative_trail(snapshot)
         trail.pop("relative_position", None)
+        positions = []
+        for other in GAME["players"].values():
+            if other is player or not other["alive"] or other["lost"] or not other["spawned"]:
+                continue
+            same_group = player["fusion_group"] is not None and player["fusion_group"] == other["fusion_group"]
+            matching_anchor = any(key in other["known_tiles"] and tile_allows_map_fusion(tuple(map(int, key.split(','))))
+                                  for key in player["known_tiles_before_lost"])
+            if same_group or matching_anchor or other["sid"] in GAME["public_revealed_positions"]:
+                positions.append({"sid": other["sid"], "name": other["name"], "color": other["color"],
+                                  "x": other["x"] - player["birth_x"], "y": other["y"] - player["birth_y"]})
         trail.update(id=f"saved-{player['sid']}", name=f"{player['name']} — saved map",
-                     players=[], member_sids=[player["sid"]], archived=True, absolute=False)
+                     players=positions, member_sids=[player["sid"]] + [p["sid"] for p in positions], archived=True, absolute=False)
         saved.insert(0, trail)
     return saved
 
@@ -2122,17 +2196,26 @@ def serialize_public_boards_state():
         if player["lost"] and player["lost_kind"] == "river":
             continue
         group = player.get("fusion_group") if not player["lost"] else None
+        lost_members = []
+        if player["lost"] and player["lost_fusion_links"]:
+            lost_members = [p for p in GAME["players"].values() if p["alive"] and p["lost"]
+                            and p["sid"] in [player["sid"], *player["lost_fusion_links"]]]
+            group = "lost-" + ",".join(sorted(p["sid"] for p in lost_members))
         if group is not None:
             if group in seen_groups:
                 continue
             seen_groups.add(group)
-        members = fusion_group_members(group) if group is not None else [player]
+        members = lost_members or (fusion_group_members(group) if group is not None else [player])
         absolute = not player["lost"] and any(p["sid"] in GAME["public_revealed_positions"] for p in members)
         origin = (0, 0) if absolute else (player["birth_x"], player["birth_y"])
         trail = serialize_relative_trail(player, origin)
         positions = []
         for member in members:
-            member_trail = serialize_relative_trail(member, origin)
+            if player["lost"]:
+                rx, ry = lost_relative_position_for(player, (member["x"], member["y"]))
+                member_trail = {**trail, "relative_position": {"x": rx, "y": ry}}
+            else:
+                member_trail = serialize_relative_trail(member, origin)
             trail["tiles"].update(member_trail["tiles"])
             for field in ("open_edges", "broken_walls", "wall_edges"):
                 for edge in member_trail[field]:
@@ -2177,6 +2260,11 @@ def serialize_player_state_for(sid):
         manual_tiles = copy.deepcopy(player["lost_manual_tiles"])
         manual_wall_edges = copy.deepcopy(player["lost_manual_wall_edges"])
         known_players = copy.deepcopy(player["lost_known_players"])
+        for peer_sid in player["lost_fusion_links"]:
+            peer = GAME["players"].get(peer_sid)
+            if peer and peer["alive"] and peer["lost"]:
+                rx, ry = lost_relative_position_for(player, (peer["x"], peer["y"]))
+                known_players.setdefault(f"{rx},{ry}", []).append({"sid": peer_sid, "name": peer["name"], "color": peer["color"]})
         for key, players in player["lost_river_players"].items():
             known_players.setdefault(key, [])
             for other in players:
@@ -2262,7 +2350,54 @@ def serialize_player_state_for(sid):
     })
 
 
+def sync_lost_fusion_maps():
+    # Snapshot first: recovery is checked separately, without a cascade of
+    # fresh normal-map information from a player who just became oriented.
+    sources = {p["sid"]: copy.deepcopy(p) for p in GAME["players"].values()
+               if p["alive"] and p["lost"] and p["lost_fusion_links"]}
+    for sid, source in sources.items():
+        receiver = GAME["players"][sid]
+        new_positions = []
+        for peer_sid in source["lost_fusion_links"]:
+            donor = sources.get(peer_sid)
+            if not donor:
+                continue
+            origin = (donor["x"] - donor["lost_relative_x"], donor["y"] - donor["lost_relative_y"])
+            def actual(point):
+                return (point[0] + origin[0], point[1] + origin[1])
+            for key, tile in donor["lost_known_tiles"].items():
+                pos = actual(tuple(map(int, key.split(','))))
+                rx, ry = lost_relative_position_for(receiver, pos)
+                relative_key = f"{rx},{ry}"
+                if relative_key not in receiver["lost_known_tiles"]:
+                    new_positions.append(pos)
+                receiver["lost_known_tiles"][relative_key] = tile
+                receiver["lost_manual_tiles"].pop(relative_key, None)
+            for field in ("lost_known_open_edges", "lost_known_wall_edges", "lost_known_broken_walls"):
+                for edge in donor[field]:
+                    append_unique_edge(receiver[field], serialize_edge(lost_relative_position_for(receiver, actual(edge[0])),
+                                                                       lost_relative_position_for(receiver, actual(edge[1]))))
+            for key, clues in donor["lost_outer_wall_bomb_clues"].items():
+                rx, ry = lost_relative_position_for(receiver, actual(tuple(map(int, key.split(',')))))
+                existing = receiver["lost_outer_wall_bomb_clues"].setdefault(f"{rx},{ry}", [])
+                existing.extend(clue for clue in clues if clue not in existing)
+        if receiver["lost_kind"] == "river":
+            GAME["river_lost_map"]["tiles"].update(receiver["lost_known_tiles"])
+            for field, target in (("lost_known_open_edges", "open_edges"), ("lost_known_wall_edges", "wall_edges"), ("lost_known_broken_walls", "broken_walls")):
+                for edge in receiver[field]:
+                    append_unique_edge(GAME["river_lost_map"][target], edge)
+        for pos in new_positions:
+            if check_previously_known_recovery(receiver, pos):
+                break
+            discover_lost_birth_tile(receiver, pos)
+            if not receiver["lost"]:
+                break
+        if receiver["lost"]:
+            check_lost_map_completion(receiver)
+
+
 def emit_full_state():
+    sync_lost_fusion_maps()
     resolve_shared_river_discoveries()
     for player in list(GAME["players"].values()):
         if player["lost"] and player["lost_birth_map_sources"]:
@@ -2352,6 +2487,7 @@ def restore_player_connection(old_sid, new_sid, *, color=None):
     GAME["players"][new_sid] = player
     GAME["player_order"] = [new_sid if player_sid == old_sid else player_sid for player_sid in GAME["player_order"]]
     for candidate in GAME["players"].values():
+        candidate["lost_fusion_links"] = [new_sid if sid == old_sid else sid for sid in candidate["lost_fusion_links"]]
         candidate["lost_birth_map_sources"] = [
             new_sid if source_sid == old_sid else source_sid
             for source_sid in candidate["lost_birth_map_sources"]
@@ -2364,6 +2500,9 @@ def restore_player_connection(old_sid, new_sid, *, color=None):
         GAME["pending_black_hole"]["player_sid"] = new_sid
     if GAME["pending_treasure"] and GAME["pending_treasure"]["player_sid"] == old_sid:
         GAME["pending_treasure"]["player_sid"] = new_sid
+    for pending in GAME["treasure_queue"]:
+        if pending["player_sid"] == old_sid:
+            pending["player_sid"] = new_sid
     for archived in player["map_archive"]:
         archived["member_sids"] = [new_sid]
     if GAME["winner_sid"] == old_sid:
@@ -2493,7 +2632,7 @@ def manager_reject_reconnect(data):
 
 @socketio.on("manager_confirm_player_left")
 def manager_confirm_player_left(data):
-    """Permanently remove a disconnected player so play can continue."""
+    """A confirmed departure during play is a death, not a deleted player."""
     if request.sid != MANAGER_SID:
         emit("error_message", {"message": "Only the manager can confirm a player has left."})
         return
@@ -2506,20 +2645,23 @@ def manager_confirm_player_left(data):
     if player.get("connected", True):
         emit("error_message", {"message": "A connected player cannot be removed as disconnected."})
         return
+    if GAME["game_started"] and not player["alive"]:
+        emit("error_message", {"message": "That player is already dead."})
+        return
 
     old_order = alive_player_sids_in_order()
     was_current = current_turn_sid() == player_sid
     removed_index = old_order.index(player_sid) if player_sid in old_order else None
-    del GAME["players"][player_sid]
-    GAME["player_order"] = [sid for sid in GAME["player_order"] if sid != player_sid]
+    if GAME["game_started"]:
+        player["alive"] = False
+        player["spawn_effect_pending"] = False
+        player["extra_turn"] = False
+        drop_held_items(player)
+        set_player_message(player, "The manager confirmed your departure. You now count as dead.")
+    else:
+        del GAME["players"][player_sid]
+        GAME["player_order"] = [sid for sid in GAME["player_order"] if sid != player_sid]
     GAME["public_revealed_positions"].pop(player_sid, None)
-    for candidate in GAME["players"].values():
-        candidate["fusion_history"] = [
-            historical_sid for historical_sid in candidate.get("fusion_history", [])
-            if historical_sid != player_sid
-        ]
-        if candidate.get("fusion_group") is not None and not fusion_group_members(candidate["fusion_group"]):
-            candidate["fusion_group"] = None
 
     for claim_sid, claim in list(GAME["pending_reconnect_claims"].items()):
         if claim["player_sid"] == player_sid:
@@ -2532,19 +2674,24 @@ def manager_confirm_player_left(data):
         GAME["pending_black_hole"] = None
     if GAME["pending_treasure"] and GAME["pending_treasure"]["player_sid"] == player_sid:
         GAME["pending_treasure"] = None
+    GAME["treasure_queue"] = [pending for pending in GAME["treasure_queue"] if pending["player_sid"] != player_sid]
+    advance_treasure_queue()
 
     new_order = alive_player_sids_in_order()
     if new_order:
         if was_current:
             GAME["current_turn_index"] %= len(new_order)
-            start_current_turn()
         elif removed_index is not None and removed_index < GAME["current_turn_index"]:
             GAME["current_turn_index"] -= 1
     else:
         GAME["current_turn_index"] = 0
 
     log(f"Manager confirmed that {player['name']} left the game.")
-    check_last_player_win()
+    if GAME["game_started"]:
+        check_last_player_win()
+        if not GAME["game_over"] and not GAME["pending_treasure"] and (was_current or GAME["start_turn_after_treasure"]):
+            GAME["start_turn_after_treasure"] = False
+            start_current_turn()
     emit_full_state()
 
 
@@ -2742,7 +2889,14 @@ def acknowledge_treasure():
         emit("error_message", {"message": "Wait for the treasure reveal before confirming."})
         return
     GAME["pending_treasure"] = None
-    if pending["end_turn_requested"]:
+    advance_treasure_queue()
+    if GAME["pending_treasure"]:
+        emit_full_state()
+    elif GAME["start_turn_after_treasure"]:
+        GAME["start_turn_after_treasure"] = False
+        start_current_turn()
+        emit_full_state()
+    elif pending["end_turn_requested"]:
         end_turn()
     else:
         emit_full_state()
@@ -2805,10 +2959,21 @@ def manager_start_game():
         player["spawn_effect_pending"] = True
         set_player_message(player, "Your starting-tile effect will apply when your first turn starts.")
 
+    # Starting occupants claim pickup tiles before anybody can take a turn.
+    # Co-spawned players resolve the single item in the randomized turn order.
+    for sid in GAME["player_order"]:
+        player = GAME["players"][sid]
+        pos = (player["x"], player["y"])
+        if GAME["board"][pos] in PICKUP_TILES:
+            player["spawn_effect_pending"] = False
+            apply_tile_effect(player, "started the game on", grant_extra_turn=False)
     refresh_known_player_positions()
 
     log("Game started.")
-    start_current_turn()
+    if GAME["pending_treasure"]:
+        GAME["start_turn_after_treasure"] = True
+    else:
+        start_current_turn()
     turn_sid = current_turn_sid()
     if turn_sid in GAME["players"]:
         log(f"First turn: {GAME['players'][turn_sid]['name']}")
@@ -3107,7 +3272,7 @@ def player_shoot(data):
 
     x, y = shooter["x"], shooter["y"]
     dx, dy = DIRECTIONS[direction]
-    hit_target = None
+    hit_targets = []
 
     while True:
         if wall_blocks(x, y, direction):
@@ -3135,22 +3300,27 @@ def player_shoot(data):
                 targets_here.append(other)
 
         if targets_here:
-            hit_target = random.choice(targets_here)
+            hit_targets = targets_here
             break
 
-    if hit_target is None:
+    if not hit_targets:
         set_player_message(shooter, "Your bullet hit nothing.")
         log(f"{shooter['name']} shot {direction} and hit nothing.")
         emit_full_state()
         end_turn()
         return
 
-    hit_target["injuries"] += 1
-    set_player_message(shooter, f"You hit {hit_target['name']}.")
-    set_player_message(hit_target, f"You were shot by {shooter['name']}.")
-    log(f"{shooter['name']} shot {hit_target['name']}.")
-
-    check_death(hit_target, "Killed by a bullet.")
+    set_player_message(shooter, f"You hit {', '.join(p['name'] for p in hit_targets)}.")
+    # Resolve the whole impacted square before checking the winner/turn order.
+    for hit_target in hit_targets:
+        hit_target["injuries"] += 1
+        set_player_message(hit_target, f"You were shot by {shooter['name']}.")
+        log(f"{shooter['name']} shot {hit_target['name']}.")
+        check_death(hit_target, "Killed by a bullet.", check_winner=False)
+    check_last_player_win()
+    order = alive_player_sids_in_order()
+    if shooter['sid'] in order:
+        GAME['current_turn_index'] = order.index(shooter['sid'])
 
     emit_full_state()
     end_turn()
