@@ -11,6 +11,14 @@ __direction__ = rtl
 
 # Page titles and headings
 # September rule fixes
+The treasure is real! = האוצר אמיתי!
+The treasure is real! Confirm the reveal to continue. = האוצר אמיתי! אשרו את הגילוי כדי להמשיך.
+found the real treasure. The turn waits for confirmation. = מצא את האוצר האמיתי. התור ממתין לאישור.
+The manager confirmed your departure. You now count as dead. = המנהל אישר שעזבת את המשחק. כעת אתה נחשב מת.
+That player is already dead. = השחקן הזה כבר מת.
+Lost players met — their relative maps are now shared. = שחקנים אבודים נפגשו — המפות היחסיות שלהם משותפות כעת.
+picked up dropped items: = אסף חפצים שנפלו:
+dropped: = השאיר:
 Manager map = מפת המנהל
 You died. You can now watch the complete manager map. = מתת. כעת אפשר לצפות במפת המנהל המלאה.
 You reached the exit with the treasure. Survive until your next turn to escape. = הגעת ליציאה עם האוצר. עליך לשרוד עד לתחילת התור הבא שלך כדי לברוח.
