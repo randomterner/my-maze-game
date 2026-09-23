@@ -11,6 +11,14 @@ __direction__ = ltr
 
 # Page titles and headings
 # September rule fixes
+The treasure is real! = The treasure is real!
+The treasure is real! Confirm the reveal to continue. = The treasure is real! Confirm the reveal to continue.
+found the real treasure. The turn waits for confirmation. = found the real treasure. The turn waits for confirmation.
+The manager confirmed your departure. You now count as dead. = The manager confirmed your departure. You now count as dead.
+That player is already dead. = That player is already dead.
+Lost players met — their relative maps are now shared. = Lost players met — their relative maps are now shared.
+picked up dropped items: = picked up dropped items:
+dropped: = dropped:
 Manager map = Manager map
 You died. You can now watch the complete manager map. = You died. You can now watch the complete manager map.
 You reached the exit with the treasure. Survive until your next turn to escape. = You reached the exit with the treasure. Survive until your next turn to escape.
