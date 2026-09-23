@@ -326,7 +326,7 @@
     }
   </style>
   <link rel="stylesheet" href="/static/game-ui.css?v=20260920">
-  <script src="/static/game-ui.js?v=20260920"></script>
+  <script src="/static/game-ui.js?v=20260921"></script>
 </head>
 <body>
 <div class="wrap">
@@ -709,7 +709,7 @@
     const rows = state.players.map(p => `
       <tr>
         <td>${escapeHtml(p.name)}</td>
-        <td>${p.connected ? "Connected" : "Disconnected — turn waits"}</td>
+        <td>${p.connected ? "Connected" : p.alive ? "Disconnected — turn waits" : "Disconnected"}</td>
         <td>${p.alive ? "Yes" : "No"}</td>
         <td>${p.spawned ? "Yes" : "No"}</td>
         <td>${p.lost ? "Yes" : "No"}</td>
@@ -719,7 +719,7 @@
         <td>${p.bombs}</td>
         <td>${Object.entries(p.items).filter(([k,v]) => v).map(([k]) => escapeHtml(k)).join(", ") || "-"}</td>
         <td>${escapeHtml(p.last_message || "")}</td>
-        <td>${p.connected ? "—" : `<button class="secondary" onclick='confirmPlayerLeft(${JSON.stringify(p.sid)})'>Confirm left</button>`}</td>
+        <td>${p.connected || !p.alive ? "—" : `<button class="secondary" onclick='confirmPlayerLeft(${JSON.stringify(p.sid)})'>Confirm left</button>`}</td>
       </tr>
     `).join("");
 
