@@ -103,11 +103,12 @@
     let dialog=document.getElementById('treasureReveal');
     if(!dialog){dialog=document.createElement('dialog');dialog.id='treasureReveal';dialog.className='treasureReveal';dialog.addEventListener('cancel',event=>event.preventDefault());document.body.appendChild(dialog);}
     if(!pending){if(dialog.open)dialog.close();delete dialog.dataset.dismissed;return;}
-    const dismissKey=`${pending.player_sid}:${pending.phase}`;
+    const dismissKey=`${pending.player_sid}:${pending.phase}:${pending.kind||''}`;
     if(pending.player_sid!==ownSid&&dialog.dataset.dismissed===dismissKey)return;
     dialog.replaceChildren();
-    const title=document.createElement('h2');title.textContent=pending.phase==='hype'?'TREASURE FOUND!':'Plot twist — fake treasure!';
-    const text=document.createElement('p');text.textContent=pending.phase==='hype'?`${pending.name} found a treasure! The reveal is coming...`:`${pending.name} found fake treasure. The turn waits for confirmation.`;
+    const real=pending.kind==='treasure';
+    const title=document.createElement('h2');title.textContent=pending.phase==='hype'?'TREASURE FOUND!':real?'The treasure is real!':'Plot twist — fake treasure!';
+    const text=document.createElement('p');text.textContent=pending.phase==='hype'?`${pending.name} found a treasure! The reveal is coming...`:real?`${pending.name} found the real treasure. The turn waits for confirmation.`:`${pending.name} found fake treasure. The turn waits for confirmation.`;
     dialog.append(title,text);
     if(pending.phase==='revealed'&&pending.player_sid===ownSid&&acknowledge){const button=document.createElement('button');button.textContent='I saw the reveal — continue';button.onclick=()=>{button.disabled=true;acknowledge();};dialog.appendChild(button);}
     if(pending.player_sid!==ownSid){const close=document.createElement('button');close.textContent='Close';close.onclick=()=>{dialog.dataset.dismissed=dismissKey;dialog.close();};dialog.appendChild(close);}
