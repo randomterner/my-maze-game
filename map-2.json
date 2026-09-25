@@ -1,0 +1,556 @@
+{
+  "name": "Three Crossings",
+  "seed": 2002,
+  "size": 10,
+  "tiles": {
+    "0,0": "empty",
+    "1,0": "empty",
+    "2,0": "empty",
+    "3,0": "empty",
+    "4,0": "empty",
+    "5,0": "empty",
+    "6,0": "empty",
+    "7,0": "empty",
+    "8,0": "empty",
+    "9,0": "empty",
+    "0,1": "empty",
+    "1,1": "empty",
+    "2,1": "empty",
+    "3,1": "empty",
+    "4,1": "empty",
+    "5,1": "batteries",
+    "6,1": "empty",
+    "7,1": "empty",
+    "8,1": "empty",
+    "9,1": "empty",
+    "0,2": "empty",
+    "1,2": "empty",
+    "2,2": "empty",
+    "3,2": "empty",
+    "4,2": "empty",
+    "5,2": "treasure",
+    "6,2": "empty",
+    "7,2": "empty",
+    "8,2": "empty",
+    "9,2": "black_hole",
+    "0,3": "empty",
+    "1,3": "empty",
+    "2,3": "empty",
+    "3,3": "empty",
+    "4,3": "empty",
+    "5,3": "empty",
+    "6,3": "armory",
+    "7,3": "empty",
+    "8,3": "empty",
+    "9,3": "empty",
+    "0,4": "exit",
+    "1,4": "monster",
+    "2,4": "empty",
+    "3,4": "devil",
+    "4,4": "empty",
+    "5,4": "empty",
+    "6,4": "empty",
+    "7,4": "empty",
+    "8,4": "empty",
+    "9,4": "empty",
+    "0,5": "empty",
+    "1,5": "empty",
+    "2,5": "empty",
+    "3,5": "empty",
+    "4,5": "empty",
+    "5,5": "raft",
+    "6,5": "empty",
+    "7,5": "empty",
+    "8,5": "empty",
+    "9,5": "empty",
+    "0,6": "empty",
+    "1,6": "empty",
+    "2,6": "fake_treasure",
+    "3,6": "empty",
+    "4,6": "empty",
+    "5,6": "empty",
+    "6,6": "empty",
+    "7,6": "empty",
+    "8,6": "empty",
+    "9,6": "empty",
+    "0,7": "empty",
+    "1,7": "empty",
+    "2,7": "empty",
+    "3,7": "empty",
+    "4,7": "er",
+    "5,7": "flashlight",
+    "6,7": "empty",
+    "7,7": "empty",
+    "8,7": "empty",
+    "9,7": "empty",
+    "0,8": "empty",
+    "1,8": "empty",
+    "2,8": "river",
+    "3,8": "river",
+    "4,8": "river",
+    "5,8": "river",
+    "6,8": "river",
+    "7,8": "river",
+    "8,8": "river_start",
+    "9,8": "empty",
+    "0,9": "clinic",
+    "1,9": "boat",
+    "2,9": "empty",
+    "3,9": "empty",
+    "4,9": "empty",
+    "5,9": "empty",
+    "6,9": "empty",
+    "7,9": "empty",
+    "8,9": "empty",
+    "9,9": "empty"
+  },
+  "inner_walls": [
+    [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    [
+      [
+        0,
+        4
+      ],
+      [
+        1,
+        4
+      ]
+    ],
+    [
+      [
+        0,
+        5
+      ],
+      [
+        1,
+        5
+      ]
+    ],
+    [
+      [
+        0,
+        7
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    [
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        3
+      ]
+    ],
+    [
+      [
+        1,
+        6
+      ],
+      [
+        1,
+        7
+      ]
+    ],
+    [
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        1
+      ]
+    ],
+    [
+      [
+        3,
+        0
+      ],
+      [
+        4,
+        0
+      ]
+    ],
+    [
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        1
+      ]
+    ],
+    [
+      [
+        3,
+        2
+      ],
+      [
+        4,
+        2
+      ]
+    ],
+    [
+      [
+        3,
+        3
+      ],
+      [
+        4,
+        3
+      ]
+    ],
+    [
+      [
+        3,
+        5
+      ],
+      [
+        4,
+        5
+      ]
+    ],
+    [
+      [
+        3,
+        6
+      ],
+      [
+        4,
+        6
+      ]
+    ],
+    [
+      [
+        4,
+        1
+      ],
+      [
+        4,
+        2
+      ]
+    ],
+    [
+      [
+        4,
+        3
+      ],
+      [
+        4,
+        4
+      ]
+    ],
+    [
+      [
+        4,
+        5
+      ],
+      [
+        4,
+        6
+      ]
+    ],
+    [
+      [
+        5,
+        2
+      ],
+      [
+        6,
+        2
+      ]
+    ],
+    [
+      [
+        5,
+        5
+      ],
+      [
+        6,
+        5
+      ]
+    ],
+    [
+      [
+        6,
+        0
+      ],
+      [
+        7,
+        0
+      ]
+    ],
+    [
+      [
+        6,
+        1
+      ],
+      [
+        7,
+        1
+      ]
+    ],
+    [
+      [
+        6,
+        2
+      ],
+      [
+        7,
+        2
+      ]
+    ],
+    [
+      [
+        6,
+        3
+      ],
+      [
+        7,
+        3
+      ]
+    ],
+    [
+      [
+        6,
+        5
+      ],
+      [
+        7,
+        5
+      ]
+    ],
+    [
+      [
+        6,
+        6
+      ],
+      [
+        7,
+        6
+      ]
+    ],
+    [
+      [
+        6,
+        7
+      ],
+      [
+        7,
+        7
+      ]
+    ],
+    [
+      [
+        8,
+        3
+      ],
+      [
+        8,
+        4
+      ]
+    ],
+    [
+      [
+        8,
+        4
+      ],
+      [
+        9,
+        4
+      ]
+    ],
+    [
+      [
+        8,
+        7
+      ],
+      [
+        9,
+        7
+      ]
+    ]
+  ],
+  "sample_test_spawns": [
+    [
+      2,
+      3
+    ],
+    [
+      0,
+      7
+    ],
+    [
+      8,
+      9
+    ]
+  ],
+  "metrics": {
+    "inner_walls": 28,
+    "river_tiles_including_start": 7,
+    "safe_treasure_to_exit_steps": 13,
+    "safe_spawn_to_treasure_steps": [
+      12,
+      12,
+      12
+    ],
+    "all_100_tiles_reachable": true,
+    "safe_route_bridges": 0
+  },
+  "playtests": [
+    {
+      "scenario": "sample spawn 1: equipment detour then escape",
+      "moves": 81,
+      "winner": "Player 1",
+      "visited_tile_types": [
+        "armory",
+        "batteries",
+        "boat",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    },
+    {
+      "scenario": "sample spawn 2: equipment detour then escape",
+      "moves": 82,
+      "winner": "Player 2",
+      "visited_tile_types": [
+        "armory",
+        "batteries",
+        "boat",
+        "clinic",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    },
+    {
+      "scenario": "sample spawn 3: equipment detour then escape",
+      "moves": 101,
+      "winner": "Player 3",
+      "visited_tile_types": [
+        "armory",
+        "batteries",
+        "boat",
+        "clinic",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    },
+    {
+      "scenario": "competitive race",
+      "moves": 75,
+      "winner": "Player 1",
+      "visited_tile_types": [
+        "armory",
+        "boat",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    },
+    {
+      "scenario": "river: equipment detour then escape",
+      "moves": 90,
+      "winner": "Player 1",
+      "visited_tile_types": [
+        "armory",
+        "batteries",
+        "boat",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    },
+    {
+      "scenario": "black_hole: equipment detour then escape",
+      "moves": 83,
+      "winner": "Player 1",
+      "visited_tile_types": [
+        "armory",
+        "batteries",
+        "boat",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    },
+    {
+      "scenario": "treasure: equipment detour then escape",
+      "moves": 39,
+      "winner": "Player 1",
+      "visited_tile_types": [
+        "boat",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft"
+      ]
+    },
+    {
+      "scenario": "devil: equipment detour then escape",
+      "moves": 75,
+      "winner": "Player 1",
+      "visited_tile_types": [
+        "armory",
+        "batteries",
+        "boat",
+        "empty",
+        "er",
+        "exit",
+        "fake_treasure",
+        "flashlight",
+        "raft",
+        "treasure"
+      ]
+    }
+  ],
+  "spawn_tests": {
+    "spawn_positions_tested": 100,
+    "spawn_failures": 0,
+    "checks": "Actual spawn/start effects; alive; safe routes to treasure, exit, healing and armory after spawn. Black-hole landings selected by manager on safe ground."
+  }
+}
