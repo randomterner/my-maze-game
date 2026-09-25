@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Maze Game - Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <script src="/static/socket.io.min.js"></script>
+  <style>
+    :root {
+      --bg: #f2f3f7;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --blue: #2f6df6;
+      --blue-dark: #2357c8;
+      --border: #e6e8ef;
+      --shadow: 0 2px 10px rgba(0,0,0,0.06);
+      --radius: 12px;
+      --board-size: min(94vw, 540px);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .wrap {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+
+    .card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    input, select, button {
+      font: inherit;
+    }
+
+    input, select {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      padding: 12px 14px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: var(--blue);
+      color: white;
+      min-height: 44px;
+    }
+
+    button:hover { background: var(--blue-dark); }
+    button.secondary { background: #6c757d; }
+    button.danger { background: #c93444; }
+
+    button.activeMode {
+      outline: 3px solid rgba(47,109,246,0.25);
+      background: #173f99;
+    }
+
+    .boardOuter {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      grid-template-rows: 24px 1fr;
+      gap: 6px;
+      align-items: start;
+    }
+
+    .cornerBox {
+      width: 28px;
+      height: 24px;
+    }
+
+    .colLabels {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      width: var(--board-size);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .rowLabels {
+      display: grid;
+      grid-template-rows: repeat(10, 1fr);
+      height: var(--board-size);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .rowLabel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .board {
+      width: var(--board-size);
+      height: var(--board-size);
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: 2px;
+    }
+
+    .cell {
+      position: relative;
+      overflow: hidden;
+      border-radius: 6px;
+      background: #c9d0dc;
+      cursor: pointer;
+      aspect-ratio: 1 / 1;
+    }
+
+    .cell img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .playerTag {
+      position: absolute;
+      right: 2px;
+      bottom: 2px;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.78);
+      color: white;
+      max-width: 44px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .topWall, .bottomWall, .leftWall, .rightWall {
+      position: absolute;
+      background: rgba(0,0,0,0.95);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .topWall, .bottomWall {
+      left: 0;
+      right: 0;
+      height: 4px;
+    }
+
+    .topWall { top: 0; }
+    .bottomWall { bottom: 0; }
+
+    .leftWall, .rightWall {
+      top: 0;
+      bottom: 0;
+      width: 4px;
+    }
+
+    .leftWall { left: 0; }
+    .rightWall { right: 0; }
+
+    .brokenEdgeTop, .brokenEdgeBottom,
+    .brokenEdgeLeft, .brokenEdgeRight {
+      background: #1e7bff !important;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .good {
+      color: #0b8a2f;
+      font-weight: bold;
+    }
+
+    .bad {
+      color: #b00020;
+      font-weight: bold;
+    }
+
+    .logs {
+      max-height: 260px;
+      overflow: auto;
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    .logs div {
+      padding: 4px 0;
+      border-bottom: 1px solid #efefef;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid #e8e8e8;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .toolGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 920px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      .row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .row button, .row input, .row select {
+        width: 100%;
+      }
+
+      .toolGrid {
+        grid-template-columns: 1fr;
+      }
+
+      .board {
+        width: min(96vw, 420px);
+        height: min(96vw, 420px);
+      }
+
+      .colLabels { width: min(96vw, 420px); }
+      .rowLabels { height: min(96vw, 420px); }
+    }
+    /* Expedition-control-room visual system */
+    :root { --bg:#080d18; --card:rgba(15,24,42,.92); --text:#f2f7ff; --muted:#9aa9c4; --blue:#f2a943; --blue-dark:#cb742a; --border:rgba(220,178,109,.22); --shadow:0 22px 55px rgba(0,0,0,.32); --radius:18px; --board-size:min(94vw,570px); }
+    body { min-height:100vh; font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:radial-gradient(circle at 5% 0%,rgba(141,87,28,.21),transparent 31rem),radial-gradient(circle at 92% 25%,rgba(33,112,135,.18),transparent 30rem),linear-gradient(145deg,#080d18 0%,#15101b 52%,#070b14 100%); color:var(--text); }
+    .wrap { max-width:1400px; padding:20px; }
+    .card { background:linear-gradient(145deg,rgba(30,31,48,.96),rgba(10,16,29,.96)); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); backdrop-filter:blur(16px); }
+    .hero { display:flex; align-items:center; justify-content:space-between; gap:20px; overflow:hidden; position:relative; padding:24px; border-color:rgba(242,169,67,.38); background:linear-gradient(105deg,rgba(70,45,29,.97),rgba(22,23,50,.94)); }
+    .hero::after { content:""; position:absolute; width:260px; height:260px; right:-92px; top:-150px; border:1px solid rgba(255,203,105,.3); border-radius:50%; box-shadow:0 0 0 28px rgba(255,203,105,.04),0 0 0 56px rgba(255,203,105,.03); }
+    .eyebrow { margin:0 0 5px; color:#ffd37e; font-size:.68rem; font-weight:800; letter-spacing:.18em; }
+    .hero h1 { margin:0; font-size:clamp(1.8rem,4vw,2.65rem); letter-spacing:-.055em; }
+    .hero p { margin:6px 0 0; color:var(--muted); max-width:510px; }
+    .hero .row { position:relative; z-index:1; }
+    .role-chip { display:inline-flex; padding:7px 10px; margin-top:12px; border:1px solid rgba(255,211,126,.3); border-radius:999px; background:rgba(133,82,24,.24); color:#fff0cd; font-size:.72rem; font-weight:800; letter-spacing:.05em; }
+    .small { color:var(--muted); }
+    input,select { color:var(--text); background:rgba(4,10,22,.62); border-color:rgba(218,178,116,.32); }
+    button { background:linear-gradient(135deg,#f2a943,#ce6b37); box-shadow:0 8px 22px rgba(209,122,39,.23); font-weight:750; }
+    button:hover { background:linear-gradient(135deg,#ffc361,#e47c45); }
+    button.secondary { background:linear-gradient(135deg,#59728f,#33465e); } button.danger { background:linear-gradient(135deg,#d9535f,#9d2d49); }
+    .layout { grid-template-columns:minmax(0, 630px) minmax(360px, 1fr); }
+    .logs { max-height:280px; overflow-y:auto; overflow-x:hidden; background:rgba(4,10,20,.5); border-color:var(--border); color:#cbd6e5; } .logs div { min-height:25px; border-color:rgba(148,173,209,.12); }
+    #playersTable { max-height:300px; overflow:auto; border-radius:12px; }
+    #playersTable table { min-width:760px; }
+    .colLabels,.rowLabels { color:#c6c4d5; letter-spacing:.04em; }
+    .board { padding:9px; gap:3px; border-radius:17px; background:linear-gradient(145deg,#71604b,#1d1a22 22%,#0b111d 78%,#66513b); box-shadow:inset 0 0 0 1px rgba(255,221,159,.25),0 18px 40px rgba(0,0,0,.38); }
+    .cell { border-radius:5px; background:#101a29; box-shadow:inset 0 0 0 1px rgba(237,206,154,.12); transition:transform 150ms ease,filter 150ms ease; } .cell:hover { transform:translateY(-1px); filter:brightness(1.14); } .cell img { transform:scale(1.02); }
+    .playerTag { left:50%; right:auto; bottom:4px; transform:translateX(-50%); padding:0 0 11px; max-width:86px; overflow:visible; border:0; border-radius:0; background:transparent; color:#fff; font-size:9px; font-weight:800; text-align:center; text-shadow:1px 1px 0 #07101d,-1px -1px 0 #07101d,1px -1px 0 #07101d,-1px 1px 0 #07101d; box-shadow:none; }
+    .playerTag::after { content:""; position:absolute; left:50%; bottom:0; width:8px; height:8px; transform:translateX(-50%); border:2px solid #08101c; border-radius:50%; background:var(--player-color, #ffcc55); box-shadow:0 0 0 1px rgba(255,255,255,.28); }
+    .birthLabel { position:absolute; bottom:1px; left:2px; right:2px; z-index:7; background:rgba(10,18,30,.9); color:#fff; font-size:9px; line-height:12px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+    .topWall,.bottomWall,.leftWall,.rightWall { background:#e53935; } .brokenEdgeTop,.brokenEdgeBottom,.brokenEdgeLeft,.brokenEdgeRight { background:#52d8ff !important; }
+    table { border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--border); border-radius:12px; } th,td { border-color:rgba(148,173,209,.13); } th { color:#ffd98e; background:rgba(160,101,43,.15); }
+    .reconnectApproval { margin-top:12px; border-color:rgba(255, 197, 91, .7); background:linear-gradient(135deg, rgba(108, 67, 17, .96), rgba(43, 28, 16, .96)); }
+    .reconnectApproval h3 { color:#ffe0a0; }
+    .reconnectRequest { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px; border:1px solid rgba(255, 220, 145, .25); border-radius:12px; background:rgba(7, 10, 19, .36); }
+    .reconnectRequest strong { color:#fff0c5; }
+    #reconnectClaimsCard { position:fixed; right:16px; bottom:16px; z-index:10000; width:min(600px,calc(100vw - 32px)); max-height:55dvh; overflow:auto; margin:0; padding:18px; box-sizing:border-box; box-shadow:0 12px 50px #000b; border:2px solid #ffd166; }
+    #reconnectClaimsCard[hidden] { display:none; }
+    #reconnectClaims { display:grid; gap:10px; }
+    #reconnectClaimsCard .reconnectRequest { flex-wrap:wrap; }
+    #reconnectClaimsCard .reconnectRequest > div:first-child { flex:1 1 200px; min-width:0; overflow-wrap:anywhere; }
+    #reconnectClaimsCard .row { display:flex; flex-direction:row; flex-wrap:wrap; width:auto; }
+    #reconnectClaimsCard button { width:auto; min-height:44px; font-size:17px; }
+    @media (max-width:920px) { .layout { grid-template-columns:minmax(0,1fr); } }
+    @media (max-width:640px) {
+      :root { --board-size:min(calc(100vw - 82px), 420px); }
+      .wrap { padding:10px; }
+      .hero { align-items:flex-start; flex-direction:column; }
+      .board { width:var(--board-size); height:var(--board-size); }
+      .colLabels { width:var(--board-size); }
+      .rowLabels { height:var(--board-size); }
+    }
+  </style>
+  <link rel="stylesheet" href="/static/game-ui.css?v=20260923">
+  <script src="/static/game-ui.js?v=20260923"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="card hero">
+    <div>
+      <div class="eyebrow">MAZE OPERATIONS CENTER</div>
+      <h1>Dungeon Director</h1>
+      <p>Shape the maze, watch the expedition, and keep the legends moving.</p>
+      <span class="role-chip">MANAGER CONSOLE</span>
+    </div>
+    <div class="row">
+      <button onclick="joinManager()">Join as manager</button>
+      <button id="boardReadyBtn" onclick="socket.emit('manager_board_ready')">Board ready — allow spawning</button>
+      <button id="startGameBtn" onclick="startGame()">Start game</button>
+      <button class="secondary" onclick="resetGame()">Reset game</button>
+      <button id="clearBoardBtn" class="danger" onclick="clearBoard()">Clear board</button>
+    </div>
+    <div class="small" id="managerStatus">Not joined yet.</div>
+  </div>
+
+  <section class="card reconnectApproval" id="reconnectClaimsCard" hidden aria-live="polite">
+    <h3 style="margin-top:0;">Reconnect requests <span id="reconnectClaimsCount"></span></h3>
+    <div class="small">Approve only if the person is the player who lost their tab.</div>
+    <div id="reconnectClaims" style="margin-top:10px;"></div>
+  </section>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <h3>Load a map</h3>
+        <label for="mapPreset">Tested maps</label>
+        <div class="row">
+          <select id="mapPreset" style="max-width:100%;" disabled>
+            <option value="map-1">Open Crossroads</option>
+            <option value="map-2">Three Crossings</option>
+            <option value="map-3">Broken Courtyards</option>
+          </select>
+          <button id="loadMapBtn" onclick="confirmMapLoad({preset_id:document.getElementById('mapPreset').value})" disabled>Load selected map</button>
+        </div>
+        <p><label for="mapFile">Or import a map JSON file</label></p>
+        <input id="mapFile" type="file" accept=".json,application/json" style="max-width:100%;" onchange="readMapFile(this)" disabled>
+        <p id="mapLoadStatus" role="status" aria-live="polite">Join as manager to load a map.</p>
+      </section>
+      <div class="card">
+        <h3 style="margin-top:0;">Board tools</h3>
+
+        <div class="row">
+          <select id="tileType">
+            <option value="empty">empty</option>
+            <option value="treasure">treasure</option>
+            <option value="fake_treasure">fake_treasure</option>
+            <option value="exit">exit</option>
+            <option value="river">river</option>
+            <option value="river_start">river_start</option>
+            <option value="boat">boat</option>
+            <option value="raft">raft</option>
+            <option value="clinic">clinic</option>
+            <option value="er">er</option>
+            <option value="monster">monster</option>
+            <option value="devil">devil</option>
+            <option value="black_hole">black_hole</option>
+            <option value="flashlight">flashlight</option>
+            <option value="batteries">batteries</option>
+            <option value="armory">armory</option>
+          </select>
+        </div>
+
+        <div class="toolGrid">
+          <button id="tileModeBtn" class="activeMode" onclick="setToolMode('tile')">Tile mode</button>
+          <button id="wallModeBtn" onclick="setToolMode('wall')">Wall mode</button>
+        </div>
+
+        <div class="row" style="margin-top:8px;">
+          <select id="wallDirection">
+            <option value="up">wall: up</option>
+            <option value="down">wall: down</option>
+            <option value="left">wall: left</option>
+            <option value="right">wall: right</option>
+          </select>
+        </div>
+
+        <div class="small" style="margin-top:8px;">
+          In tile mode: tap a cell to place the selected tile.<br>
+          In wall mode: tap a cell to toggle the selected wall side.<br>
+          Exit must be on the edge.
+        </div>
+
+        <a href="/boards" target="_blank" style="color:#ffe4a0;">Public boards</a>
+        <div class="pendingNotice" id="pendingNotice" hidden role="status"></div>
+
+        <div class="boardOuter">
+          <div class="cornerBox"></div>
+          <div class="colLabels" id="colLabels"></div>
+          <div class="rowLabels" id="rowLabels"></div>
+          <div class="board" id="board"></div>
+        </div>
+        <div id="birthLegend" class="birthLegend"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Black hole</h3>
+        <div id="blackHoleStatus" class="small">No pending black hole.</div>
+        <div class="small" style="margin-top:8px;">
+          While a black hole is pending, tap an empty tile to place that player.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">River validation</h3>
+        <div id="riverValidation">No data yet.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Legend</h3>
+        <div class="small">Red solid line = wall.</div>
+        <div class="small" style="margin-top:8px;">Blue line = broken wall.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div><strong>Turn:</strong> <span id="turnInfo">Waiting</span></div>
+        <div class="small" id="gameInfo">Game not started.</div>
+        <div class="small"><strong>Current tool:</strong> <span id="toolModeLabel">Tile</span></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Players</h3>
+        <div id="playersTable">No players.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Logs</h3>
+        <div class="logs" id="logs"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button id="languageSwitcher" type="button" style="position:fixed;top:12px;right:12px;z-index:9999;padding:8px 12px;border:1px solid #65d8ff;border-radius:8px;background:#10233e;color:#fff;font-weight:700;cursor:pointer;">&#1506;&#1489;&#1512;&#1497;&#1514;</button>
+<dialog id="mapLoadDialog" style="max-width:min(90vw,500px);border-radius:12px;padding:24px;">
+  <h2>Replace the current board?</h2>
+  <p>This replaces all tiles and walls. Players can spawn anywhere after you click Board ready.</p>
+  <div class="row">
+    <button id="confirmMapLoadBtn" onclick="submitMapLoad()">Replace board</button>
+    <button class="secondary" onclick="document.getElementById('mapLoadDialog').close()">Cancel</button>
+  </div>
+</dialog>
+<script src="/static/translation.js?v=2"></script>
+<script>
+  const socket = io({
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+  });
+  let state = null;
+  let reconnectClaims = [];
+  let toolMode = "tile";
+  let pendingMapLoad = null;
+
+  function mapEditorLocked() {
+    return !state || state.board_ready || state.game_started;
+  }
+
+  function setMapLoadStatus(message) {
+    document.getElementById('mapLoadStatus').textContent = window.translateGameText?.(message) ?? message;
+  }
+
+  function confirmMapLoad(payload) {
+    if (mapEditorLocked()) return;
+    pendingMapLoad = payload;
+    document.getElementById('mapLoadDialog').showModal();
+  }
+
+  async function readMapFile(input) {
+    const file = input.files[0];
+    input.value = '';
+    if (!file || mapEditorLocked()) return;
+    try {
+      if (file.size > 100000) throw new Error();
+      const layout = JSON.parse(await file.text());
+      confirmMapLoad({layout});
+    } catch {
+      setMapLoadStatus('Invalid map file.');
+    }
+  }
+
+  function submitMapLoad() {
+    document.getElementById('mapLoadDialog').close();
+    if (mapEditorLocked() || !pendingMapLoad) return;
+    socket.emit('manager_load_map', {...pendingMapLoad, confirmed:true});
+    pendingMapLoad = null;
+  }
+
+  socket.on('map_loaded', data => setMapLoadStatus(data.message));
+
+  const textureMap = {
+    empty: "pixel_tiles/empty.png",
+    treasure: "pixel_tiles/treasure.png",
+    fake_treasure: "pixel_tiles/fake_treasure.png",
+    exit: "pixel_tiles/exit.png",
+    river: "pixel_tiles/river.png",
+    river_start: "pixel_tiles/river_start.png",
+    boat: "pixel_tiles/boat.png",
+    raft: "pixel_tiles/raft.png",
+    clinic: "pixel_tiles/clinic.png",
+    er: "pixel_tiles/er.png",
+    monster: "pixel_tiles/monster.png",
+    devil: "pixel_tiles/devil.png",
+    black_hole: "pixel_tiles/black_hole.png",
+    flashlight: "pixel_tiles/flashlight.png",
+    batteries: "pixel_tiles/batteries.png",
+    armory: "pixel_tiles/armory.png",
+    used_treasure: "pixel_tiles/treasure.png",
+    used_fake_treasure: "pixel_tiles/fake_treasure.png",
+    used_boat: "pixel_tiles/boat.png",
+    used_raft: "pixel_tiles/raft.png",
+    used_flashlight: "pixel_tiles/flashlight.png",
+    used_batteries: "pixel_tiles/batteries.png"
+  };
+
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  function scrollLogsToBottom() {
+    const el = document.getElementById("logs");
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function joinManager() {
+    socket.emit("join_manager");
+  }
+
+  function startGame() {
+    socket.emit("manager_start_game");
+  }
+
+  function resetGame() {
+    socket.emit("manager_reset_game");
+  }
+
+  function clearBoard() {
+    socket.emit("manager_clear_board");
+  }
+
+  function setToolMode(mode) {
+    toolMode = mode;
+    document.getElementById("toolModeLabel").textContent = mode === "tile" ? "Tile" : "Wall";
+    document.getElementById("tileModeBtn").classList.toggle("activeMode", mode === "tile");
+    document.getElementById("wallModeBtn").classList.toggle("activeMode", mode === "wall");
+  }
+
+  function handleBoardClick(x, y) {
+    if (!state) return;
+
+    if (state.pending_black_hole) {
+      const key = `${x},${y}`;
+      const tile = (state.raw_board || {})[key];
+      if (tile === "empty") {
+        socket.emit("manager_resolve_black_hole", { x, y });
+      } else {
+        alert("Black hole destination must be an empty tile.");
+      }
+      return;
+    }
+
+    if (mapEditorLocked()) return;
+    if (toolMode === "tile") {
+      const tile = document.getElementById("tileType").value;
+      socket.emit("manager_set_tile", { x, y, tile });
+    } else {
+      const direction = document.getElementById("wallDirection").value;
+      socket.emit("manager_toggle_inner_wall", { x, y, direction });
+    }
+  }
+
+  function hasInnerWallBetween(a, b) {
+    if (!state || !state.inner_walls) return false;
+    return state.inner_walls.some(edge => {
+      const [p1, p2] = edge;
+      return (
+        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
+        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
+      );
+    });
+  }
+
+  function edgeExists(edgeList, a, b) {
+    if (!edgeList) return false;
+    return edgeList.some(edge => {
+      const [p1, p2] = edge;
+      return (
+        (p1[0] === a[0] && p1[1] === a[1] && p2[0] === b[0] && p2[1] === b[1]) ||
+        (p2[0] === a[0] && p2[1] === a[1] && p1[0] === b[0] && p1[1] === b[1])
+      );
+    });
+  }
+
+  function getAllBrokenEdges() {
+    if (state?.broken_walls) return state.broken_walls;
+    if (!state || !state.players) return [];
+    const all = [];
+
+    (state.players || []).forEach(player => {
+      const edges = player.known_broken_walls || [];
+      edges.forEach(edge => {
+        const exists = all.some(existing => {
+          const [a1, a2] = existing;
+          const [b1, b2] = edge;
+          return (
+            (a1[0] === b1[0] && a1[1] === b1[1] && a2[0] === b2[0] && a2[1] === b2[1]) ||
+            (a1[0] === b2[0] && a1[1] === b2[1] && a2[0] === b1[0] && a2[1] === b1[1])
+          );
+        });
+        if (!exists) all.push(edge);
+      });
+    });
+
+    return all;
+  }
+
+  function buildBoardLabels() {
+    const colLabels = document.getElementById("colLabels");
+    const rowLabels = document.getElementById("rowLabels");
+
+    colLabels.innerHTML = "";
+    rowLabels.innerHTML = "";
+
+    const letters = ["A","B","C","D","E","F","G","H","I","J"];
+    letters.forEach(letter => {
+      const div = document.createElement("div");
+      div.textContent = letter;
+      colLabels.appendChild(div);
+    });
+
+    for (let i = 1; i <= 10; i++) {
+      const div = document.createElement("div");
+      div.className = "rowLabel";
+      div.textContent = i;
+      rowLabels.appendChild(div);
+    }
+  }
+
+  function buildBoard() {
+    const boardEl = document.getElementById("board");
+    boardEl.innerHTML = "";
+    if (!state) return;
+
+    const brokenEdges = getAllBrokenEdges();
+    const birthSpots = {};
+    (state.players || []).filter(p => p.spawned).forEach(p => { const key = `${p.birth_x},${p.birth_y}`; (birthSpots[key] ||= []).push(p); });
+    drawBirthLegend(document.getElementById('birthLegend'), birthSpots);
+    boardEl.classList.toggle('pendingBoard', Boolean(state.pending_black_hole));
+
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        const key = `${x},${y}`;
+        const tile = (state.board || {})[key] || "empty";
+
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        if (state.pending_black_hole && tile === 'empty') cell.classList.add('blackHoleTarget');
+        cell.title = `${x},${y}: ${tile}`;
+        cell.onclick = () => handleBoardClick(x, y);
+
+        const texture = textureMap[tile];
+        if (texture) {
+          const img = document.createElement("img");
+          img.src = `/static/${texture}`;
+          img.alt = tile;
+          cell.appendChild(img);
+        }
+
+        const playersHere = (state.players || []).filter(p => p.alive && p.x === x && p.y === y);
+        const birthNames = (state.players || []).filter(p => p.spawned && p.birth_x === x && p.birth_y === y).map(p => p.name);
+        drawBirthLabel(cell, birthNames);
+        drawPlayerDots(cell, playersHere);
+
+        if (y === 0) {
+          const w = document.createElement("div");
+          w.className = "topWall";
+          cell.appendChild(w);
+        }
+        if (y === 9) {
+          const w = document.createElement("div");
+          w.className = "bottomWall";
+          cell.appendChild(w);
+        }
+        if (x === 0) {
+          const w = document.createElement("div");
+          w.className = "leftWall";
+          cell.appendChild(w);
+        }
+        if (x === 9) {
+          const w = document.createElement("div");
+          w.className = "rightWall";
+          cell.appendChild(w);
+        }
+
+        if (y > 0 && hasInnerWallBetween([x, y], [x, y - 1])) {
+          const w = document.createElement("div");
+          w.className = "topWall";
+          cell.appendChild(w);
+        }
+        if (x > 0 && hasInnerWallBetween([x, y], [x - 1, y])) {
+          const w = document.createElement("div");
+          w.className = "leftWall";
+          cell.appendChild(w);
+        }
+
+        if (y > 0 && edgeExists(brokenEdges, [x, y], [x, y - 1])) {
+          const w = document.createElement("div");
+          w.className = "topWall brokenEdgeTop";
+          cell.appendChild(w);
+        }
+        if (x > 0 && edgeExists(brokenEdges, [x, y], [x - 1, y])) {
+          const w = document.createElement("div");
+          w.className = "leftWall brokenEdgeLeft";
+          cell.appendChild(w);
+        }
+
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function buildPlayersTable() {
+    const container = document.getElementById("playersTable");
+    if (!state || !state.players || state.players.length === 0) {
+      container.innerHTML = "No players.";
+      return;
+    }
+
+    const rows = state.players.map(p => `
+      <tr>
+        <td>${escapeHtml(p.name)}</td>
+        <td>${p.connected ? "Connected" : p.alive ? "Disconnected — turn waits" : "Disconnected"}</td>
+        <td>${p.alive ? "Yes" : "No"}</td>
+        <td>${p.spawned ? "Yes" : "No"}</td>
+        <td>${p.lost ? "Yes" : "No"}</td>
+        <td>${p.x === null ? "-" : `${p.x},${p.y}`}</td>
+        <td>${p.injuries}</td>
+        <td>${p.bullets}</td>
+        <td>${p.bombs}</td>
+        <td>${Object.entries(p.items).filter(([k,v]) => v).map(([k]) => escapeHtml(k)).join(", ") || "-"}</td>
+        <td>${escapeHtml(p.last_message || "")}</td>
+        <td>${p.connected || !p.alive ? "—" : `<button class="secondary" onclick='confirmPlayerLeft(${JSON.stringify(p.sid)})'>Confirm left</button>`}</td>
+      </tr>
+    `).join("");
+
+    container.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Connection</th>
+            <th>Alive</th>
+            <th>Spawned</th>
+            <th>Lost</th>
+            <th>Position</th>
+            <th>Injuries</th>
+            <th>Bullets</th>
+            <th>Bombs</th>
+            <th>Items</th>
+            <th>Last message</th>
+            <th>Leave</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function buildReconnectClaims(claims = state?.pending_reconnect_claims || []) {
+    const card = document.getElementById("reconnectClaimsCard");
+    const container = document.getElementById("reconnectClaims");
+    reconnectClaims = claims;
+    card.hidden = claims.length === 0;
+    document.getElementById('reconnectClaimsCount').textContent=claims.length?`(${claims.length})`:'';
+    container.replaceChildren();
+    for(const claim of claims){
+      const row=document.createElement('div');row.className='reconnectRequest';
+      const info=document.createElement('div');
+      const name=document.createElement('strong');name.textContent=claim.name;
+      const hint=document.createElement('div');hint.className='small';hint.textContent='A new tab is asking to restore this disconnected player.';
+      info.append(name,hint);
+      const actions=document.createElement('div');actions.className='row';
+      for(const [label,approved] of [['Approve',true],['Reject',false]]){
+        const button=document.createElement('button');button.textContent=label;
+        if(!approved)button.className='secondary';
+        button.dataset.claimSid=claim.sid;
+        button.onclick=()=>respondToReconnect(claim.sid,approved);
+        actions.appendChild(button);
+      }
+      row.append(info,actions);container.appendChild(row);
+    }
+    // Manager controls must remain reachable if a treasure reveal is open.
+    if(claims.length){
+      const treasure=document.getElementById('treasureReveal');
+      const pending=state?.treasure_reveal;
+      if(treasure&&pending){treasure.dataset.dismissed=`${pending.player_sid}:${pending.phase}`;if(treasure.open)treasure.close();}
+    }
+    window.applyGameTranslations?.(card);
+  }
+
+  function respondToReconnect(sid, approved) {
+    socket.emit(approved ? "manager_approve_reconnect" : "manager_reject_reconnect", { sid });
+  }
+
+  function confirmPlayerLeft(sid) {
+    socket.emit("manager_confirm_player_left", { sid });
+  }
+
+  function updateTopInfo() {
+    if (!state) return;
+
+    if (!state.game_started) {
+      document.getElementById("turnInfo").textContent = "Not started";
+      document.getElementById("gameInfo").textContent = "Board can be edited. Waiting to start.";
+    } else if (state.game_over) {
+      const winner = (state.players || []).find(p => p.sid === state.winner_sid);
+      document.getElementById("turnInfo").textContent = "Game Over";
+      document.getElementById("gameInfo").textContent = winner
+        ? `Winner: ${winner.name} (${state.winner_reason})`
+        : `Winner: ${state.winner_reason || "-"}`;
+    } else {
+      const turnPlayer = (state.players || []).find(p => p.sid === state.current_turn_sid);
+      document.getElementById("turnInfo").textContent = turnPlayer ? turnPlayer.name : "Unknown";
+      document.getElementById("gameInfo").textContent = `Turn #${state.turn_number}`;
+    }
+
+    if (state.pending_black_hole) {
+      const p = (state.players || []).find(pp => pp.sid === state.pending_black_hole.player_sid);
+      document.getElementById("blackHoleStatus").textContent = p
+        ? `Pending black hole for ${p.name}. Tap an empty tile.`
+        : "Pending black hole.";
+    } else {
+      document.getElementById("blackHoleStatus").textContent = "No pending black hole.";
+    }
+    const notice = document.getElementById('pendingNotice');
+    notice.hidden = !state.pending_black_hole;
+    notice.textContent = document.getElementById('blackHoleStatus').textContent;
+
+    if (state.river_validation) {
+      document.getElementById("riverValidation").innerHTML = state.river_validation.ok
+        ? `<span class="good">${escapeHtml(state.river_validation.message)}</span>`
+        : `<span class="bad">${escapeHtml(state.river_validation.message)}</span>`;
+    }
+  }
+
+  function updateLogs() {
+    document.getElementById("logs").innerHTML =
+      (state.logs || []).map(line => `<div>${escapeHtml(line)}</div>`).join("");
+  }
+
+  socket.on("joined_as_manager", data => {
+    window.localStorage.setItem("maze-manager-reconnect-token", data.reconnect_token);
+    document.getElementById("managerStatus").textContent = `Joined as manager. SID: ${data.sid}`;
+  });
+
+  socket.on("connect", () => {
+    const reconnectToken = window.localStorage.getItem("maze-manager-reconnect-token");
+    if (reconnectToken) {
+      document.getElementById("managerStatus").textContent = "Reconnecting as manager...";
+      socket.emit("resume_manager", { reconnect_token: reconnectToken });
+    }
+  });
+
+  socket.on("disconnect", () => {
+    document.getElementById("managerStatus").textContent = "Manager connection lost. Reconnecting...";
+  });
+
+  socket.on("connect_error", () => {
+    document.getElementById("managerStatus").textContent = "Cannot reach the game. Retrying...";
+  });
+
+  socket.on("resumed_as_manager", data => {
+    document.getElementById("managerStatus").textContent = `Reconnected as manager. SID: ${data.sid}`;
+  });
+
+  socket.on("reconnect_claim_requested", data => {
+    document.getElementById("managerStatus").textContent =
+      `Reconnect request waiting for ${data.name}.`;
+    buildReconnectClaims([...reconnectClaims.filter(claim=>claim.sid!==data.sid),data]);
+  });
+
+  socket.on("resume_failed", data => {
+    window.localStorage.removeItem("maze-manager-reconnect-token");
+    document.getElementById("managerStatus").textContent = data.message;
+  });
+
+  socket.on("manager_state", data => {
+    state = data;
+    buildReconnectClaims();
+    document.getElementById('boardReadyBtn').disabled=state.board_ready||state.game_started;
+    document.getElementById('startGameBtn').disabled=!state.board_ready||state.game_started;
+    const locked = mapEditorLocked();
+    for (const id of ['mapPreset','loadMapBtn','mapFile','tileType','tileModeBtn','wallModeBtn','wallDirection','clearBoardBtn']) {
+      document.getElementById(id).disabled = locked;
+    }
+    if (locked) {
+      document.getElementById('mapLoadDialog').close();
+      pendingMapLoad = null;
+    }
+    setMapLoadStatus(locked ? 'Board editing is locked. Reset the game to edit it.' : 'Load a tested map or import JSON. Review it before clicking Board ready.');
+    updateTreasureReveal(reconnectClaims.length ? null : state.treasure_reveal);
+    buildBoardLabels();
+    buildBoard();
+    buildPlayersTable();
+    updateTopInfo();
+    updateLogs();
+    scrollLogsToBottom();
+    window.applyGameTranslations?.();
+  });
+
+  socket.on("error_message", data => {
+    alert(window.translateGameText?.(data.message) ?? data.message);
+  });
+</script>
+</body>
+</html>
