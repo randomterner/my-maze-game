@@ -2,6 +2,8 @@ const socket = typeof io === 'function' ? io() : null;
 let publicState = null, selectedBoardId = null;
 let lastUpdate = 0, lastRealtime = 0, snapshotPending = false;
 const detail = document.getElementById('boardDetail');
+const boardCards = new Map();
+let renderedLogs = [];
 
 function fitBoards() {
   const root=document.getElementById('boardsList');
@@ -25,17 +27,24 @@ function updateBoardDetail() {
   const board=publicState?.boards.find(b=>b.id===selectedBoardId);
   if(!board){if(detail.open)detail.close();return;}
   document.getElementById('detailTitle').textContent=board.name;
-  document.getElementById('detailMap').replaceChildren(createMapView(board,true));
+  const detailMap=document.getElementById('detailMap'), signature=JSON.stringify(board);
+  if(detailMap.dataset.renderKey!==signature){detailMap.replaceChildren(createMapView(board,true));detailMap.dataset.renderKey=signature;}
   drawPlayerStats(document.getElementById('detailStats'),publicState.players.filter(p=>(board.member_sids||[]).includes(p.sid)));
   window.applyGameTranslations?.(detail);
 }
 
 function renderBoards(data) {
   publicState=data;
-  const root=document.getElementById('boardsList');root.replaceChildren();
+  const root=document.getElementById('boardsList');
   document.getElementById('gameOverNotice').hidden=!data.game_over;
-  if(!data.boards.length)root.textContent='No public boards yet.';
+  if(!data.boards.length){root.textContent='No public boards yet.';boardCards.clear();}
+  else if(!root.querySelector('.publicBoardCard'))root.replaceChildren();
+  const activeIds=new Set(data.boards.map(b=>b.id));
+  for(const [id,entry] of boardCards)if(!activeIds.has(id)){entry.card.remove();boardCards.delete(id);}
+  let cardIndex=0;
   for(const board of data.boards){
+    const signature=JSON.stringify(board), previous=boardCards.get(board.id);
+    if(previous?.signature===signature){if(root.children[cardIndex]!==previous.card)root.insertBefore(previous.card,root.children[cardIndex]||null);cardIndex++;continue;}
     const card=document.createElement('section');card.className='publicBoardCard'+(board.manager_map?' managerMapCard':'');
     card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',board.name);
     const title=document.createElement('h2');title.textContent=board.name;card.appendChild(title);
@@ -43,12 +52,18 @@ function renderBoards(data) {
     const caption=document.createElement('div');caption.className='boardCaption';caption.textContent=board.archived?'Saved discoveries — position hidden':board.absolute?'Public coordinates':'Relative map';card.appendChild(caption);
     card.onclick=()=>showBoardDetail(board.id);
     card.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showBoardDetail(board.id);}};
-    root.appendChild(card);
+    if(previous)previous.card.replaceWith(card);
+    if(root.children[cardIndex]!==card)root.insertBefore(card,root.children[cardIndex]||null);
+    boardCards.set(board.id,{card,signature});cardIndex++;
   }
   const logs=document.getElementById('publicLogs');
   document.getElementById('latestPublicMessage').textContent=data.logs?.length?data.logs[data.logs.length-1]:'No messages yet.';
   const follow=logs.scrollHeight-logs.scrollTop-logs.clientHeight<35,oldScroll=logs.scrollTop;
-  logs.replaceChildren(...(data.logs||[]).map(line=>{const row=document.createElement('div');row.textContent=line;return row;}));
+  const nextLogs=data.logs||[];
+  const appendOnly=renderedLogs.length<=nextLogs.length&&renderedLogs.every((line,index)=>line===nextLogs[index]);
+  if(!appendOnly)logs.replaceChildren();
+  for(const line of nextLogs.slice(appendOnly?renderedLogs.length:0)){const row=document.createElement('div');row.textContent=line;logs.appendChild(row);}
+  renderedLogs=[...nextLogs];
   fitBoards();
   if(detail.open)updateBoardDetail();
   updateTreasureReveal(data.treasure_reveal);
