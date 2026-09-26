@@ -68,8 +68,9 @@
     const cx = focus.length ? Math.round(focus.reduce((s,p)=>s+p[0],0)/focus.length) : 0;
     const cy = focus.length ? Math.round(focus.reduce((s,p)=>s+p[1],0)/focus.length) : 0;
     const radius = Math.max(5,...points.map(p=>Math.max(Math.abs(p[0]-cx),Math.abs(p[1]-cy))));
-    const size = board.manager_map ? 10 : radius * 2 + 1;
-    const minX = board.manager_map ? 0 : cx-radius, minY = board.manager_map ? 0 : cy-radius;
+    const fixed = board.manager_map || board.absolute;
+    const size = fixed ? 10 : radius * 2 + 1;
+    const minX = fixed ? 0 : cx-radius, minY = fixed ? 0 : cy-radius;
     grid.style.gridTemplateColumns = `repeat(${size},minmax(0,1fr))`;
     grid.style.gridTemplateRows = `repeat(${size},minmax(0,1fr))`;
     grid.dataset.centerX = cx; grid.dataset.centerY = cy;
@@ -77,6 +78,11 @@
     const edges = new Map();
     for (const [kind,list] of [['open',board.open_edges],['wall',board.wall_edges],['broken',board.broken_walls]]) {
       for(const edge of list||[]) edges.set(key(...edge),kind);
+    }
+    for(const line of board.outer_wall_lines||[])for(let n=0;n<size;n++){
+      const a=line.axis==='x'?[line.at-1,minY+n]:[minX+n,line.at-1];
+      const b=line.axis==='x'?[line.at,minY+n]:[minX+n,line.at];
+      edges.set(key(a,b),'wall');
     }
     for(let dy=0;dy<size;dy++) for(let dx=0;dx<size;dx++) {
       const x=minX+dx,y=minY+dy,tile=board.tiles?.[`${x},${y}`];
@@ -92,7 +98,7 @@
     }
     if(players.length){const names=document.createElement('div');names.className='mapNames';players.forEach(p=>{const name=document.createElement('span');name.textContent=p.name;name.style.borderInlineStart=`8px solid ${p.color}`;names.appendChild(name);});wrap.appendChild(names);}
     if(large){const births=document.createElement('div');births.className='birthLegend';drawBirthLegend(births,board.birth_spots||{},!board.absolute);wrap.appendChild(births);}
-    if(board.manager_map&&large){
+    if(fixed){
       const axes=document.createElement('div');axes.className='mapAxes';
       const cols=document.createElement('div');cols.className='mapAxisColumns';
       const rows=document.createElement('div');rows.className='mapAxisRows';
