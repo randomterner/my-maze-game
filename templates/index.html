@@ -471,7 +471,7 @@
     }
   </style>
   <link rel="stylesheet" href="/static/game-ui.css?v=20260923">
-  <script src="/static/game-ui.js?v=20260923"></script>
+  <script src="/static/game-ui.js?v=20260926"></script>
 </head>
 <body>
 <div class="wrap">
@@ -627,7 +627,7 @@
 </div>
 
 <button id="languageSwitcher" type="button" style="position:fixed;top:12px;right:12px;z-index:9999;padding:8px 12px;border:1px solid #65d8ff;border-radius:8px;background:#10233e;color:#fff;font-weight:700;cursor:pointer;">&#1506;&#1489;&#1512;&#1497;&#1514;</button>
-<script src="/static/translation.js?v=2"></script>
+<script src="/static/translation.js?v=20260926"></script>
 <script>
   const socket = io({
     reconnection: true,
@@ -930,7 +930,6 @@
 
   function buildBoard() {
     const boardEl = document.getElementById("board");
-    boardEl.innerHTML = "";
     if (!state || !state.you) return;
 
     const spectator = state.spectator_map;
@@ -956,6 +955,14 @@
     drawBirthLegend(legend, birthSpots, lostMap);
     const relativePosition = state.lost_relative_position || { x: 0, y: 0 };
     const publicPositions = state.public_revealed_players || [];
+    const signature=JSON.stringify([spectator,knownTiles,manualTiles,manualWallEdges,knownPlayers,openEdges,brokenEdges,knownWallEdges,birthSpots,window,lostMap,relativePosition,publicPositions,state.you,state.game_started,state.outer_wall_lines]);
+    if(boardEl.dataset.renderKey===signature)return;
+    boardEl.dataset.renderKey=signature;
+    boardEl.replaceChildren();
+    const renderedWallEdges=[...knownWallEdges];
+    if(lostMap)for(const line of state.outer_wall_lines||[])for(let n=0;n<window.size;n++){
+      renderedWallEdges.push(line.axis==='x'?[[line.at-1,window.startY+n],[line.at,window.startY+n]]:[[window.startX+n,line.at-1],[window.startX+n,line.at]]);
+    }
 
     for (let displayY = 0; displayY < window.size; displayY++) {
       for (let displayX = 0; displayX < window.size; displayX++) {
@@ -994,7 +1001,7 @@
           if (!lostMap && x === 0) addEdgeMarker(cell, "Left", "wall");
           if (!lostMap && x === 9) addEdgeMarker(cell, "Right", "wall");
 
-          addUniqueEdgeMarkers(cell, knownWallEdges, "wall", x, y, displayX, displayY,window.size);
+          addUniqueEdgeMarkers(cell, renderedWallEdges, "wall", x, y, displayX, displayY,window.size);
           addUniqueEdgeMarkers(cell, openEdges, "open", x, y, displayX, displayY,window.size);
           addUniqueEdgeMarkers(cell, brokenEdges, "broken", x, y, displayX, displayY,window.size);
           addUniqueEdgeMarkers(cell, manualWallEdges, "manualWall", x, y, displayX, displayY,window.size);
@@ -1018,6 +1025,9 @@
 
   function buildOtherPlayerMaps() {
     const container=document.getElementById('otherMaps');
+    const signature=JSON.stringify([state?.hidden_player_maps,state?.river_map,state?.saved_maps]);
+    if(container.dataset.renderKey===signature)return;
+    container.dataset.renderKey=signature;
     container.replaceChildren();
     const trails=[...(state?.hidden_player_maps||[])];
     if(Object.keys(state?.river_map?.tiles||{}).length)trails.unshift({...state.river_map,name:'Shared river map'});
