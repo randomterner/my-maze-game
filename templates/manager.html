@@ -326,7 +326,7 @@
     }
   </style>
   <link rel="stylesheet" href="/static/game-ui.css?v=20260923">
-  <script src="/static/game-ui.js?v=20260923"></script>
+  <script src="/static/game-ui.js?v=20260926"></script>
 </head>
 <body>
 <div class="wrap">
@@ -475,7 +475,7 @@
     <button class="secondary" onclick="document.getElementById('mapLoadDialog').close()">Cancel</button>
   </div>
 </dialog>
-<script src="/static/translation.js?v=2"></script>
+<script src="/static/translation.js?v=20260926"></script>
 <script>
   const socket = io({
     reconnection: true,
@@ -679,10 +679,13 @@
 
   function buildBoard() {
     const boardEl = document.getElementById("board");
-    boardEl.innerHTML = "";
     if (!state) return;
 
     const brokenEdges = getAllBrokenEdges();
+    const signature=JSON.stringify([state.board,state.inner_walls,brokenEdges,state.pending_black_hole,(state.players||[]).map(p=>[p.sid,p.name,p.color,p.x,p.y,p.birth_x,p.birth_y,p.spawned,p.alive])]);
+    if(boardEl.dataset.renderKey===signature)return;
+    boardEl.dataset.renderKey=signature;
+    boardEl.replaceChildren();
     const birthSpots = {};
     (state.players || []).filter(p => p.spawned).forEach(p => { const key = `${p.birth_x},${p.birth_y}`; (birthSpots[key] ||= []).push(p); });
     drawBirthLegend(document.getElementById('birthLegend'), birthSpots);
