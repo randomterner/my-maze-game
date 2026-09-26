@@ -159,14 +159,13 @@ def remember_visited_tile(player, pos):
 
 
 def add_confirmed_map_tile(player, pos, tile):
-    """Add automatic map information and count it as a visit while oriented."""
+    """Record confirmed absolute knowledge and count it as a discovery visit."""
     if not in_bounds(*pos):
         return
     key = f"{pos[0]},{pos[1]}"
     player["known_tiles"][key] = tile
     player["manual_tiles"].pop(key, None)
-    if not player.get("lost"):
-        remember_visited_tile(player, pos)
+    remember_visited_tile(player, pos)
 
 
 def lost_relative_position_for(player, actual_pos):
@@ -206,6 +205,11 @@ def remember_lost_outer_wall_bomb(player, direction):
     clues = player["lost_outer_wall_bomb_clues"].setdefault(relative_key, [])
     if direction not in clues:
         clues.append(direction)
+    if player.get("lost_kind") == "river":
+        shared = GAME["river_lost_map"].setdefault("outer_wall_bomb_clues", {})
+        shared.setdefault(relative_key, [])
+        if direction not in shared[relative_key]:
+            shared[relative_key].append(direction)
 
 
 def lost_outer_wall_axes(player):
@@ -219,6 +223,36 @@ def lost_outer_wall_axes(player):
         "x": bool(directions & {"left", "right"}),
         "y": bool(directions & {"up", "down"}),
     }
+
+
+def lost_outer_wall_lines(player):
+    """An entire boundary line, without endpoints leaking the unknown axis."""
+    lines = []
+    for key, directions in player["lost_outer_wall_bomb_clues"].items():
+        x, y = map(int, key.split(','))
+        for direction in directions:
+            line = {"axis": "x" if direction in {"left", "right"} else "y",
+                    "at": (x + (direction == "right")) if direction in {"left", "right"} else (y + (direction == "down"))}
+            if line not in lines:
+                lines.append(line)
+    return lines
+
+
+def shared_river_wall_lines():
+    return lost_outer_wall_lines({"lost_outer_wall_bomb_clues": GAME["river_lost_map"].get("outer_wall_bomb_clues", {})})
+
+
+def anchored_outer_wall_edges(player):
+    edges = []
+    for line in lost_outer_wall_lines(player):
+        axis = line["axis"]
+        at = line["at"] + player[axis] - player["lost_relative_"+axis]
+        if at not in (0, BOARD_SIZE):
+            continue
+        for n in range(BOARD_SIZE):
+            a,b = ((at-1,n),(at,n)) if axis == "x" else ((n,at-1),(n,at))
+            append_unique_edge(edges, serialize_edge(a,b))
+    return edges
 
 
 def lost_map_bounds(player):
@@ -301,6 +335,9 @@ def check_lost_map_completion(player):
         message = lost_map_completion_message(player, known_x, known_y)
         if message:
             share_lost_section_with_everyone(player)
+            # Recovery reveals the current tile and rechecks completion.
+            # Mark this first, before that nested normal-map check can run.
+            player["completion_revealed"] = True
             recover_from_lost(
                 player,
                 message,
@@ -308,13 +345,16 @@ def check_lost_map_completion(player):
             )
             return True
     elif len(known_x) >= BOARD_SIZE and len(known_y) >= BOARD_SIZE:
-        share_current_section_with_everyone(player)
+        if not player.get("completion_revealed"):
+            share_current_section_with_everyone(player)
+            player["completion_revealed"] = True
         reveal_player_position_to_everyone(player)
         return True
     return False
 
 
 def remember_lost_tile(player, pos, source="revealed"):
+    remember_visited_tile(player, pos)
     relative_pos = lost_relative_position_for(player, pos)
     key = f"{relative_pos[0]},{relative_pos[1]}"
     is_new = key not in player["lost_known_tiles"]
@@ -344,7 +384,7 @@ def discover_lost_birth_tile(player, pos):
     for owner in GAME["players"].values():
         if (
             owner["sid"] == player["sid"]
-            or not owner["alive"] or owner["lost"]
+            or not owner["alive"]
             or None in (owner["x"], owner["y"])
             or pos != (owner["birth_x"], owner["birth_y"])
         ):
@@ -352,6 +392,10 @@ def discover_lost_birth_tile(player, pos):
         if owner["sid"] not in player["lost_birth_map_sources"]:
             player["lost_birth_map_sources"].append(owner["sid"])
             log(f"{player['name']} linked a relative map through the birth spot of {owner['name']}.")
+        if owner["lost"]:
+            for first, second in ((player, owner), (owner, player)):
+                if second["sid"] not in first["lost_fusion_links"]:
+                    first["lost_fusion_links"].append(second["sid"])
     sync_lost_birth_maps(player)
 
 
@@ -369,10 +413,15 @@ def sync_lost_birth_maps(player):
             ]
             if not player["lost_known_players"][key]:
                 del player["lost_known_players"][key]
-        if not owner or not owner["alive"] or owner["lost"] or None in (owner["x"], owner["y"]):
+        if not owner or not owner["alive"] or None in (owner["x"], owner["y"]):
             continue
-        for key, tile in owner["known_tiles"].items():
-            actual = tuple(int(value) for value in key.split(","))
+        # Snapshot before the reciprocal transfer; a relative find is not an
+        # absolute recovery anchor merely because it travelled through B.
+        owner_tiles = dict(owner["lost_known_tiles"] if owner["lost"] else owner["known_tiles"])
+        owner_offset = (owner["x"]-owner["lost_relative_x"], owner["y"]-owner["lost_relative_y"]) if owner["lost"] else (0,0)
+        for key, tile in owner_tiles.items():
+            ox, oy = map(int, key.split(','))
+            actual = ox+owner_offset[0], oy+owner_offset[1]
             relative = lost_relative_position_for(player, actual)
             relative_key = f"{relative[0]},{relative[1]}"
             if (
@@ -382,14 +431,25 @@ def sync_lost_birth_maps(player):
             ):
                 familiar_position = actual
             player["lost_known_tiles"].setdefault(relative_key, tile)
+            remember_visited_tile(player, actual)
             player["lost_manual_tiles"].pop(relative_key, None)
         for field in ("known_open_edges", "known_broken_walls", "known_wall_edges"):
-            for edge in owner[field]:
+            for edge in owner["lost_" + field] if owner["lost"] else owner[field]:
                 relative = serialize_edge(
-                    lost_relative_position_for(player, tuple(edge[0])),
-                    lost_relative_position_for(player, tuple(edge[1])),
+                    lost_relative_position_for(player, (edge[0][0]+owner_offset[0],edge[0][1]+owner_offset[1])),
+                    lost_relative_position_for(player, (edge[1][0]+owner_offset[0],edge[1][1]+owner_offset[1])),
                 )
                 append_unique_edge(player["lost_" + field], relative)
+        if not owner["lost"]:
+            offset = player["x"]-player["lost_relative_x"], player["y"]-player["lost_relative_y"]
+            for key, tile in list(player["lost_known_tiles"].items()):
+                rx, ry = map(int, key.split(','))
+                add_confirmed_map_tile(owner, (rx+offset[0], ry+offset[1]), tile)
+            for field in ("known_open_edges", "known_broken_walls", "known_wall_edges"):
+                for a,b in player["lost_"+field]:
+                    append_unique_edge(owner[field], serialize_edge((a[0]+offset[0],a[1]+offset[1]),(b[0]+offset[0],b[1]+offset[1])))
+            for edge in anchored_outer_wall_edges(player):
+                append_unique_edge(owner["known_wall_edges"], edge)
         relative = lost_relative_position_for(player, (owner["x"], owner["y"]))
         key = f"{relative[0]},{relative[1]}"
         player["lost_known_players"].setdefault(key, []).append({
@@ -425,6 +485,8 @@ def start_lost_relative_map(player):
     player["lost_manual_wall_edges"] = []
     player["lost_river_players"] = {}
     player["lost_outer_wall_bomb_clues"] = {}
+    if player.get("lost_kind") == "river":
+        player["lost_outer_wall_bomb_clues"] = copy.deepcopy(GAME["river_lost_map"].get("outer_wall_bomb_clues", {}))
     if player["x"] is not None and player["y"] is not None:
         remember_lost_tile(player, (player["x"], player["y"]))
 
@@ -573,7 +635,7 @@ def share_current_section_with_everyone(player):
 
 
 def share_lost_section_with_everyone(player):
-    """Share the new section, plus the old section too when the two overlap."""
+    """Publish only the lost section, never its saved/pre-loss map."""
     previous_tiles = player.get("known_tiles_before_lost", {})
     tiles = {}
     overlaps_previous_section = False
@@ -601,10 +663,7 @@ def share_lost_section_with_everyone(player):
             key_a = f"{actual_a[0]},{actual_a[1]}"
             key_b = f"{actual_b[0]},{actual_b[1]}"
             if (
-                in_bounds(*actual_a)
-                and in_bounds(*actual_b)
-                and key_a not in previous_tiles
-                and key_b not in previous_tiles
+                in_bounds(*actual_a) or in_bounds(*actual_b)
             ):
                 append_unique_edge(translated, serialize_edge(actual_a, actual_b))
         return translated
@@ -612,12 +671,8 @@ def share_lost_section_with_everyone(player):
     new_open_edges = translate_edges(player["lost_known_open_edges"])
     new_broken_walls = translate_edges(player["lost_known_broken_walls"])
     new_wall_edges = translate_edges(player["lost_known_wall_edges"])
-
-    if overlaps_previous_section:
-        tiles = {**previous_tiles, **tiles}
-        new_open_edges = [*player.get("known_open_edges_before_lost", []), *new_open_edges]
-        new_broken_walls = [*player.get("known_broken_walls_before_lost", []), *new_broken_walls]
-        new_wall_edges = [*player.get("known_wall_edges_before_lost", []), *new_wall_edges]
+    for edge in anchored_outer_wall_edges(player):
+        append_unique_edge(new_wall_edges, edge)
 
     share_map_with_everyone(tiles, new_open_edges, new_broken_walls, new_wall_edges)
     return overlaps_previous_section
@@ -661,6 +716,8 @@ def share_recovered_map_with_linked_players(player):
     open_edges = translate_edges(player["lost_known_open_edges"])
     broken_walls = translate_edges(player["lost_known_broken_walls"])
     wall_edges = translate_edges(player["lost_known_wall_edges"])
+    for edge in anchored_outer_wall_edges(player):
+        append_unique_edge(wall_edges, edge)
     for recipient in GAME["players"].values():
         if (
             recipient["sid"] != player["sid"]
@@ -937,6 +994,9 @@ def refresh_lost_river_player_positions():
     ]
 
     for viewer in river_lost_players:
+        for key, directions in GAME["river_lost_map"].get("outer_wall_bomb_clues", {}).items():
+            current = viewer["lost_outer_wall_bomb_clues"].setdefault(key, [])
+            current.extend(direction for direction in directions if direction not in current)
         viewer["lost_known_tiles"].update(copy.deepcopy(GAME["river_lost_map"]["tiles"]))
         for field, river_field in (("known_open_edges", "open_edges"), ("known_broken_walls", "broken_walls"), ("known_wall_edges", "wall_edges")):
             for edge in GAME["river_lost_map"][river_field]:
@@ -973,7 +1033,14 @@ def announce_players_on_tile(player):
 
 
 def enter_lost_state(player, lost_kind):
+    player["completion_revealed"] = False
     for other in GAME["players"].values():
+        if player["sid"] in other["lost_birth_map_sources"]:
+            other["lost_birth_map_sources"].remove(player["sid"])
+            for key in list(other["lost_known_players"]):
+                other["lost_known_players"][key] = [p for p in other["lost_known_players"][key] if p["sid"] != player["sid"]]
+                if not other["lost_known_players"][key]:
+                    del other["lost_known_players"][key]
         other["lost_fusion_links"] = [sid for sid in other["lost_fusion_links"] if sid != player["sid"]]
     player["lost_fusion_links"] = []
     if player["lost"] and player["lost_known_tiles"]:
@@ -1007,7 +1074,7 @@ def previously_known_tile_ends_lost(player, pos=None):
     if GAME["board"].get(pos, "empty") in {"empty", "river", "river_start"}:
         return False
     key = f"{pos[0]},{pos[1]}"
-    return key in player.get("known_tiles_before_lost", {})
+    return key in player.get("known_tiles_before_lost", {}) or key in player["known_tiles"]
 
 
 def recover_from_lost(player, message, reveal_position_to_everyone=False):
@@ -1844,6 +1911,9 @@ def apply_tile_effect(player, discovery_source="stepped onto", grant_extra_turn=
         return "continue"
 
     if raw_tile == "river_start":
+        if player["items"]["boat"]:
+            set_player_message(player, "You crossed the river safely with the boat.")
+            return "continue"
         player["injuries"] += 1
         if check_death(player, "Killed by river-start injury."):
             return "dead"
@@ -2044,6 +2114,7 @@ def serialize_relative_trail(other, origin=None):
     """Create a coordinate-safe, lost-map-style board for another player."""
     if other["lost"]:
         return {
+            "outer_wall_lines": lost_outer_wall_lines(other),
             "tiles": copy.deepcopy(other["lost_known_tiles"]),
             "open_edges": copy.deepcopy(other["lost_known_open_edges"]),
             "broken_walls": copy.deepcopy(other["lost_known_broken_walls"]),
@@ -2151,6 +2222,19 @@ def serialize_known_birth_spots(viewer):
     return result
 
 
+def serialize_river_birth_spots():
+    start = find_river_start()
+    births = {}
+    if start is not None:
+        for owner in GAME["players"].values():
+            if None in (owner["birth_x"], owner["birth_y"]):
+                continue
+            key = f"{owner['birth_x']-start[0]},{owner['birth_y']-start[1]}"
+            if key in GAME["river_lost_map"]["tiles"]:
+                births.setdefault(key, []).append({"name": owner["name"]})
+    return births
+
+
 def serialize_public_player_stats():
     fields = ("sid", "name", "color", "alive", "spawned", "injuries", "bullets", "bombs", "items", "lost", "connected")
     return [{field: copy.deepcopy(player[field]) for field in fields} for player in GAME["players"].values()]
@@ -2252,7 +2336,7 @@ def serialize_public_boards_state():
     if river_map["tiles"]:
         positions = [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["lost_relative_x"], "y": p["lost_relative_y"]}
                      for p in GAME["players"].values() if p["alive"] and p["lost"] and p["lost_kind"] == "river"]
-        boards.append({"id": "river", "member_sids": [p["sid"] for p in positions], "name": "Shared river map", "absolute": False, "lost": True, **copy.deepcopy(river_map), "players": positions})
+        boards.append({"id": "river", "member_sids": [p["sid"] for p in positions], "name": "Shared river map", "absolute": False, "lost": True, **copy.deepcopy(river_map), "players": positions, "birth_spots": serialize_river_birth_spots(), "outer_wall_lines": shared_river_wall_lines()})
     if GAME["game_over"]:
         boards.insert(0, serialize_manager_map())
     return mask_treasure_suspense({"boards": boards, "players": serialize_public_player_stats(), "logs": list(GAME["logs"]), "treasure_reveal": treasure_reveal_state(), "game_started": GAME["game_started"], "game_over": GAME["game_over"], "turn_number": GAME["turn_number"]})
@@ -2344,6 +2428,8 @@ def serialize_player_state_for(sid):
         "map_progress": map_completion_progress(player),
         "lost_map_bounds": lost_map_bounds(player) if player["lost"] else None,
         "river_map": {
+            "birth_spots": serialize_river_birth_spots(),
+            "outer_wall_lines": shared_river_wall_lines(),
             "players": [{"sid": p["sid"], "name": p["name"], "color": p["color"], "x": p["lost_relative_x"], "y": p["lost_relative_y"]}
                         for p in GAME["players"].values() if p["alive"] and p["lost"] and p["lost_kind"] == "river"],
             "tiles": copy.deepcopy(GAME["river_lost_map"]["tiles"]),
@@ -2351,6 +2437,7 @@ def serialize_player_state_for(sid):
             "broken_walls": copy.deepcopy(GAME["river_lost_map"]["broken_walls"]),
             "wall_edges": copy.deepcopy(GAME["river_lost_map"]["wall_edges"]),
         },
+        "outer_wall_lines": lost_outer_wall_lines(player) if player["lost"] else [],
         "board_size": BOARD_SIZE,
         "current_turn_sid": turn_sid,
         "current_turn_name": GAME["players"][turn_sid]["name"] if turn_sid in GAME["players"] else None,
@@ -2398,6 +2485,10 @@ def sync_lost_fusion_maps():
                 existing.extend(clue for clue in clues if clue not in existing)
         if receiver["lost_kind"] == "river":
             GAME["river_lost_map"]["tiles"].update(receiver["lost_known_tiles"])
+            shared_clues = GAME["river_lost_map"].setdefault("outer_wall_bomb_clues", {})
+            for key, directions in receiver["lost_outer_wall_bomb_clues"].items():
+                existing = shared_clues.setdefault(key, [])
+                existing.extend(direction for direction in directions if direction not in existing)
             for field, target in (("lost_known_open_edges", "open_edges"), ("lost_known_wall_edges", "wall_edges"), ("lost_known_broken_walls", "broken_walls")):
                 for edge in receiver[field]:
                     append_unique_edge(GAME["river_lost_map"][target], edge)
@@ -2436,6 +2527,14 @@ def emit_full_state():
         and player["y"] is not None
     }
     refresh_lost_river_player_positions()
+    for player in GAME["players"].values():
+        if player["lost"]:
+            for key in player["lost_known_tiles"]:
+                rx, ry = map(int, key.split(','))
+                pos = player["x"]+rx-player["lost_relative_x"], player["y"]+ry-player["lost_relative_y"]
+                remember_visited_tile(player, pos)
+                if tile_allows_map_fusion(pos) or GAME["board"].get(pos) == "river_start":
+                    reveal_players_at_lost_special_tile(player, pos)
     socketio.emit("manager_state", serialize_manager_state(), room="manager_room")
     for sid in list(GAME["players"].keys()):
         socketio.emit("player_state", serialize_player_state_for(sid), room=sid)
@@ -3454,6 +3553,10 @@ def player_bomb(data):
                 }[direction]
                 set_player_message(player, f"The wall did not explode. You found the {edge_name} outer edge.")
         else:
+            for n in range(BOARD_SIZE):
+                a = (x,n) if direction in {"left","right"} else (n,y)
+                dx, dy = DIRECTIONS[direction]
+                remember_wall_edge(player, a, (a[0]+dx,a[1]+dy))
             set_player_message(player, "The wall did not explode.")
         log(f"{player['name']} tried to bomb an outer wall.")
         emit_full_state()
