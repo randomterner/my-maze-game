@@ -1,5 +1,8 @@
 (() => {
   let translations = {};
+  let translationRules = [];
+  const textCache = new Map();
+  let translatedNodes = new WeakMap();
 
   function parseTranslations(text) {
     const result = {};
@@ -20,19 +23,28 @@
   }
 
   window.translateGameText = value => {
-    let result = String(value ?? "");
-    Object.keys(translations)
-      .filter(key => !key.startsWith("__"))
-      .sort((a, b) => b.length - a.length)
-      .forEach(source => {
+    const original = String(value ?? "");
+    if(textCache.has(original)) return textCache.get(original);
+    let result = original;
+    for(const [pattern,target] of translationRules) result=result.replace(pattern,()=>target);
+    if(textCache.size>5000)textCache.clear();
+    textCache.set(original,result);
+    return result;
+  };
+
+  function compileTranslations() {
+    textCache.clear();
+    translatedNodes = new WeakMap();
+    translationRules = Object.keys(translations)
+      .filter(key => !key.startsWith("__") && key!==translations[key])
+      .sort((a,b)=>b.length-a.length).map(source=>{
         const escaped = source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const beginsWithWord = /^[A-Za-z0-9_]/.test(source);
         const endsWithWord = /[A-Za-z0-9_]$/.test(source);
         const pattern = `${beginsWithWord ? "\\b" : ""}${escaped}${endsWithWord ? "\\b" : ""}`;
-        result = result.replace(new RegExp(pattern, "g"), translations[source]);
+        return [new RegExp(pattern,"g"), translations[source]];
       });
-    return result;
-  };
+  }
 
   // Keep the maze's physical layout consistent in every language. Hebrew text
   // is right-to-left, but reversing the grid would make its coordinates wrong.
@@ -50,7 +62,9 @@
     nodes.forEach(node => {
       const parent = node.parentElement;
       if (parent?.closest("script, style, textarea")) return;
+      if(translatedNodes.get(node)===node.nodeValue)return;
       node.nodeValue = window.translateGameText(node.nodeValue);
+      translatedNodes.set(node,node.nodeValue);
     });
     root.querySelectorAll("[placeholder], [title], [aria-label], [alt]").forEach(element => {
       ["placeholder", "title", "aria-label", "alt"].forEach(attribute => {
@@ -71,6 +85,7 @@
     } catch (_) {
       translations = {};
     }
+    compileTranslations();
     document.documentElement.lang = translations.__language__ || "en";
     document.documentElement.dir = translations.__direction__ || "ltr";
     document.title = window.translateGameText(document.title);
